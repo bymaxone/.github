@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🟦 BYMAX ONE
+<img src="https://avatars.githubusercontent.com/u/274851014?s=120" alt="Bymax One logo" width="120" height="120" />
+
+# BYMAX ONE
 
 ### Architecting intelligent, AI-native and Web3-ready systems.
 
