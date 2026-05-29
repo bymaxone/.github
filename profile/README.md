@@ -57,7 +57,7 @@ and built to remove vendor lock-in.
 | 🧰 [`nest-cache`](https://github.com/bymaxone/nest-cache) | Idiomatic Redis layer — typed cache helpers, namespaced keys, Pub/Sub & atomic Lua |
 | 🛠️ [`bymax.claude-code`](https://github.com/bymaxone/bymax.claude-code) | Production-ready Claude Code toolkit — phased workflow, quality gates & specialist agents |
 
-> 📘 Each library ships with a reference implementation — see [`nest-logger-example`](https://github.com/bymaxone/nest-logger-example).
+> 📘 Each library ships with a reference implementation — see [`nest-auth-example`](https://github.com/bymaxone/nest-auth-example).
 
 ---
 
