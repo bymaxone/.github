@@ -58,7 +58,7 @@ and built to remove vendor lock-in. Mostly NestJS 11, plus a Rust auth library a
 | 📨 [`nest-notification`](https://github.com/bymaxone/nest-notification) | Multi-channel notifications — email, OTP, SMS & push behind provider-agnostic interfaces |
 | 📬 [`nest-queue`](https://github.com/bymaxone/nest-queue) | BullMQ-powered job queues — typed queues, workers, flows & cron jobs |
 | 🧰 [`nest-cache`](https://github.com/bymaxone/nest-cache) | Idiomatic Redis layer — typed cache helpers, namespaced keys, Pub/Sub & atomic Lua |
-| 🛠️ [`bymax.claude-code`](https://github.com/bymaxone/bymax.claude-code) | Production-ready Claude Code toolkit — phased workflow, quality gates & specialist agents |
+| 🛠️ [`bymax-claude-code`](https://github.com/bymaxone/bymax-claude-code) | Production-ready Claude Code toolkit — phased workflow, quality gates & specialist agents |
 
 > 📘 Each library ships with a reference implementation — see [`nest-auth-example`](https://github.com/bymaxone/nest-auth-example).
 
