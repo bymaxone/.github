@@ -44,13 +44,14 @@ always built with strong engineering discipline and a production-first mindset.
 
 ## 📦 Open-Source Ecosystem
 
-A growing suite of **production-grade NestJS 11 libraries** — typed, multi-tenant ready,
-and built to remove vendor lock-in.
+A growing suite of **production-grade libraries & developer tooling** — typed, multi-tenant ready,
+and built to remove vendor lock-in. Mostly NestJS 11, plus a Rust auth library and a Claude Code toolkit.
 
 | Library | What it does |
 | --- | --- |
 | 📊 [`nest-logger`](https://github.com/bymaxone/nest-logger) | Structured JSON logging (Pino 10) with OpenTelemetry trace correlation & PII/LGPD redaction |
 | 🔐 [`nest-auth`](https://github.com/bymaxone/nest-auth) | Full-stack auth — JWT, MFA, OAuth, sessions, RBAC, multi-tenant SaaS ready |
+| 🦀 [`rust-auth`](https://github.com/bymaxone/rust-auth) | Full-stack auth for Rust (Axum) & React/Next.js — JWT, MFA, OAuth, sessions; pure-Rust crypto + WASM edge verify (crates.io + npm) |
 | ⚡ [`nest-realtime`](https://github.com/bymaxone/nest-realtime) | Real-time backend → frontend — dual transport (SSE / WebSocket), rooms, event replay |
 | 🗄️ [`nest-storage`](https://github.com/bymaxone/nest-storage) | Provider-agnostic object storage — one S3 API across AWS, R2, B2, Spaces, MinIO & Wasabi |
 | 💸 [`nest-ai-tokens`](https://github.com/bymaxone/nest-ai-tokens) | AI token usage ledger & cost tracking across OpenAI, Anthropic, Gemini, Mistral & OpenRouter |
