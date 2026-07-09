@@ -1,0 +1,208 @@
+# Reusable CI for Bymax single-package Node libraries (@bymax-one/nest-*).
+#
+# Event-driven only — the caller triggers it on push/pull_request/workflow_dispatch.
+# There is NO cron here. Mutation is the deepest gate and runs ONLY on a push to the
+# default branch (or manual dispatch), and only when source changed, with its
+# incremental state cached. No web/e2e/export-audit (that's node-ci for example apps).
+name: node-lib-ci
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version.
+        type: string
+        default: '24'
+      library-repo:
+        description: Sibling file: library to build (usually empty for libraries).
+        type: string
+        default: ''
+      run-format-check:
+        description: Run `pnpm format:check`.
+        type: boolean
+        default: true
+      unit-command:
+        description: Command that runs the gated unit tests + coverage.
+        type: string
+        default: pnpm test:cov
+      build-command:
+        description: Command that builds the library.
+        type: string
+        default: pnpm build
+      database-url:
+        description: DATABASE_URL env for libs touching a Prisma client (empty to skip).
+        type: string
+        default: ''
+      post-install:
+        description: Command run right after install in every job (e.g. prisma generate).
+        type: string
+        default: ''
+      run-mutation:
+        description: Run Stryker mutation on default-branch push / manual dispatch.
+        type: boolean
+        default: false
+      mutation-source-globs:
+        description: Extended-regex of source paths whose change triggers mutation.
+        type: string
+        default: '^(src/)'
+
+concurrency:
+  group: node-lib-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: ${{ inputs.database-url }}
+
+jobs:
+  install:
+    name: Install dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+
+  lint:
+    name: Lint
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+      - run: pnpm lint
+
+  typecheck:
+    name: Type-check
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+      - run: pnpm typecheck
+
+  format:
+    name: Format check
+    needs: install
+    if: inputs.run-format-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+      - run: pnpm format:check
+
+  unit:
+    name: Unit tests + coverage
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+      - name: Unit tests + coverage
+        run: ${{ inputs.unit-command }}
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  build:
+    name: Build
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+      - run: ${{ inputs.build-command }}
+
+  mutation:
+    name: Mutation testing
+    # The deepest gate. Never on PRs, never on a schedule — only on a push to the
+    # default branch or a manual dispatch, and only when source changed.
+    needs: [unit]
+    if: >-
+      inputs.run-mutation &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detect source changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Manual dispatch — running mutation."; exit 0
+          fi
+          base="${{ github.event.before }}"
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="${{ github.sha }}^"
+          fi
+          if git diff --name-only "$base" "${{ github.sha }}" | grep -qE '${{ inputs.mutation-source-globs }}'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Source changed — running mutation."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "No source changes — skipping mutation."
+          fi
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: ${{ inputs.node-version }}
+          library-repo: ${{ inputs.library-repo }}
+          post-install: ${{ inputs.post-install }}
+      - name: Restore Stryker incremental cache
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
+          restore-keys: |
+            stryker-incremental-
+      - name: Run Stryker mutation
+        if: steps.changes.outputs.run == 'true'
+        run: pnpm mutation
+      - name: Upload mutation reports
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-reports
+          path: reports/mutation/
+          retention-days: 7
+          if-no-files-found: ignore
