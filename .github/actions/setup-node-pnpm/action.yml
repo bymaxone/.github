@@ -25,6 +25,10 @@ inputs:
     description: Run `pnpm install --frozen-lockfile` after setup.
     required: false
     default: "true"
+  post-install:
+    description: Command to run right after install (e.g. a Prisma client generate). Empty to skip.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -69,3 +73,8 @@ runs:
       if: inputs.install == 'true'
       shell: bash
       run: pnpm install --frozen-lockfile
+
+    - name: Post-install command
+      if: inputs.post-install != ''
+      shell: bash
+      run: ${{ inputs.post-install }}
