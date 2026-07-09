@@ -29,6 +29,10 @@ on:
         description: Run `pnpm format:check`.
         type: boolean
         default: true
+      run-unit:
+        description: Run the unit test + coverage job.
+        type: boolean
+        default: true
       run-e2e-api:
         description: Run the API e2e suite (Testcontainers).
         type: boolean
@@ -150,6 +154,7 @@ jobs:
   unit:
     name: Unit tests + coverage
     needs: install
+    if: inputs.run-unit
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
