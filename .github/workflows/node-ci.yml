@@ -30,9 +30,17 @@ on:
         type: boolean
         default: true
       run-e2e-api:
-        description: Run `pnpm test:e2e:api` (Testcontainers).
+        description: Run the API e2e suite (Testcontainers).
         type: boolean
         default: true
+      unit-command:
+        description: Command that runs the gated unit tests + coverage.
+        type: string
+        default: pnpm test:cov
+      e2e-api-command:
+        description: Command that runs the API e2e suite.
+        type: string
+        default: pnpm test:e2e:api
       run-e2e-web:
         description: Run the Playwright web smoke (needs has-web).
         type: boolean
@@ -137,7 +145,7 @@ jobs:
       # (`--workspace-concurrency=1`), so a locally linked library is never
       # duplicated across two runners at once.
       - name: Unit tests + coverage
-        run: pnpm test:cov
+        run: ${{ inputs.unit-command }}
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -163,7 +171,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           library-repo: ${{ inputs.library-repo }}
-      - run: pnpm test:e2e:api
+      - run: ${{ inputs.e2e-api-command }}
 
   export-usage:
     name: Export usage audit
