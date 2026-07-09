@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+    branches: [$default-branch]
+  pull_request:
+    branches: [$default-branch]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    uses: bymaxone/.github/.github/workflows/node-ci.yml@v1
+    with:
+      # A sibling @bymax-one/* library consumed via `file:` — empty for most repos.
+      library-repo: ""
+      has-web: true
+      run-export-audit: false
+      # Mutation runs only on default-branch push / manual dispatch, never on PRs.
+      run-mutation: false
+    secrets: inherit
+
+  security:
+    uses: bymaxone/.github/.github/workflows/security.yml@v1
+    with:
+      fail-on-severity: high
+    secrets: inherit

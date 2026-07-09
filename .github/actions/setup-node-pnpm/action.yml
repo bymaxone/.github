@@ -1,0 +1,71 @@
+name: Setup Node + pnpm
+description: >-
+  Set up pnpm and Node with the pnpm store cache, optionally provision a local
+  @bymax-one/* library from source (so a `file:` dependency resolves), then
+  install the workspace with a frozen lockfile. Shared across every Bymax Node
+  repository so the toolchain is defined once.
+
+inputs:
+  node-version:
+    description: Node.js version to install.
+    required: false
+    default: "24"
+  library-repo:
+    description: >-
+      owner/name of a sibling library to check out beside the workspace and
+      build with its own package scripts (for a local `file:` dependency).
+      Leave empty to skip — most repos install straight from the registry.
+    required: false
+    default: ""
+  library-ref:
+    description: Git ref of the library repo to build.
+    required: false
+    default: main
+  install:
+    description: Run `pnpm install --frozen-lockfile` after setup.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # pnpm MUST come before setup-node so `cache: pnpm` can find the binary.
+    # The version is read from the workspace `packageManager` field.
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Set up Node
+      uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+
+    # A published `@bymax-one/*` library consumed via `file:../../../<name>` is a
+    # sibling of the repo checkout, so the lockfile cannot resolve until the
+    # library is on disk. Check it out, position it beside the workspace, and
+    # build it. Dropped automatically once the dependency becomes a registry range.
+    - name: Check out the library source
+      if: inputs.library-repo != ''
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ inputs.library-repo }}
+        ref: ${{ inputs.library-ref }}
+        path: .bymax-library-src
+
+    - name: Position and build the library
+      if: inputs.library-repo != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        libname="${{ inputs.library-repo }}"
+        libname="${libname##*/}"
+        rm -rf "${GITHUB_WORKSPACE}/../${libname}"
+        mv "${GITHUB_WORKSPACE}/.bymax-library-src" "${GITHUB_WORKSPACE}/../${libname}"
+        cd "${GITHUB_WORKSPACE}/../${libname}"
+        pnpm install --frozen-lockfile
+        pnpm build
+
+    - name: Install workspace dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile

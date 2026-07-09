@@ -1,0 +1,7 @@
+{
+  "name": "Bymax Node CI",
+  "description": "Centralized CI (lint, typecheck, format, coverage, e2e, mutation) + dependency-review, via the shared reusable workflows. Event-driven only; no scheduled test runs.",
+  "iconName": "octicon-workflow",
+  "categories": ["Node", "TypeScript", "Continuous integration"],
+  "filePatterns": ["package\\.json$", "pnpm-workspace\\.yaml$"]
+}

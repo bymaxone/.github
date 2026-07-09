@@ -1,0 +1,23 @@
+# Copy this to `.github/dependabot.yml` in each repo.
+#
+# This is how Bymax does "weekly dependency / third-party security" scanning:
+# Dependabot runs on GitHub infrastructure (≈ zero Action minutes), opening PRs
+# when a new CVE affects a dependency you did not touch. Those PRs then go through
+# the normal event-driven CI + dependency-review gate. No scheduled CI job needed.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # One PR for all non-major dev/runtime bumps keeps the noise (and CI runs) low.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
