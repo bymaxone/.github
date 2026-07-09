@@ -20,9 +20,11 @@ on:
         type: string
         default: ""
 
+# Read-only: requesting no write scope keeps this callable from repos whose
+# default GITHUB_TOKEN is restricted (no per-repo permission grant needed). The
+# result is surfaced in the check's own log/summary rather than a PR comment.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   dependency-review:
@@ -37,5 +39,3 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: ${{ inputs.fail-on-severity }}
-          deny-licenses: ${{ inputs.deny-licenses }}
-          comment-summary-in-pr: on-failure
