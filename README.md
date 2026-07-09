@@ -31,8 +31,10 @@ It is public because organization-wide defaults require a public repo.
 | Path | What it is | Shows up… |
 | --- | --- | --- |
 | 🏠 [`profile/README.md`](profile/README.md) | The **organization profile** | On the [org overview page](https://github.com/bymaxone) |
-| 🔁 [`.github/workflows/node-ci.yml`](.github/workflows/node-ci.yml) | **Reusable CI** — lint · typecheck · format · coverage · e2e · export-audit · mutation | Called by each repo's `ci.yml` |
-| 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml) | **Reusable dependency-review** (GitHub-owned action only) | Called on pull requests |
+| 🔁 [`.github/workflows/node-ci.yml`](.github/workflows/node-ci.yml) | **Reusable CI — Node example apps** — lint · typecheck · format · coverage · e2e · export-audit · mutation | Called by each `nest-*-example` repo's `ci.yml` |
+| 📚 [`.github/workflows/node-lib-ci.yml`](.github/workflows/node-lib-ci.yml) | **Reusable CI — Node libraries** — lint · typecheck · format · unit+coverage · build · mutation | Called by each `@bymax-one/nest-*` library's `ci.yml` |
+| 🦀 [`.github/workflows/rust-ci.yml`](.github/workflows/rust-ci.yml) | **Reusable CI — Rust workspaces** — fmt · clippy · build & test · llvm-cov · MSRV · cargo-mutants | Called by `rust-auth` / `rust-auth-example` |
+| 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml) | **Reusable dependency-review** (GitHub-owned action only) | Called on public-repo pull requests |
 | 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm) | **Composite action** — pnpm + Node + cache + local `file:` lib build + install | Used by the reusable jobs |
 | 📋 [`.github/workflow-templates/`](.github/workflow-templates) | **Starter workflows + `dependabot.yml`** | In the repo "New workflow" gallery |
 
@@ -52,8 +54,9 @@ here that every repo inherits.
 - ⏱️ **Tests never run on a schedule** — unit, e2e, and mutation are event-driven
   (push / pull_request) or on-demand (`workflow_dispatch`).
 - 🧬 **Mutation is the deepest gate** — it runs **only** on a default-branch push (or
-  manual dispatch), and only when application source changed, with the Stryker
-  incremental state cached. PRs stay gated by 100% coverage + e2e, which is fast.
+  manual dispatch), and only when application source changed (Stryker incremental for
+  Node, `cargo-mutants --in-diff` for Rust). PRs stay gated by 100% coverage + e2e,
+  which is fast. No mutation runs on a schedule or on the PR path anywhere in the org.
 - 🤖 **The only scheduled work is third-party dependency/security**, handled by
   **Dependabot** on GitHub infrastructure (≈ zero Action minutes) — not a cron CI job.
 
@@ -105,6 +108,44 @@ to your repo's `.github/dependabot.yml`.
 | `run-mutation` | `false` | Stryker on default-branch push / dispatch only |
 | `mutation-source-globs` | api/web/src regex | which changed paths trigger mutation |
 
+### 📚 `node-lib-ci` inputs (libraries)
+
+A library caller routes the generic jobs (lint · typecheck · format · unit+coverage ·
+build · mutation) through `node-lib-ci.yml` and keeps repo-specific jobs (`verify`
+build+integrity+size, Testcontainers `e2e`, `secret-scan`) local, plus a
+visibility-gated `security` job.
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `node-version` | `24` | |
+| `library-repo` | `""` | sibling `file:` library to check out + build (usually empty for a library) |
+| `run-format-check` | `true` | `pnpm format:check` |
+| `unit-command` | `pnpm test:cov` | the gated unit+coverage command (e.g. `pnpm test:cov:all`) |
+| `build-command` | `pnpm build` | the library build command |
+| `run-build` | `true` | run the build job (set `false` when a local `verify` job builds) |
+| `database-url` | `""` | `DATABASE_URL` for libs with a Prisma client (empty to skip) |
+| `post-install` | `""` | command after install in every job (e.g. `prisma generate`) |
+| `run-mutation` | `false` | Stryker on default-branch push / dispatch only |
+| `mutation-source-globs` | `^(src/)` | which changed paths trigger mutation |
+
+### 🦀 `rust-ci` inputs (Rust workspaces)
+
+A Rust caller routes the universal Cargo gates (fmt · clippy · build & test ·
+`cargo-llvm-cov` · MSRV · `cargo-mutants`) through `rust-ci.yml` and keeps every
+bespoke job (wasm, fuzz, feature matrix, supply-chain, public-api, npm/web bundles,
+e2e) local.
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `run-build` | `true` | `cargo build` before the test job |
+| `run-coverage` | `true` | `cargo llvm-cov` line+function gate |
+| `coverage-fail-under` | `100` | minimum line & function coverage percent |
+| `run-msrv` | `true` | build on the declared MSRV floor |
+| `msrv-version` | `1.90` | the MSRV toolchain (matches `rust-version`) |
+| `run-mutation` | `false` | `cargo-mutants` on default-branch push / dispatch only |
+| `mutation-command` | `cargo mutants --all-features --in-place` | the mutation command |
+| `mutation-source-globs` | `^(crates/\|src/\|bindings/)` | which changed paths trigger mutation |
+
 ### 🏷️ Versioning
 
 Pin callers to **`@v1`** (a moving major tag): a deliberate `v1.x` release propagates to
@@ -117,16 +158,84 @@ caller to `@main`.
 
 | Stack | Reusable | Status |
 | --- | --- | --- |
-| 🟢 **Node** — `@bymax-one/nest-*` libraries + `nest-*-example` apps | `node-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
-| 🦀 **Rust** — `rust-auth`, `rust-auth-example` | `rust-ci.yml` · `rust-mutation.yml` | 🛠️ Planned |
+| 🟢 **Node libraries** — `@bymax-one/nest-*` | `node-lib-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
+| 🟢 **Node example apps** — `nest-*-example` | `node-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
+| 🦀 **Rust** — `rust-auth` (library) + `rust-auth-example` (app) | `rust-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
 
 ---
 
 ## 🔒 Third-party action allow-list
 
 The org restricts Actions to **GitHub-owned + verified-marketplace + an explicit
-allow-list**. The reusables here use `pnpm/action-setup` (allow-listed) and otherwise
-only GitHub-owned actions — so consuming repos need **no per-repo allow-list changes**.
+pattern allow-list** (`orgs/bymaxone/actions/permissions/selected-actions`). GitHub's
+**verified-creator** flag does **not** cover several actions the Node and Rust pipelines
+depend on, so those are pattern-allowed explicitly. Current `patterns_allowed`:
+
+```
+pnpm/action-setup@*                          actions-rust-lang/setup-rust-toolchain@*
+Swatinem/rust-cache@*                         taiki-e/install-action@*
+ossf/scorecard-action@*                       dtolnay/rust-toolchain@*
+dorny/paths-filter@*                          stefanzweifel/git-auto-commit-action@*
+docker/build-push-action@*                    docker/login-action@*
+docker/metadata-action@*                      docker/setup-buildx-action@*
+trufflesecurity/trufflehog@*
+```
+
+Workflows still pin every action to a full commit SHA — `@*` here only **permits** the
+action, it does not relax the pin.
+
+---
+
+## 🩹 Gotchas / operational notes
+
+Hard-won lessons from rolling these reusables across every repo — read before touching
+org-level Actions settings or a repo's security workflows.
+
+### The allow-list `PUT` is destructive — always merge
+
+`gh api --method PUT orgs/bymaxone/actions/permissions/selected-actions` **replaces the
+entire policy**. A `PUT` that sends only the one pattern you're adding silently drops all
+the others. A workflow that references a now-blocked action fails at **startup**
+(`startup_failure`, "workflow file issue") with **no job logs** — and, worst of all, the
+PR shows a **misleading `CLEAN` mergeStateStatus** with an empty check-run list, so it
+would merge with **zero CI**. Always read the current `patterns_allowed`, append, and
+`PUT` the full set. (`verified_allowed: true` does **not** cover `taiki-e/install-action`,
+`Swatinem/rust-cache`, `actions-rust-lang/setup-rust-toolchain`, `dtolnay/rust-toolchain`,
+`dorny/paths-filter`, `ossf/scorecard-action`, `stefanzweifel/*`, or `docker/*` — they
+must be explicit.)
+
+### CodeQL: default setup vs. a version-controlled `codeql.yml`
+
+A repo cannot run **both** the code-scanning **default setup** and an advanced
+`.github/workflows/codeql.yml`. When both are on, the advanced workflow fails its SARIF
+upload with *"CodeQL analyses from advanced configurations cannot be processed when the
+default setup is enabled."* Since the workflow is the source of truth, disable default
+setup:
+
+```bash
+gh api --method PATCH repos/OWNER/REPO/code-scanning/default-setup -f state=not-configured
+```
+
+### Dependency review is gated on visibility
+
+`actions/dependency-review-action` needs the dependency graph, which is free only on
+**public** repos (or private + GitHub Advanced Security). Gate the `security` caller so it
+stays green while a repo is private and activates automatically once it's public:
+
+```yaml
+security:
+  if: github.event_name == 'pull_request' && github.event.repository.visibility == 'public'
+  uses: bymaxone/.github/.github/workflows/security.yml@v1
+```
+
+### Moving the `@v1` tag
+
+The reusables are pinned by callers to the moving major `@v1`. After merging a change to a
+reusable, advance the tag so callers pick it up:
+
+```bash
+git checkout main && git pull && git tag -f v1 && git push -f origin v1
+```
 
 ---
 
