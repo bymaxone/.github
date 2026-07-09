@@ -1,0 +1,41 @@
+# Reusable dependency-security gate for Bymax repositories.
+#
+# Cost philosophy: the scheduled "catch a new CVE in a dependency you didn't
+# touch" job is handled by Dependabot (GitHub-native, runs on GitHub infra, ~zero
+# Action minutes) — see the `dependabot.yml` template. This workflow is the
+# event-driven PR gate that blocks a pull request from INTRODUCING a vulnerable or
+# disallowed dependency. It uses only GitHub-owned actions, so it is unaffected by
+# the org's third-party-action allow-list.
+name: security
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-severity:
+        description: Minimum severity that fails the check (low|moderate|high|critical).
+        type: string
+        default: high
+      deny-licenses:
+        description: Comma-separated SPDX licenses to reject (empty to allow all).
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    # Only meaningful on a pull request — it diffs the PR's dependency changes.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: ${{ inputs.fail-on-severity }}
+          deny-licenses: ${{ inputs.deny-licenses }}
+          comment-summary-in-pr: on-failure
