@@ -14,7 +14,7 @@ on:
         type: string
         default: '24'
       library-repo:
-        description: Sibling file: library to build (usually empty for libraries).
+        description: 'Sibling file: library to build (usually empty for libraries).'
         type: string
         default: ''
       run-format-check:
