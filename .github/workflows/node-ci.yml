@@ -41,6 +41,10 @@ on:
         description: Command that runs the API e2e suite.
         type: string
         default: pnpm test:e2e:api
+      database-url:
+        description: DATABASE_URL env for jobs touching a Prisma client (empty to skip).
+        type: string
+        default: ""
       run-e2e-web:
         description: Run the Playwright web smoke (needs has-web).
         type: boolean
@@ -135,6 +139,9 @@ jobs:
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Set for Prisma-based apps (empty and harmless otherwise).
+      DATABASE_URL: ${{ inputs.database-url }}
     steps:
       - uses: actions/checkout@v5
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
@@ -165,6 +172,8 @@ jobs:
     # GitHub-hosted runners ship a Docker daemon, so a Testcontainers suite boots
     # its own services directly — no `services:` block required.
     timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ inputs.database-url }}
     steps:
       - uses: actions/checkout@v5
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
