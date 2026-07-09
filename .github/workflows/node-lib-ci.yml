@@ -29,6 +29,10 @@ on:
         description: Command that builds the library.
         type: string
         default: pnpm build
+      run-build:
+        description: Run the build job.
+        type: boolean
+        default: true
       database-url:
         description: DATABASE_URL env for libs touching a Prisma client (empty to skip).
         type: string
@@ -138,6 +142,7 @@ jobs:
   build:
     name: Build
     needs: install
+    if: inputs.run-build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
