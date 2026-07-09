@@ -1,33 +1,63 @@
-# bymaxone/.github — shared CI
+<div align="center">
 
-Centralized, reusable CI for every Bymax repository. Define the toolchain and the
-pipeline **once here**; each repo calls it with a few inputs. Fixing a step (a Node
-bump, an action allow-list workaround, a cache tweak) is a one-line change here that
-every repo inherits.
+<img src="https://avatars.githubusercontent.com/u/274851014?s=120" alt="Bymax One logo" width="110" height="110" />
 
-## Cost philosophy
+# `.github` · Organization Defaults
 
-- **Tests never run on a schedule.** Unit, e2e, and mutation are event-driven
-  (push / pull_request) or on-demand (`workflow_dispatch`).
-- **Mutation is the deepest gate** and runs **only** on a push to the default branch
-  (or manual dispatch), and only when application source changed — with its Stryker
-  incremental state cached. PRs stay gated by 100% coverage + e2e, which is fast.
-- **The only scheduled work is dependency/security that depends on third parties**,
-  and it runs on GitHub infrastructure via **Dependabot** (≈ zero Action minutes) —
-  not a cron CI job. New-CVE detection for unchanged deps is exactly what Dependabot
-  is for.
+### 🏛️ The special repository that powers every Bymax One repo.
 
-## What's here
+Org-wide defaults live **here, once** — the public profile, shared CI, workflow
+templates, and community health files — and propagate to every repository automatically.
 
-| File | Type | Purpose |
+[![Org profile](https://img.shields.io/badge/🏠_Org_profile-bymaxone-0ea5e9?style=flat-square)](https://github.com/bymaxone)
+[![Website](https://img.shields.io/badge/🌐_Website-bymax.one-0ea5e9?style=flat-square)](https://bymax.one)
+![License](https://img.shields.io/badge/License-MIT-000000?style=flat-square)
+
+</div>
+
+---
+
+## ℹ️ Why this repo exists
+
+`bymaxone/.github` is GitHub's **special organization repository**. Files placed here
+become **defaults for every repo in the org** that doesn't define its own — so we
+maintain them in one place instead of copy-pasting across dozens of repositories.
+It is public because organization-wide defaults require a public repo.
+
+---
+
+## 📂 What lives here
+
+| Path | What it is | Shows up… |
 | --- | --- | --- |
-| `.github/actions/setup-node-pnpm` | composite action | pnpm + Node + pnpm-store cache, optional local `file:` library build, frozen install |
-| `.github/workflows/node-ci.yml` | reusable (`workflow_call`) | lint · typecheck · format · unit+coverage · e2e-api · web-build · e2e-web · export-audit · mutation · coverage-report |
-| `.github/workflows/security.yml` | reusable (`workflow_call`) | dependency-review on PRs (GitHub-owned action — unaffected by the third-party allow-list) |
-| `.github/workflow-templates/` | org starters | shown in the repo "New workflow" gallery |
-| `.github/workflow-templates/dependabot.yml` | reference | copy to each repo's `.github/dependabot.yml` |
+| 🏠 [`profile/README.md`](profile/README.md) | The **organization profile** | On the [org overview page](https://github.com/bymaxone) |
+| 🔁 [`.github/workflows/node-ci.yml`](.github/workflows/node-ci.yml) | **Reusable CI** — lint · typecheck · format · coverage · e2e · export-audit · mutation | Called by each repo's `ci.yml` |
+| 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml) | **Reusable dependency-review** (GitHub-owned action only) | Called on pull requests |
+| 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm) | **Composite action** — pnpm + Node + cache + local `file:` lib build + install | Used by the reusable jobs |
+| 📋 [`.github/workflow-templates/`](.github/workflow-templates) | **Starter workflows + `dependabot.yml`** | In the repo "New workflow" gallery |
 
-## Using it in a repo
+> 🩺 **Community health files** (`CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, issue/PR
+> templates) also belong here — they are the next addition and will apply org-wide.
+
+---
+
+## 🔁 Shared CI
+
+Define the toolchain and pipeline **once**; each repo becomes a thin caller. Fixing a
+step (a Node bump, an action allow-list workaround, a cache tweak) is a one-line change
+here that every repo inherits.
+
+### 💸 Cost philosophy
+
+- ⏱️ **Tests never run on a schedule** — unit, e2e, and mutation are event-driven
+  (push / pull_request) or on-demand (`workflow_dispatch`).
+- 🧬 **Mutation is the deepest gate** — it runs **only** on a default-branch push (or
+  manual dispatch), and only when application source changed, with the Stryker
+  incremental state cached. PRs stay gated by 100% coverage + e2e, which is fast.
+- 🤖 **The only scheduled work is third-party dependency/security**, handled by
+  **Dependabot** on GitHub infrastructure (≈ zero Action minutes) — not a cron CI job.
+
+### 🚀 Using it in a repo
 
 ```yaml
 # .github/workflows/ci.yml
@@ -37,6 +67,13 @@ on:
   pull_request: { branches: [main] }
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   ci:
     uses: bymaxone/.github/.github/workflows/node-ci.yml@v1
@@ -45,22 +82,22 @@ jobs:
       has-web: true
       run-export-audit: true
       run-mutation: true
-    secrets: inherit
 
   security:
+    if: github.event_name == 'pull_request'
     uses: bymaxone/.github/.github/workflows/security.yml@v1
-    secrets: inherit
 ```
 
-Then copy `.github/workflow-templates/dependabot.yml` to `.github/dependabot.yml`.
+Then copy [`.github/workflow-templates/dependabot.yml`](.github/workflow-templates/dependabot.yml)
+to your repo's `.github/dependabot.yml`.
 
-### node-ci inputs
+### ⚙️ `node-ci` inputs
 
 | Input | Default | Notes |
 | --- | --- | --- |
 | `node-version` | `24` | |
 | `library-repo` | `""` | sibling `file:` library to check out + build |
-| `has-web` | `true` | run web build + web coverage + Playwright e2e |
+| `has-web` | `true` | web build + web coverage + Playwright e2e |
 | `run-format-check` | `true` | `pnpm format:check` |
 | `run-e2e-api` | `true` | `pnpm test:e2e:api` (Testcontainers) |
 | `run-e2e-web` | `true` | Playwright web smoke (needs `has-web`) |
@@ -68,21 +105,34 @@ Then copy `.github/workflow-templates/dependabot.yml` to `.github/dependabot.yml
 | `run-mutation` | `false` | Stryker on default-branch push / dispatch only |
 | `mutation-source-globs` | api/web/src regex | which changed paths trigger mutation |
 
-## Versioning
+### 🏷️ Versioning
 
-Pin callers to `@v1` (a moving major tag) so a deliberate `v1.x` release propagates
-to every repo, while a breaking change lands as `v2` behind an explicit bump. Never
-pin callers to `@main`.
+Pin callers to **`@v1`** (a moving major tag): a deliberate `v1.x` release propagates to
+every repo, while a breaking change lands as `v2` behind an explicit bump. Never pin a
+caller to `@main`.
 
-## Project types
+---
 
-- **Node** (libraries `@bymax-one/nest-*` and `nest-*-example` apps) → `node-ci.yml`.
-- **Rust** (`rust-auth`, `rust-auth-example`) → `rust-ci.yml` / `rust-mutation.yml`
-  _(planned — same philosophy: clippy/fmt/test on events, `cargo-mutants` on the
-  default branch only, sharded)_.
+## 🧭 Project types
 
-## Third-party action allow-list
+| Stack | Reusable | Status |
+| --- | --- | --- |
+| 🟢 **Node** — `@bymax-one/nest-*` libraries + `nest-*-example` apps | `node-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
+| 🦀 **Rust** — `rust-auth`, `rust-auth-example` | `rust-ci.yml` · `rust-mutation.yml` | 🛠️ Planned |
 
-The org restricts Actions to GitHub-owned + verified-marketplace + an explicit
-allow-list. The reusables here use `pnpm/action-setup` (allow-listed) and otherwise
-only GitHub-owned actions, so consuming repos need no per-repo allow-list changes.
+---
+
+## 🔒 Third-party action allow-list
+
+The org restricts Actions to **GitHub-owned + verified-marketplace + an explicit
+allow-list**. The reusables here use `pnpm/action-setup` (allow-listed) and otherwise
+only GitHub-owned actions — so consuming repos need **no per-repo allow-list changes**.
+
+---
+
+<div align="center">
+
+**Bymax One** — architecting AI-native systems for production.
+[🏠 Profile](https://github.com/bymaxone) · [🌐 bymax.one](https://bymax.one)
+
+</div>
