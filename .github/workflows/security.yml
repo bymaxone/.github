@@ -39,3 +39,4 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: ${{ inputs.fail-on-severity }}
+          deny-licenses: ${{ inputs.deny-licenses }}

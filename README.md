@@ -62,7 +62,7 @@ Then copy `.github/workflow-templates/dependabot.yml` to `.github/dependabot.yml
 | `library-repo` | `""` | sibling `file:` library to check out + build |
 | `has-web` | `true` | run web build + web coverage + Playwright e2e |
 | `run-format-check` | `true` | `pnpm format:check` |
-| `run-e2e-api` | `true` | `pnpm --filter api test:e2e` (Testcontainers) |
+| `run-e2e-api` | `true` | `pnpm test:e2e:api` (Testcontainers) |
 | `run-e2e-web` | `true` | Playwright web smoke (needs `has-web`) |
 | `run-export-audit` | `false` | `pnpm audit:exports` (library export contract) |
 | `run-mutation` | `false` | Stryker on default-branch push / dispatch only |
