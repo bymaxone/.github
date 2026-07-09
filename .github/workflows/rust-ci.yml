@@ -1,0 +1,202 @@
+# Reusable CI for Bymax Rust workspaces (rust-* libraries and apps).
+#
+# The universal Cargo gates live here once: format, clippy, build+test, coverage,
+# MSRV, and a source-gated mutation run. Bespoke jobs (wasm, fuzz, feature matrix,
+# supply-chain, public-api, npm/web bundles, e2e) stay in each repo's caller.
+#
+# Event-driven only — the caller triggers it on push/pull_request/workflow_dispatch.
+# There is NO cron here. Mutation is the deepest gate and runs ONLY on a push to the
+# default branch (or manual dispatch), and only when source changed.
+#
+# Actions are pinned to a full commit SHA (an immutable supply-chain anchor); the
+# trailing `# vX.Y.Z` is the human-readable version kept current by Dependabot.
+name: rust-ci
+
+on:
+  workflow_call:
+    inputs:
+      run-build:
+        description: Run `cargo build` before the test job (part of build & test).
+        type: boolean
+        default: true
+      run-coverage:
+        description: Run the cargo-llvm-cov coverage gate.
+        type: boolean
+        default: true
+      coverage-fail-under:
+        description: Minimum line & function coverage percent (hard gate).
+        type: number
+        default: 100
+      run-msrv:
+        description: Prove the workspace builds on the MSRV floor.
+        type: boolean
+        default: true
+      msrv-version:
+        description: The MSRV toolchain (matches `rust-version` in Cargo.toml).
+        type: string
+        default: '1.90'
+      run-mutation:
+        description: Run cargo-mutants on default-branch push / manual dispatch.
+        type: boolean
+        default: false
+      mutation-command:
+        description: The cargo-mutants command to run when mutation is triggered.
+        type: string
+        default: cargo mutants --all-features --in-place
+      mutation-source-globs:
+        description: Extended-regex of source paths whose change triggers mutation.
+        type: string
+        default: '^(crates/|src/|bindings/)'
+
+concurrency:
+  group: rust-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  test:
+    name: build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Build
+        if: inputs.run-build
+        run: cargo build --workspace --all-features --locked
+      - name: Test (unit + integration + doctests)
+        run: cargo test --workspace --all-features --locked
+
+  coverage:
+    name: coverage (llvm-cov)
+    if: inputs.run-coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@9e1e5806d4a4822de933115878265be9aaa786d9 # v2.82.2
+        with:
+          tool: cargo-llvm-cov
+      - name: Coverage hard gate
+        # The empty-stub guard tolerates the early state where llvm-cov reports
+        # "no coverage data found" (zero instrumented functions); any other
+        # failure — including a missed threshold — propagates as a hard error.
+        run: |
+          set -euo pipefail
+          cov_err="$(mktemp)"
+          if cargo llvm-cov \
+              --workspace --all-features --locked \
+              --fail-under-lines     ${{ inputs.coverage-fail-under }} \
+              --fail-under-functions ${{ inputs.coverage-fail-under }} \
+              --lcov --output-path lcov.info \
+              2> "$cov_err"; then
+            cat "$cov_err" >&2 || true
+          elif grep -q 'no coverage data found' "$cov_err"; then
+            cat "$cov_err" >&2
+            echo 'note: no coverable code yet (empty stubs); emitting an empty LCOV.'
+            : > lcov.info
+          else
+            cat "$cov_err" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: lcov
+          path: lcov.info
+          if-no-files-found: ignore
+
+  msrv:
+    name: msrv
+    if: inputs.run-msrv
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install the MSRV toolchain
+        run: rustup toolchain install ${{ inputs.msrv-version }} --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo +${{ inputs.msrv-version }} build --workspace --locked
+
+  mutation:
+    name: mutation (cargo-mutants)
+    # The deepest gate. Never on PRs, never on a schedule — only on a push to the
+    # default branch or a manual dispatch, and only when source changed.
+    needs: [test]
+    if: >-
+      inputs.run-mutation &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect source changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Manual dispatch — running mutation."; exit 0
+          fi
+          base="${{ github.event.before }}"
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="${{ github.sha }}^"
+          fi
+          if git diff --name-only "$base" "${{ github.sha }}" | grep -qE '${{ inputs.mutation-source-globs }}'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Source changed — running mutation."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "No source changes — skipping mutation."
+          fi
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        if: steps.changes.outputs.run == 'true'
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        if: steps.changes.outputs.run == 'true'
+      - uses: taiki-e/install-action@9e1e5806d4a4822de933115878265be9aaa786d9 # v2.82.2
+        if: steps.changes.outputs.run == 'true'
+        with:
+          tool: cargo-mutants
+      - name: Run mutation testing
+        if: steps.changes.outputs.run == 'true'
+        run: ${{ inputs.mutation-command }}
+      - name: Upload the mutation report
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutants-report
+          path: mutants.out/
+          retention-days: 14
+          if-no-files-found: ignore
