@@ -82,6 +82,11 @@ concurrency:
 permissions:
   contents: read
 
+# Available to every job — Prisma apps read DATABASE_URL at config-load time
+# (lint/typecheck included); empty and harmless for non-Prisma repos.
+env:
+  DATABASE_URL: ${{ inputs.database-url }}
+
 jobs:
   install:
     name: Install dependencies
@@ -139,9 +144,6 @@ jobs:
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Set for Prisma-based apps (empty and harmless otherwise).
-      DATABASE_URL: ${{ inputs.database-url }}
     steps:
       - uses: actions/checkout@v5
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
@@ -172,8 +174,6 @@ jobs:
     # GitHub-hosted runners ship a Docker daemon, so a Testcontainers suite boots
     # its own services directly — no `services:` block required.
     timeout-minutes: 20
-    env:
-      DATABASE_URL: ${{ inputs.database-url }}
     steps:
       - uses: actions/checkout@v5
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
