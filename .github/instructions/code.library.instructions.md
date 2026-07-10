@@ -1,5 +1,5 @@
 ---
-applyTo: 'src/**/*.ts'
+applyTo: 'src/**/*.ts,package.json'
 ---
 
 # Code Review Instructions — publishable library (`@bymax-one/*`)
