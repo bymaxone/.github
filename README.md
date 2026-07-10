@@ -37,9 +37,40 @@ It is public because organization-wide defaults require a public repo.
 | 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml) | **Reusable dependency-review** (GitHub-owned action only) | Called on public-repo pull requests |
 | 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm) | **Composite action** — pnpm + Node + cache + local `file:` lib build + install | Used by the reusable jobs |
 | 📋 [`.github/workflow-templates/`](.github/workflow-templates) | **Starter workflows + `dependabot.yml`** | In the repo "New workflow" gallery |
+| 🤖 [`.github/copilot-instructions.md`](.github/copilot-instructions.md) · [`instructions/`](.github/instructions) · [`agents/`](.github/agents) | **Copilot code-review reference set** — org baseline + per-stack rules + reviewer agent | Copied into a repo (does **not** auto-propagate) |
 
 > 🩺 **Community health files** (`CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, issue/PR
 > templates) also belong here — they are the next addition and will apply org-wide.
+
+---
+
+## 🤖 Copilot code review
+
+Two independent layers configure Copilot review across the org:
+
+1. **Automatic trigger** — the org ruleset **`copilot-code-review`** requests a
+   Copilot review on the default branch of **every** repo (`~ALL`), new ones
+   included. No per-repo setup.
+2. **The rules Copilot applies** — split by reach:
+
+| Layer | Where it lives | Applies to |
+| --- | --- | --- |
+| **Universal baseline** | **Org → Settings → Copilot → Custom instructions** | Every repo, automatically |
+| **Per-repo instruction files** | each repo's own `.github/copilot-instructions.md` · `.github/instructions/*` · `.github/agents/*` | Only that repo |
+
+> ⚠️ **Unlike community health files, Copilot instruction files do _not_ propagate
+> from this repo.** GitHub reads them only from the repository under review. The set
+> below is the **canonical reference** — copy what a new repo needs, then append its
+> domain rules (supply-chain contract, crypto/tenant, PII, pixel parity, fiscal math…).
+
+| File | For |
+| --- | --- |
+| [`copilot-instructions.md`](.github/copilot-instructions.md) | org baseline (mirror of the org-settings text) |
+| [`instructions/code.rust.instructions.md`](.github/instructions/code.rust.instructions.md) | Rust crates |
+| [`instructions/code.library.instructions.md`](.github/instructions/code.library.instructions.md) | `@bymax-one/*` libraries |
+| [`instructions/code.app.instructions.md`](.github/instructions/code.app.instructions.md) | apps consuming those libraries |
+| [`instructions/tests.instructions.md`](.github/instructions/tests.instructions.md) | test suites |
+| [`agents/agent-code-reviewer.agent.md`](.github/agents/agent-code-reviewer.agent.md) | reviewer agent definition |
 
 ---
 
