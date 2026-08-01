@@ -98,8 +98,10 @@ here that every repo inherits.
   The range never changes and becomes wrong anyway, because the advisory database is
   what moves; the drift arrives with no commit and no alert. That is why it is
   scheduled rather than event-driven: the degradation happens **between** releases,
-  when nothing is being pushed. It costs a handful of read-only GraphQL queries and
-  runs no build and no install.
+  when nothing is being pushed. It costs a handful of read-only GraphQL queries; it
+  never builds, and never installs the **caller's** dependency tree — only `semver`,
+  into a throwaway `$RUNNER_TEMP` directory, so the workspace it audits is left
+  untouched.
 
 ### 🚀 Using it in a repo
 
