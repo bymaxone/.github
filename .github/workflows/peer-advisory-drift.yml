@@ -128,8 +128,9 @@ jobs:
             }
           }
 
-          const QUERY = `query($pkg: String!) {
-            securityVulnerabilities(package: $pkg, ecosystem: NPM, first: 100) {
+          const QUERY = `query($pkg: String!, $after: String) {
+            securityVulnerabilities(package: $pkg, ecosystem: NPM, first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
               nodes {
                 vulnerableVersionRange
                 firstPatchedVersion { identifier }
@@ -138,19 +139,39 @@ jobs:
             }
           }`
 
+          // Hard bound on pages, so a misbehaving cursor cannot spin forever.
+          // It THROWS rather than returning what it has: a detector that quietly
+          // reports less than it looked at is worse than one that fails loudly.
+          const MAX_PAGES = 50
+
+          // One page is not enough, and not hypothetically — `next` already
+          // returns 159 advisories, so a single `first: 100` silently drops a
+          // third of them. Under-reporting is the one failure mode a scheduled
+          // drift detector cannot have: it reads as "clean".
           async function vulnerabilitiesFor(pkg) {
-            const res = await fetch('https://api.github.com/graphql', {
-              method: 'POST',
-              headers: {
-                authorization: `bearer ${process.env.GITHUB_TOKEN}`,
-                'content-type': 'application/json',
-              },
-              body: JSON.stringify({ query: QUERY, variables: { pkg } }),
-            })
-            if (!res.ok) throw new Error(`GraphQL ${res.status} for ${pkg}: ${await res.text()}`)
-            const body = await res.json()
-            if (body.errors) throw new Error(`GraphQL error for ${pkg}: ${JSON.stringify(body.errors)}`)
-            return body.data.securityVulnerabilities.nodes
+            const all = []
+            let after = null
+
+            for (let page = 0; page < MAX_PAGES; page++) {
+              const res = await fetch('https://api.github.com/graphql', {
+                method: 'POST',
+                headers: {
+                  authorization: `bearer ${process.env.GITHUB_TOKEN}`,
+                  'content-type': 'application/json',
+                },
+                body: JSON.stringify({ query: QUERY, variables: { pkg, after } }),
+              })
+              if (!res.ok) throw new Error(`GraphQL ${res.status} for ${pkg}: ${await res.text()}`)
+              const body = await res.json()
+              if (body.errors) throw new Error(`GraphQL error for ${pkg}: ${JSON.stringify(body.errors)}`)
+
+              const { nodes, pageInfo } = body.data.securityVulnerabilities
+              all.push(...nodes)
+              if (!pageInfo.hasNextPage) return all
+              after = pageInfo.endCursor
+            }
+
+            throw new Error(`${pkg}: advisory list exceeded ${MAX_PAGES} pages; refusing to report a partial result`)
           }
 
           const findings = []
@@ -196,7 +217,7 @@ jobs:
           // burying the one number the reader needs.
           const groups = new Map()
           for (const f of findings) {
-            const key = `${f.field} ${f.name}`
+            const key = `${f.field} ${f.name}`
             if (!groups.has(key)) groups.set(key, { field: f.field, name: f.name, range: f.range, advisories: [] })
             groups.get(key).advisories.push(f)
           }
