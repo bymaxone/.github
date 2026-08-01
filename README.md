@@ -35,6 +35,7 @@ It is public because organization-wide defaults require a public repo.
 | 📚 [`.github/workflows/node-lib-ci.yml`](.github/workflows/node-lib-ci.yml) | **Reusable CI — Node libraries** — lint · typecheck · format · unit+coverage · build · mutation | Called by each `@bymax-one/nest-*` library's `ci.yml` |
 | 🦀 [`.github/workflows/rust-ci.yml`](.github/workflows/rust-ci.yml) | **Reusable CI — Rust workspaces** — fmt · clippy · build & test · llvm-cov · MSRV · cargo-mutants | Called by `rust-auth` / `rust-auth-example` |
 | 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml) | **Reusable dependency-review** (GitHub-owned action only) | Called on public-repo pull requests |
+| 🗓️ [`.github/workflows/peer-advisory-drift.yml`](.github/workflows/peer-advisory-drift.yml) | **Reusable advisory-drift audit** — cross-checks the ranges a package *declares* against the advisory database; files and closes its own tracking issue | Called weekly by each publishable repo |
 | 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm) | **Composite action** — pnpm + Node + cache + local `file:` lib build + install | Used by the reusable jobs |
 | 📋 [`.github/workflow-templates/`](.github/workflow-templates) | **Starter workflows + `dependabot.yml`** | In the repo "New workflow" gallery |
 | 🤖 [`.github/copilot-instructions.md`](.github/copilot-instructions.md) · [`instructions/`](.github/instructions) · [`agents/`](.github/agents) | **Copilot code-review reference set** — org baseline + per-stack rules + reviewer agent | Copied into a repo (does **not** auto-propagate) |
@@ -88,8 +89,17 @@ here that every repo inherits.
   manual dispatch), and only when application source changed (Stryker incremental for
   Node, `cargo-mutants --in-diff` for Rust). PRs stay gated by 100% coverage + e2e,
   which is fast. No mutation runs on a schedule or on the PR path anywhere in the org.
-- 🤖 **The only scheduled work is third-party dependency/security**, handled by
-  **Dependabot** on GitHub infrastructure (≈ zero Action minutes) — not a cron CI job.
+- 🤖 **Third-party dependency/security updates are handled by Dependabot** on GitHub
+  infrastructure (≈ zero Action minutes) — not a cron CI job.
+- 🗓️ **One cron CI job exists**, and only because Dependabot structurally cannot answer
+  the question: [`peer-advisory-drift.yml`](.github/workflows/peer-advisory-drift.yml).
+  Dependabot audits what is **installed** in a repo — the lockfile — and stays quiet
+  while a published `peerDependencies` range still admits a version with an advisory.
+  The range never changes and becomes wrong anyway, because the advisory database is
+  what moves; the drift arrives with no commit and no alert. That is why it is
+  scheduled rather than event-driven: the degradation happens **between** releases,
+  when nothing is being pushed. It costs a handful of read-only GraphQL queries and
+  runs no build and no install.
 
 ### 🚀 Using it in a repo
 
@@ -177,6 +187,57 @@ e2e) local.
 | `mutation-command` | `cargo mutants --all-features --in-place` | the mutation command |
 | `mutation-source-globs` | `^(crates/\|src/\|bindings/)` | which changed paths trigger mutation |
 
+### 🗓️ `peer-advisory-drift` inputs (publishable packages)
+
+Audits the ranges a package **declares** — what consumers are told they may install —
+rather than what its own lockfile pins. Reports one row per declared range with the
+floor to move to, opens a tracking issue, rewrites it as findings change, and **closes
+it automatically** once every range is clear.
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `manifest-path` | `package.json` | the manifest whose declared ranges are audited |
+| `dependency-types` | `peerDependencies` | comma-separated manifest fields; every field listed is a public claim of support |
+| `severity-threshold` | `low` | lowest advisory severity to report — raise per repo rather than discovering later that a moderate finding was filtered |
+| `issue-label` | `peer-advisory-drift` | label on the tracking issue, and the key used to find it again |
+| `fail-on-drift` | `false` | also fail the job; off by default because a permanently red scheduled run trains people to ignore it |
+
+| Output | Notes |
+| --- | --- |
+| `drift-count` | number of declared **ranges** that admit a vulnerable version — the number of lines to edit, not the number of advisories behind them |
+| `advisory-count` | total advisory matches, for reporting |
+
+The caller must grant `issues: write`: permissions on a reusable workflow can only
+narrow what the caller granted.
+
+```yaml
+# .github/workflows/peer-advisory-drift.yml
+name: Peer Advisory Drift
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+# Single-flight across the repository, deliberately NOT keyed by `github.ref`: the
+# shared state is one tracking issue per repo, so a ref-scoped group would put a
+# dispatch and the scheduled run in different groups and leave the race intact.
+concurrency:
+  group: peer-advisory-drift
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    # `workflow_dispatch` can fire from any branch; auditing an unmerged manifest
+    # would write findings that do not describe what the package declares.
+    if: github.ref_name == github.event.repository.default_branch
+    uses: bymaxone/.github/.github/workflows/peer-advisory-drift.yml@v1
+```
+
 ### 🏷️ Versioning
 
 Pin callers to **`@v1`** (a moving major tag): a deliberate `v1.x` release propagates to
@@ -189,9 +250,16 @@ caller to `@main`.
 
 | Stack | Reusable | Status |
 | --- | --- | --- |
-| 🟢 **Node libraries** — `@bymax-one/nest-*` | `node-lib-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
+| 🟢 **Node libraries** — `@bymax-one/nest-*` | `node-lib-ci.yml` · `security.yml` · `peer-advisory-drift.yml` | ✅ Live (`@v1`) |
 | 🟢 **Node example apps** — `nest-*-example` | `node-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
 | 🦀 **Rust** — `rust-auth` (library) + `rust-auth-example` (app) | `rust-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
+
+> 🗓️ **`peer-advisory-drift` is Node-only.** Example apps are not published, so nothing
+> reads the ranges they declare. Rust is a genuine gap rather than an exclusion: the
+> advisory database exposes the same data under `ecosystem: RUST`, but auditing it means
+> parsing `Cargo.toml` and `[workspace.dependencies]` and honouring Cargo's version
+> semantics, where a bare `"1.2"` already means `^1.2`. `cargo-audit` covers the
+> **installed** side there — the same blind spot Dependabot has on the Node side.
 
 ---
 
