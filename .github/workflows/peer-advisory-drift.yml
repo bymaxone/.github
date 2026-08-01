@@ -53,8 +53,14 @@ on:
         default: false
     outputs:
       drift-count:
-        description: Number of declared ranges that admit a vulnerable version.
+        description: >-
+          Number of declared ranges that admit a vulnerable version — the number
+          of lines a maintainer has to edit, not the number of advisories those
+          lines admit. One range can admit dozens.
         value: ${{ jobs.audit.outputs.drift-count }}
+      advisory-count:
+        description: Total advisory matches behind those ranges, for reporting.
+        value: ${{ jobs.audit.outputs.advisory-count }}
 
 # `issues: write` is required to open and close the tracking issue. Permissions
 # on a reusable workflow can only narrow what the caller granted, so the caller
@@ -70,6 +76,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       drift-count: ${{ steps.audit.outputs.drift-count }}
+      advisory-count: ${{ steps.audit.outputs.advisory-count }}
     steps:
       - uses: actions/checkout@v5
 
@@ -148,7 +155,16 @@ jobs:
           // returns 159 advisories, so a single `first: 100` silently drops a
           // third of them. Under-reporting is the one failure mode a scheduled
           // drift detector cannot have: it reads as "clean".
+          // A package can be declared in more than one audited field, and its
+          // advisory list is identical every time. Fetching it once keeps a
+          // multi-field audit from spending pages of rate limit on the same
+          // answer — `next` alone is two round trips.
+          const advisoryCache = new Map()
+
           async function vulnerabilitiesFor(pkg) {
+            const cached = advisoryCache.get(pkg)
+            if (cached) return cached
+
             const all = []
             let after = null
 
@@ -167,7 +183,13 @@ jobs:
 
               const { nodes, pageInfo } = body.data.securityVulnerabilities
               all.push(...nodes)
-              if (!pageInfo.hasNextPage) return all
+              if (!pageInfo.hasNextPage) {
+                // Cached only once the list is complete: a partial page set
+                // would otherwise be served to every later caller as if it were
+                // the whole answer.
+                advisoryCache.set(pkg, all)
+                return all
+              }
               after = pageInfo.endCursor
             }
 
@@ -280,7 +302,11 @@ jobs:
 
           const report = lines.join('\n')
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Peer advisory drift\n\n${report}\n`)
-          appendFileSync(process.env.GITHUB_OUTPUT, `drift-count=${findings.length}\n`)
+          // The declared output is the number of RANGES to repair, which is what
+          // a caller would gate on. Reporting the advisory total here would say
+          // "39" where the maintainer has one line to edit.
+          appendFileSync(process.env.GITHUB_OUTPUT, `drift-count=${groups.size}\n`)
+          appendFileSync(process.env.GITHUB_OUTPUT, `advisory-count=${findings.length}\n`)
           appendFileSync(process.env.GITHUB_OUTPUT, `skipped-count=${skipped.length}\n`)
           appendFileSync(process.env.GITHUB_ENV, `DRIFT_REPORT<<REPORT_EOF\n${report}\nREPORT_EOF\n`)
           AUDIT_EOF
