@@ -84,6 +84,15 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '24'
+          # setup-node v5 turns package-manager caching ON BY ITSELF whenever the
+          # checked-out `package.json` carries a `packageManager` field — and
+          # every Bymax package does. It then shells out to that manager to find
+          # its store, which fails here with
+          #   Unable to locate executable file: pnpm
+          # because this job deliberately never installs the caller's toolchain:
+          # it reads the manifest, it does not build the tree. There is nothing
+          # to cache, so the cache is turned off rather than pnpm installed.
+          package-manager-cache: false
 
       - name: Install semver
         # Installed into a throwaway directory, never into the caller's
