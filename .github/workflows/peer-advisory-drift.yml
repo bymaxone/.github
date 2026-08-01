@@ -1,0 +1,315 @@
+# Reusable advisory-drift check for the ranges a Bymax package DECLARES.
+#
+# Why this exists as a scheduled job rather than a release-checklist item:
+# Dependabot audits what is INSTALLED in the repository — the lockfile, the
+# node_modules tree. It never looks at what the package declares it supports.
+# A library pinned to a current @nestjs/common in its own devDependencies is
+# invisible to Dependabot even while its `peerDependencies` range still admits
+# a version with a published advisory, because a consumer resolving that range
+# gets to choose the low end.
+#
+# The failure mode is that the declared range NEVER CHANGES and becomes wrong
+# anyway: the advisory database is what moves. A range audited clean today
+# starts admitting a vulnerable version the day a new advisory is published,
+# with no commit, no pull request, and no alert anywhere. That is why this runs
+# on a schedule instead of on push — the degradation happens between releases,
+# when nobody is looking at the file.
+#
+# Cost: a handful of read-only GraphQL queries against the GitHub advisory
+# database. Seconds of runner time, no build, no install of the caller's tree.
+name: peer-advisory-drift
+
+on:
+  workflow_call:
+    inputs:
+      manifest-path:
+        description: Path to the package.json whose declared ranges are audited.
+        type: string
+        default: package.json
+      dependency-types:
+        description: >-
+          Comma-separated manifest fields to audit. Every field listed here is a
+          public claim of support, so a vulnerable version inside one of these
+          ranges is a defect regardless of what the lockfile pins.
+        type: string
+        default: peerDependencies
+      severity-threshold:
+        description: >-
+          Lowest advisory severity to report (low|moderate|high|critical).
+          Defaults to `low` so nothing is dropped silently — raise it per repo
+          rather than discovering later that a moderate finding was filtered.
+        type: string
+        default: low
+      issue-label:
+        description: Label applied to the tracking issue, and used to find it again.
+        type: string
+        default: peer-advisory-drift
+      fail-on-drift:
+        description: >-
+          Also fail the job when drift is found. Off by default: the tracking
+          issue is the signal, and a red scheduled run on the default branch is
+          noise that trains people to ignore it.
+        type: boolean
+        default: false
+    outputs:
+      drift-count:
+        description: Number of declared ranges that admit a vulnerable version.
+        value: ${{ jobs.audit.outputs.drift-count }}
+
+# `issues: write` is required to open and close the tracking issue. Permissions
+# on a reusable workflow can only narrow what the caller granted, so the caller
+# must grant it too or the issue step fails with 403.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: Peer advisory drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      drift-count: ${{ steps.audit.outputs.drift-count }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Install semver
+        # Installed into a throwaway directory, never into the caller's
+        # workspace: this job must not perturb the tree it is auditing, and a
+        # pnpm workspace would reject a stray npm install at its root anyway.
+        #
+        # semver rather than a hand-rolled comparison because range
+        # intersection is exactly the kind of logic that looks trivial and is
+        # not — prerelease tails, `||` unions, and the `>=x, <y` form the
+        # advisory database emits all have to be handled the same way the
+        # package managers handle them.
+        run: |
+          mkdir -p "$RUNNER_TEMP/audit"
+          cd "$RUNNER_TEMP/audit"
+          npm init -y > /dev/null
+          npm install --no-save --ignore-scripts semver@7
+
+      - name: Audit declared ranges against the advisory database
+        id: audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ inputs.manifest-path }}
+          DEPENDENCY_TYPES: ${{ inputs.dependency-types }}
+          SEVERITY_THRESHOLD: ${{ inputs.severity-threshold }}
+        run: |
+          # The script is written BESIDE the node_modules installed above, not
+          # into the workspace. NODE_PATH does not apply to ESM resolution, so
+          # an `import 'semver'` only resolves by walking up from the importing
+          # file — which makes the script's own location the thing that has to
+          # be right. Reading the manifest still resolves against the
+          # workspace, since that stays the working directory.
+          cat > "$RUNNER_TEMP/audit/audit.mjs" <<'AUDIT_EOF'
+          import { readFileSync, appendFileSync } from 'node:fs'
+          import { intersects, validRange, rcompare } from 'semver'
+
+          const RANK = { LOW: 0, MODERATE: 1, HIGH: 2, CRITICAL: 3 }
+          const threshold = RANK[process.env.SEVERITY_THRESHOLD.toUpperCase()] ?? 0
+          const manifestPath = process.env.MANIFEST_PATH
+          const fields = process.env.DEPENDENCY_TYPES.split(',').map((f) => f.trim()).filter(Boolean)
+
+          const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+
+          // One package can appear in several fields; audit each declaration
+          // separately so the report names the field that has to change.
+          const declarations = []
+          for (const field of fields) {
+            for (const [name, range] of Object.entries(manifest[field] ?? {})) {
+              declarations.push({ field, name, range })
+            }
+          }
+
+          const QUERY = `query($pkg: String!) {
+            securityVulnerabilities(package: $pkg, ecosystem: NPM, first: 100) {
+              nodes {
+                vulnerableVersionRange
+                firstPatchedVersion { identifier }
+                advisory { ghsaId severity summary permalink withdrawnAt }
+              }
+            }
+          }`
+
+          async function vulnerabilitiesFor(pkg) {
+            const res = await fetch('https://api.github.com/graphql', {
+              method: 'POST',
+              headers: {
+                authorization: `bearer ${process.env.GITHUB_TOKEN}`,
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({ query: QUERY, variables: { pkg } }),
+            })
+            if (!res.ok) throw new Error(`GraphQL ${res.status} for ${pkg}: ${await res.text()}`)
+            const body = await res.json()
+            if (body.errors) throw new Error(`GraphQL error for ${pkg}: ${JSON.stringify(body.errors)}`)
+            return body.data.securityVulnerabilities.nodes
+          }
+
+          const findings = []
+          const skipped = []
+
+          for (const { field, name, range } of declarations) {
+            // `workspace:*`, `file:../x`, git URLs and `*` are not semver ranges.
+            // Report them rather than swallowing them: a silent skip is how a
+            // dependency quietly stops being audited.
+            if (!validRange(range)) {
+              skipped.push({ field, name, range })
+              continue
+            }
+
+            for (const vuln of await vulnerabilitiesFor(name)) {
+              if (vuln.advisory.withdrawnAt) continue
+              if ((RANK[vuln.advisory.severity] ?? 0) < threshold) continue
+
+              // The advisory database emits `>= 1.2.0, < 1.4.1`; semver wants a
+              // space-separated conjunction. Without this the range parses as a
+              // union and matches far more than it should.
+              const vulnerable = vuln.vulnerableVersionRange.replace(/,\s*/g, ' ')
+              if (!intersects(range, vulnerable)) continue
+
+              findings.push({
+                field,
+                name,
+                range,
+                vulnerable: vuln.vulnerableVersionRange,
+                patched: vuln.firstPatchedVersion?.identifier ?? null,
+                ghsa: vuln.advisory.ghsaId,
+                severity: vuln.advisory.severity,
+                summary: vuln.advisory.summary,
+                url: vuln.advisory.permalink,
+              })
+            }
+          }
+
+          // Group by the DECLARED range, because that is the unit of repair: one
+          // edit to one line fixes every advisory it admits. A package with a
+          // long advisory history (a framework, typically) would otherwise
+          // produce dozens of rows that all resolve to the same single change,
+          // burying the one number the reader needs.
+          const groups = new Map()
+          for (const f of findings) {
+            const key = `${f.field} ${f.name}`
+            if (!groups.has(key)) groups.set(key, { field: f.field, name: f.name, range: f.range, advisories: [] })
+            groups.get(key).advisories.push(f)
+          }
+
+          for (const g of groups.values()) {
+            const patched = g.advisories.map((a) => a.patched).filter(Boolean)
+            // The highest first-patched version clears every advisory below it,
+            // so it is the floor to move to — not the first one in the list.
+            g.raiseTo = patched.length > 0 ? patched.sort(rcompare)[0] : null
+            g.worst = ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'].find((s) => g.advisories.some((a) => a.severity === s))
+          }
+
+          const lines = []
+          if (findings.length === 0) {
+            lines.push(`No declared range admits a version with a published advisory.`)
+            lines.push('')
+            lines.push(`Audited ${declarations.length} declaration(s) in \`${manifestPath}\` across: ${fields.join(', ')}.`)
+          } else {
+            lines.push(`\`${manifestPath}\` declares ${groups.size} range(s) that admit a version with a published advisory (${findings.length} advisory match(es) in total).`)
+            lines.push('')
+            lines.push('| Field | Package | Declared | Raise floor to | Advisories | Worst |')
+            lines.push('| --- | --- | --- | --- | --- | --- |')
+            for (const g of groups.values()) {
+              lines.push(
+                `| \`${g.field}\` | \`${g.name}\` | \`${g.range}\` | ${g.raiseTo ? `\`^${g.raiseTo}\`` : '— (no patched version published)'} | ${g.advisories.length} | ${g.worst.toLowerCase()} |`,
+              )
+            }
+            lines.push('')
+            lines.push('A declared range is a statement about which versions this package')
+            lines.push('supports. Leaving the floor below a published advisory tells a consumer')
+            lines.push('that a vulnerable install is a supported one, and nothing in their')
+            lines.push('tooling contradicts it — the install resolves cleanly and silently.')
+            lines.push('')
+            lines.push('This is a patch-level fix. A minor buys nothing: `^1.2.3` accepts `1.3.0`')
+            lines.push('as readily as `1.2.4`, so the same installs are affected either way.')
+            lines.push('')
+
+            for (const g of groups.values()) {
+              lines.push(`<details><summary><code>${g.field}</code> → <code>${g.name}</code>: ${g.advisories.length} advisory match(es)</summary>`)
+              lines.push('')
+              lines.push('| Advisory | Severity | Vulnerable | Patched in |')
+              lines.push('| --- | --- | --- | --- |')
+              for (const a of g.advisories) {
+                lines.push(`| [${a.ghsa}](${a.url}) — ${a.summary} | ${a.severity.toLowerCase()} | \`${a.vulnerable}\` | ${a.patched ? `\`${a.patched}\`` : '—'} |`)
+              }
+              lines.push('')
+              lines.push('</details>')
+              lines.push('')
+            }
+          }
+
+          if (skipped.length > 0) {
+            lines.push('')
+            lines.push('<details><summary>Ranges that could not be parsed as semver and were not audited</summary>')
+            lines.push('')
+            for (const s of skipped) lines.push(`- \`${s.field}\` → \`${s.name}\`: \`${s.range}\``)
+            lines.push('')
+            lines.push('</details>')
+          }
+
+          const report = lines.join('\n')
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Peer advisory drift\n\n${report}\n`)
+          appendFileSync(process.env.GITHUB_OUTPUT, `drift-count=${findings.length}\n`)
+          appendFileSync(process.env.GITHUB_OUTPUT, `skipped-count=${skipped.length}\n`)
+          appendFileSync(process.env.GITHUB_ENV, `DRIFT_REPORT<<REPORT_EOF\n${report}\nREPORT_EOF\n`)
+          AUDIT_EOF
+          node "$RUNNER_TEMP/audit/audit.mjs"
+
+      - name: Open, update, or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABEL: ${{ inputs.issue-label }}
+          DRIFT_COUNT: ${{ steps.audit.outputs.drift-count }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Declared dependency ranges admit versions with published advisories"
+
+          # The label doubles as the lookup key, so it has to exist before the
+          # first issue is filed.
+          gh label create "$LABEL" --color B60205 \
+            --description "A declared range admits a version with a published advisory" \
+            2>/dev/null || true
+
+          EXISTING=$(gh issue list --state open --label "$LABEL" --limit 1 --json number --jq '.[0].number // empty')
+
+          if [ "$DRIFT_COUNT" -eq 0 ]; then
+            if [ -n "$EXISTING" ]; then
+              # Self-healing: whoever raised the floors should not also have to
+              # remember to close this.
+              gh issue close "$EXISTING" --comment "Every declared range is clear of published advisories as of [this run]($RUN_URL). Closing automatically."
+            fi
+            echo "No drift."
+            exit 0
+          fi
+
+          BODY_FILE="$RUNNER_TEMP/issue-body.md"
+          {
+            printf '%s\n\n' "$DRIFT_REPORT"
+            printf -- '---\n\n'
+            printf 'Detected by the scheduled `peer-advisory-drift` check ([run](%s)).\n' "$RUN_URL"
+            printf 'This issue is reopened and rewritten on every run, and closes itself once every range is clear.\n'
+          } > "$BODY_FILE"
+
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body-file "$BODY_FILE"
+            echo "Updated issue #$EXISTING."
+          else
+            gh issue create --title "$TITLE" --label "$LABEL" --body-file "$BODY_FILE"
+          fi
+
+      - name: Fail when drift was found
+        if: inputs.fail-on-drift && steps.audit.outputs.drift-count != '0'
+        run: |
+          echo "::error::${{ steps.audit.outputs.drift-count }} declared range(s) admit a version with a published advisory."
+          exit 1
