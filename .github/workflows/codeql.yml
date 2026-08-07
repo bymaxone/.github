@@ -1,7 +1,7 @@
 # Reusable CodeQL analysis, gated on the repository actually being public.
 #
 # Why the gate exists: code scanning is free on public repositories and requires
-# a paid GitHub Code Security licence on private ones, where the SARIF upload is
+# a paid GitHub Code Security license on private ones, where the SARIF upload is
 # refused outright. Repos in this org start private and are opened later, so one
 # definition has to be a no-op in the first state and a real scan in the second.
 #
@@ -85,7 +85,7 @@ jobs:
           else
             # Covers internal as well as private.
             echo "public=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipped on a $visibility repository: uploading results needs a GitHub Code Security licence, which is only free on public repositories."
+            echo "::notice::Skipped on a $visibility repository: uploading results needs a GitHub Code Security license, which is only free on public repositories."
           fi
 
 
