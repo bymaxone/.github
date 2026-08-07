@@ -29,6 +29,15 @@ on:
           needs `autobuild` or `manual`.
         type: string
         default: none
+      harden-runner:
+        description: >-
+          Run step-security/harden-runner in egress-audit mode before anything
+          else. Off by default: it is a third-party action, and adding one to a
+          repository that did not ask for it is a supply-chain decision, not a
+          detail. Three repos converted to this workflow already ran it, and
+          this input is how they keep it.
+        type: boolean
+        default: false
       queries:
         description: >-
           Query suite handed to the CodeQL init action. Empty selects the default
@@ -37,7 +46,7 @@ on:
           already running, and a caller that forgets it silently analyses less
           than it did before.
         type: string
-        default: ''
+        default: ""
 
 permissions:
   contents: read
@@ -88,7 +97,6 @@ jobs:
             echo "::notice::Skipped on a $visibility repository: uploading results needs a GitHub Code Security license, which is only free on public repositories."
           fi
 
-
   analyze:
     # The matrix value is spelled into the name on purpose. Without it GitHub
     # appends the matrix values to whatever name is given, which is how a job
@@ -108,6 +116,13 @@ jobs:
       matrix:
         language: ${{ fromJSON(inputs.languages) }}
     steps:
+      # First, so the egress audit sees every later step.
+      - name: Harden runner
+        if: inputs.harden-runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
