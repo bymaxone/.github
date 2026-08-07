@@ -49,6 +49,15 @@ on:
         description: Extended-regex of source paths whose change triggers mutation.
         type: string
         default: '^(src/)'
+      mutation-timeout-minutes:
+        description: >-
+          Wall-clock ceiling for the mutation job. A cold run — no incremental cache, or a
+          library that keeps `ignoreStatic: false` so every static mutant re-runs the whole
+          suite — can take far longer than a warm one, and the job is cancelled rather than
+          failed when it lands, which reads as an infrastructure blip instead of a budget.
+          Raise it per-library rather than globally.
+        type: number
+        default: 45
 
 concurrency:
   group: node-lib-ci-${{ github.workflow }}-${{ github.ref }}
@@ -164,7 +173,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ inputs.mutation-timeout-minutes }}
     steps:
       - uses: actions/checkout@v5
         with:
