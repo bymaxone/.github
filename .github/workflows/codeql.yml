@@ -1,0 +1,92 @@
+# Reusable CodeQL analysis, gated on the repository actually being public.
+#
+# Why the gate exists: code scanning is free on public repositories and requires
+# a paid GitHub Code Security licence on private ones, where the SARIF upload is
+# refused outright. Repos in this org start private and are opened later, so one
+# definition has to be a no-op in the first state and a real scan in the second.
+#
+# Why the gate is a job and not `if: ${{ !github.event.repository.private }}`:
+# that expression is what the per-repo copies use, and it silently fails open on
+# the weekly run. The `schedule` event carries no webhook payload — GitHub's own
+# trigger reference lists it as "Not applicable" — so `github.event.repository`
+# is null there, `!null` evaluates to true, and a private repository would run
+# the analysis anyway and fail at the upload. Asking the API costs one short job
+# and answers the same on every trigger.
+name: codeql
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: >-
+          JSON array of CodeQL languages to analyse, one job each — for example
+          '["javascript-typescript"]' or '["javascript-typescript","rust"]'.
+        type: string
+        default: '["javascript-typescript"]'
+      build-mode:
+        description: >-
+          CodeQL build mode. `none` suits interpreted languages; a compiled one
+          needs `autobuild` or `manual`.
+        type: string
+        default: none
+
+permissions:
+  contents: read
+
+jobs:
+  visibility:
+    name: Repository visibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      public: ${{ steps.check.outputs.public }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          visibility=$(gh api "repos/$REPO" --jq .visibility)
+          echo "visibility: $visibility"
+          if [ "$visibility" = "public" ]; then
+            echo "public=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "public=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Code scanning is skipped on a $visibility repository — it requires a GitHub Code Security licence."
+          fi
+
+  analyze:
+    # The matrix value is spelled into the name on purpose. Without it GitHub
+    # appends the matrix values to whatever name is given, which is how a job
+    # already called "Analyze (javascript-typescript)" ends up reporting a check
+    # named "Analyze (javascript-typescript) (javascript-typescript)".
+    name: Analyze (${{ matrix.language }})
+    needs: visibility
+    if: needs.visibility.outputs.public == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(inputs.languages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ inputs.build-mode }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          category: /language:${{ matrix.language }}
