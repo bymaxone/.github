@@ -118,7 +118,11 @@ jobs:
     steps:
       # First, so the egress audit sees every later step.
       - name: Harden runner
-        if: inputs.harden-runner
+        # Bracket notation, not `inputs.harden-runner`. A real run proves the dot
+        # form resolves a hyphenated input — `build-mode` arrives correctly at the
+        # init action — but this one gates whether a security step executes at all,
+        # and the bracket form removes the question rather than settling it.
+        if: ${{ inputs['harden-runner'] }}
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
@@ -135,7 +139,7 @@ jobs:
         uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ inputs.build-mode }}
+          build-mode: ${{ inputs['build-mode'] }}
           queries: ${{ inputs.queries }}
 
       - name: Perform CodeQL analysis
