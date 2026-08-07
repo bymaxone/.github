@@ -29,6 +29,15 @@ on:
           needs `autobuild` or `manual`.
         type: string
         default: none
+      queries:
+        description: >-
+          Query suite handed to the CodeQL init action. Empty selects the default
+          suite. It exists because `security-extended` — a superset of the default
+          — is what six of the ten repositories converted to this workflow were
+          already running, and a caller that forgets it silently analyses less
+          than it did before.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -80,13 +89,17 @@ jobs:
         with:
           persist-credentials: false
 
+      # Pinned to the newest revision already in use across the org. The copies
+      # this replaces sat on v4.37.0, v4.37.1 and v4.37.4 — centralising on the
+      # oldest would have been a downgrade for three repositories.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ inputs.build-mode }}
+          queries: ${{ inputs.queries }}
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           category: /language:${{ matrix.language }}
