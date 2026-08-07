@@ -1,0 +1,60 @@
+# Central definition of the PR-title contract for every repository in the org.
+# Lives in bymaxone/.github as .github/workflows/pr-title.yml and is consumed by
+# each repo through a three-line caller, so the grammar is edited in one place.
+#
+# The grammar mirrors @commitlint/config-conventional, which the commit-msg hook
+# already enforces locally. Since squash merges now take the PR title as the commit
+# subject, this workflow is what keeps that contract on the default branch.
+name: PR title
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-commit:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate the title against Conventional Commits
+        env:
+          # The title is attacker-controlled text: anyone who can open a PR chooses it.
+          # It is read from the environment and never interpolated into the script body,
+          # which is what makes `$(...)` inside a title inert instead of executable.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+          fail() { echo "::error title=PR title::$1"; echo; echo "  title: $PR_TITLE"; exit 1; }
+
+          if ! printf '%s' "$PR_TITLE" | grep -qE "^(${types})(\([a-z0-9._/-]+\))?!?: .+"; then
+            fail "expected '<type>(<optional scope>): <description>' — accepted types: ${types//|/, }"
+          fi
+
+          subject=${PR_TITLE#*: }
+
+          # 72 characters is the commit-subject budget the repo guidelines already state.
+          if [ "${#PR_TITLE}" -gt 72 ]; then
+            fail "title is ${#PR_TITLE} characters; the limit is 72"
+          fi
+
+          case "$subject" in
+            *.) fail "the description must not end in a full stop" ;;
+          esac
+
+          # Only a leading uppercase ASCII letter is rejected; an accented or
+          # non-Latin start passes, because the pattern cannot classify those and
+          # guessing would reject legitimate titles.
+          #
+          # A subject genuinely opening on a proper noun is rejected too. That is
+          # the deliberate trade: the rule has to be one a contributor can predict
+          # from the message alone, and "unless it is a name" is not — it would
+          # send them re-reading the workflow to find out why their title failed.
+          case "$subject" in
+            [A-Z]*) fail "the description must not start with an uppercase letter" ;;
+          esac
+
+          echo "✓ $PR_TITLE"
