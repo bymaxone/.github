@@ -45,10 +45,16 @@ jobs:
             *.) fail "the description must not end in a full stop" ;;
           esac
 
-          # A proper noun may legitimately start the subject, so only a lowercase-vs-
-          # uppercase ASCII letter is rejected — accented and non-Latin starts pass.
+          # Only a leading uppercase ASCII letter is rejected; an accented or
+          # non-Latin start passes, because the pattern cannot classify those and
+          # guessing would reject legitimate titles.
+          #
+          # A subject genuinely opening on a proper noun is rejected too. That is
+          # the deliberate trade: the rule has to be one a contributor can predict
+          # from the message alone, and "unless it is a name" is not — it would
+          # send them re-reading the workflow to find out why their title failed.
           case "$subject" in
-            [A-Z]*) fail "the description must start lowercase, unless it opens on a proper noun" ;;
+            [A-Z]*) fail "the description must not start with an uppercase letter" ;;
           esac
 
           echo "✓ $PR_TITLE"
