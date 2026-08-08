@@ -1,0 +1,101 @@
+# Moves the major alias (`v1`) onto a newly published version tag.
+#
+# Every repository in the organization calls the reusable workflows here as
+# `@v1`. That reference is resolved when the caller runs, not when it was
+# written, so whatever `v1` points at IS the CI of ~20 repositories. Moving the
+# alias is a deploy.
+#
+# Before this workflow existed, `v1` tracked `main` and was moved by hand, which
+# meant every commit merged here reached every consumer on its next run with no
+# release step in between. This makes the move a consequence of publishing a
+# version instead of something anyone remembers — or forgets — to do.
+name: Release major alias
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+# The alias is a ref in this repository, so writing it needs `contents: write`.
+# Nothing else here does, and this is the only workflow that has it.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-major-alias
+  cancel-in-progress: false
+
+jobs:
+  move-alias:
+    name: Move the major alias
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # A version tag is only a release if it names a commit that went through
+      # the default branch and its protections. Without this, tagging any commit
+      # — a branch, a fork's merge base — would redirect every consumer's CI.
+      - name: Refuse a tag that is not on the default branch
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "${{ github.event.repository.default_branch }}"
+          if ! git merge-base --is-ancestor "$SHA" "origin/${{ github.event.repository.default_branch }}"; then
+            echo "::error::$TAG points at $SHA, which is not on ${{ github.event.repository.default_branch }}. Refusing to move the alias."
+            exit 1
+          fi
+          echo "$TAG is on the default branch."
+
+      - name: Move the alias onto this version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # v1.4.2 -> v1. The alias is the major component and nothing else.
+          major="${TAG%%.*}"
+
+          # Created on the first release of a major, updated on every one after.
+          # The update is a force: the alias moves forward to an unrelated commit
+          # each time, which is not a fast-forward.
+          if gh api "repos/$REPO/git/ref/tags/$major" >/dev/null 2>&1; then
+            previous=$(gh api "repos/$REPO/git/ref/tags/$major" --jq .object.sha)
+            gh api -X PATCH "repos/$REPO/git/refs/tags/$major" -f sha="$SHA" -F force=true >/dev/null
+            echo "::notice::$major moved from ${previous:0:7} to ${SHA:0:7} ($TAG)."
+          else
+            gh api -X POST "repos/$REPO/git/refs" -f ref="refs/tags/$major" -f sha="$SHA" >/dev/null
+            echo "::notice::$major created at ${SHA:0:7} ($TAG)."
+          fi
+
+          # The alias is what consumers actually run. Read it back rather than
+          # trusting the write, so a silent failure cannot look like a release.
+          landed=$(gh api "repos/$REPO/git/ref/tags/$major" --jq .object.sha)
+          if [ "$landed" != "$SHA" ]; then
+            echo "::error::$major is at $landed, expected $SHA."
+            exit 1
+          fi
+
+      - name: Summarise
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          major="${TAG%%.*}"
+          {
+            echo "### Released \`$TAG\`"
+            echo
+            echo "\`$major\` now points at \`${SHA:0:7}\`."
+            echo
+            echo "Every repository calling \`bymaxone/.github/...@$major\` picks this up on its next run."
+          } >> "$GITHUB_STEP_SUMMARY"
