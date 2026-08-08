@@ -1,0 +1,166 @@
+# Reusable full mutation run — the cold measurement, on a schedule.
+#
+# Callers run mutation on every push with `incremental: true` in their Stryker config, which
+# re-tests only what changed and finishes inside the minutes a routine gate is allowed to take.
+# That is the right trade for a gate on every push, but it IS a trade: an incremental run reuses
+# stored verdicts, and Stryker's own guidance is that reused verdicts for STATIC mutants can be
+# stale. A score built on reuse is a fast signal, not the truth.
+#
+# The truth is measured here, cold, once a week. This workflow also refreshes the cache the
+# per-push job restores: it saves under the same `stryker-incremental-` prefix `node-lib-ci`
+# reads, so every push in the following week starts from a baseline a full run produced rather
+# than from a chain of incremental deltas.
+#
+# The caller owns the schedule (`on: schedule` cannot live in a reusable) and the ceiling.
+name: mutation-full
+
+on:
+  workflow_call:
+    inputs:
+      timeout-minutes:
+        description: >-
+          Wall-clock ceiling for the cold run. Nothing blocks on this job, so an over-wide
+          ceiling costs only the minutes it actually uses, while an under-tight one costs a
+          whole cancelled run and leaves the week without a measured baseline.
+        type: number
+        default: 60
+      full-command:
+        description: >-
+          Command that runs the suite cold. It must delete the incremental file first, or the
+          run inherits verdicts from the very chain it exists to check.
+        type: string
+        default: pnpm mutation:full
+      score-paths:
+        description: >-
+          Space-separated pathspecs that can move the score. Deliberately WIDER than the
+          per-push job's source glob: that one decides whether to re-measure after a change to
+          production code; this one decides whether the SCORE can have moved, and the score also
+          moves when a test changes (a new test kills a mutant that survived), when the Stryker
+          or Jest configuration changes (which mutants exist, which tests select them), or when
+          a dependency changes underneath the suite. Gating on `src/` alone would skip exactly
+          the week where someone spent their time writing tests — the week most likely to change
+          the number. A pathspec that does not exist in the caller matches nothing and is
+          harmless, so the default is a superset.
+        type: string
+        default: >-
+          src/ test/ package.json pnpm-lock.yaml stryker.config.json jest.config.ts
+          jest.stryker.config.ts jest.coverage.config.ts tsconfig.json tsconfig.jest.json
+
+permissions:
+  contents: read
+
+jobs:
+  full:
+    name: Full mutation run
+    # Default branch only, and this is a correctness guard rather than tidiness. A caller's
+    # `workflow_dispatch` can be aimed at any ref, and the save step below writes under the
+    # generic `stryker-incremental-` prefix the per-push job restores from. A manual run on a
+    # feature branch would therefore hand the default branch's CI a baseline built from code
+    # that is not on it — verdicts reused for mutants that no longer exist, or missing for ones
+    # that do. That window is exactly where an incremental run is least trustworthy.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      # `gh run list`, in the step that decides whether anything can have moved the score.
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: the step below diffs against the commit the last successful run
+          # measured, which is arbitrarily far back.
+          fetch-depth: 0
+
+      - name: Decide whether anything can have moved the score
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCORE_PATHS: ${{ inputs.score-paths }}
+          # The CALLER's workflow file, derived rather than hardcoded. `github.workflow_ref`
+          # reads `owner/repo/.github/workflows/<file>@refs/heads/<branch>`, and `gh run list
+          # --workflow` matches the file in the caller's repository. Hardcoding a name here
+          # would mean a caller that names its file anything else silently finds no previous
+          # run — forever, and green, because "no previous run" fails open into running.
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT: ${{ github.event_name }}
+        # A week with no relevant change produces the same verdict as the week before, and this
+        # run costs real minutes to say so.
+        #
+        # A manual dispatch always runs: asking for it IS the decision.
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch — running."
+            exit 0
+          fi
+
+          workflow_file="${WORKFLOW_REF%@*}"
+          workflow_file="${workflow_file##*/}"
+          echo "Comparing against the last successful run of $workflow_file."
+
+          # `|| true` is load-bearing under `set -e`: without it a transient API failure kills
+          # the step, which is the opposite of failing open. An empty result falls through to
+          # the "no previous run" branch below and runs the suite.
+          last="$(gh run list --workflow "$workflow_file" --status success \
+            --branch "$DEFAULT_BRANCH" --limit 1 \
+            --json headSha --jq '.[0].headSha // empty' 2>/dev/null || true)"
+
+          if [ -z "$last" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "No previous successful run to compare against — running."
+            exit 0
+          fi
+
+          # An unreachable SHA (history rewritten, or the commit garbage-collected) is not a
+          # reason to skip: it is a reason to stop trusting the comparison.
+          if ! git cat-file -e "${last}^{commit}" 2>/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Last measured commit $last is unreachable — running."
+            exit 0
+          fi
+
+          # Unquoted on purpose: SCORE_PATHS is a space-separated pathspec list and must split.
+          # shellcheck disable=SC2086
+          if git diff --quiet "$last" HEAD -- $SCORE_PATHS; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing that can move the score changed since $last — skipping."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Changed since $last:"
+            # shellcheck disable=SC2086
+            git diff --name-only "$last" HEAD -- $SCORE_PATHS
+          fi
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        if: steps.changed.outputs.run == 'true'
+
+      - name: Run the full mutation suite
+        if: steps.changed.outputs.run == 'true'
+        run: ${{ inputs.full-command }}
+
+      - name: Save the incremental baseline for the week's pushes
+        # Only on success, and for the same reason the job is pinned to the default branch:
+        # this file becomes the baseline every push that week reuses. Stryker writes it as it
+        # goes, so a run that dies partway through leaves a REAL file describing a fraction of
+        # the mutants — and the per-push gate cannot tell that apart from a complete one. It
+        # would silently treat the unmeasured remainder as unchanged. A failed run leaving the
+        # previous week's baseline in place is the safe outcome: stale beats wrong.
+        if: steps.changed.outputs.run == 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
+
+      - name: Upload the mutation report
+        # `always()` so a failed run still uploads its partial report, but only when the suite
+        # actually ran — a skipped week has nothing to upload.
+        if: always() && steps.changed.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-full
+          path: reports/mutation/
+          if-no-files-found: ignore
