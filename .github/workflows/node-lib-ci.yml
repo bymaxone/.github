@@ -61,7 +61,14 @@ on:
 
 concurrency:
   group: node-lib-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseding is right on a branch and wrong on the default one. On a pull request a newer
+  # push makes the older run irrelevant, so cancelling saves runner time and nothing else.
+  # On the default branch every push is a distinct commit whose gate result is the record for
+  # that commit — and the mutation job runs ONLY there, and takes over an hour when cold. With
+  # blanket cancellation the deepest gate is the one most likely to be killed: any merge inside
+  # its window ends it, and it never produces the verdict or the incremental baseline it exists
+  # to produce. That is not hypothetical — it is what happened to nest-auth#77.
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
 permissions:
   contents: read
