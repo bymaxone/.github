@@ -28,19 +28,20 @@ It is public because organization-wide defaults require a public repo.
 
 ## 📂 What lives here
 
-| Path | What it is | Shows up… |
-| --- | --- | --- |
-| 🏠 [`profile/README.md`](profile/README.md) | The **organization profile** | On the [org overview page](https://github.com/bymaxone) |
-| 🔁 [`.github/workflows/node-ci.yml`](.github/workflows/node-ci.yml) | **Reusable CI — Node example apps** — lint · typecheck · format · coverage · e2e · export-audit · mutation | Called by each `nest-*-example` repo's `ci.yml` |
-| 📚 [`.github/workflows/node-lib-ci.yml`](.github/workflows/node-lib-ci.yml) | **Reusable CI — Node libraries** — lint · typecheck · format · unit+coverage · build · mutation | Called by each `@bymax-one/nest-*` library's `ci.yml` |
-| 🦀 [`.github/workflows/rust-ci.yml`](.github/workflows/rust-ci.yml) | **Reusable CI — Rust workspaces** — fmt · clippy · build & test · llvm-cov · MSRV · cargo-mutants | Called by `rust-auth` / `rust-auth-example` |
-| 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml) | **Reusable dependency-review** (GitHub-owned action only) | Called on public-repo pull requests |
-| 🗓️ [`.github/workflows/peer-advisory-drift.yml`](.github/workflows/peer-advisory-drift.yml) | **Reusable advisory-drift audit** — cross-checks the ranges a package *declares* against the advisory database; files and closes its own tracking issue | Called weekly by each publishable repo |
-| 🏷️ [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml) | **Reusable PR-title check** — Conventional Commits grammar on the pull-request title, which squash merges turn into the commit subject | Called by each repo's `pr-title.yml` on every title change |
-| 🔬 [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml) | **Reusable CodeQL analysis** — gated on the repository being public, since code scanning is free there and licensed on private repos | Called by each public repo's `codeql.yml` |
-| 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm) | **Composite action** — pnpm + Node + cache + local `file:` lib build + install | Used by the reusable jobs |
-| 📋 [`.github/workflow-templates/`](.github/workflow-templates) | **Starter workflows + `dependabot.yml`** | In the repo "New workflow" gallery |
-| 🤖 [`.github/copilot-instructions.md`](.github/copilot-instructions.md) · [`instructions/`](.github/instructions) · [`agents/`](.github/agents) | **Copilot code-review reference set** — org baseline + per-stack rules + reviewer agent | Copied into a repo (does **not** auto-propagate) |
+| Path                                                                                                                                            | What it is                                                                                                                                              | Shows up…                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 🏠 [`profile/README.md`](profile/README.md)                                                                                                     | The **organization profile**                                                                                                                            | On the [org overview page](https://github.com/bymaxone)    |
+| 🔁 [`.github/workflows/node-ci.yml`](.github/workflows/node-ci.yml)                                                                             | **Reusable CI — Node example apps** — lint · typecheck · format · coverage · e2e · export-audit · mutation                                              | Called by each `nest-*-example` repo's `ci.yml`            |
+| 📚 [`.github/workflows/node-lib-ci.yml`](.github/workflows/node-lib-ci.yml)                                                                     | **Reusable CI — Node libraries** — lint · typecheck · format · unit+coverage · build · mutation                                                         | Called by each `@bymax-one/nest-*` library's `ci.yml`      |
+| 🦀 [`.github/workflows/rust-ci.yml`](.github/workflows/rust-ci.yml)                                                                             | **Reusable CI — Rust workspaces** — fmt · clippy · build & test · llvm-cov · MSRV · cargo-mutants                                                       | Called by `rust-auth` / `rust-auth-example`                |
+| 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml)                                                                           | **Reusable dependency-review** (GitHub-owned action only)                                                                                               | Called on public-repo pull requests                        |
+| 🗓️ [`.github/workflows/peer-advisory-drift.yml`](.github/workflows/peer-advisory-drift.yml)                                                     | **Reusable advisory-drift audit** — cross-checks the ranges a package _declares_ against the advisory database; files and closes its own tracking issue | Called weekly by each publishable repo                     |
+| 🏷️ [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml)                                                                           | **Reusable PR-title check** — Conventional Commits grammar on the pull-request title, which squash merges turn into the commit subject                  | Called by each repo's `pr-title.yml` on every title change |
+| 🔬 [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml)                                                                               | **Reusable CodeQL analysis** — gated on the repository being public, since code scanning is free there and licensed on private repos                    | Called by each public repo's `codeql.yml`                  |
+| 🚀 [`.github/workflows/release-major-alias.yml`](.github/workflows/release-major-alias.yml)                                                     | **Release** — on a pushed `vN.Y.Z` tag, moves the `vN` alias onto it. The only thing that moves `v1`; merging to `main` publishes nothing               | Runs here, on every release                                |
+| 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm)                                                                         | **Composite action** — pnpm + Node + cache + local `file:` lib build + install                                                                          | Used by the reusable jobs                                  |
+| 📋 [`.github/workflow-templates/`](.github/workflow-templates)                                                                                  | **Starter workflows + `dependabot.yml`**                                                                                                                | In the repo "New workflow" gallery                         |
+| 🤖 [`.github/copilot-instructions.md`](.github/copilot-instructions.md) · [`instructions/`](.github/instructions) · [`agents/`](.github/agents) | **Copilot code-review reference set** — org baseline + per-stack rules + reviewer agent                                                                 | Copied into a repo (does **not** auto-propagate)           |
 
 > 🩺 **Community health files** (`CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, issue/PR
 > templates) also belong here — they are the next addition and will apply org-wide.
@@ -56,24 +57,24 @@ Two independent layers configure Copilot review across the org:
    included. No per-repo setup.
 2. **The rules Copilot applies** — split by reach:
 
-| Layer | Where it lives | Applies to |
-| --- | --- | --- |
-| **Universal baseline** | **Org → Settings → Copilot → Custom instructions** | Every repo, automatically |
-| **Per-repo instruction files** | each repo's own `.github/copilot-instructions.md` · `.github/instructions/*` · `.github/agents/*` | Only that repo |
+| Layer                          | Where it lives                                                                                    | Applies to                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------- |
+| **Universal baseline**         | **Org → Settings → Copilot → Custom instructions**                                                | Every repo, automatically |
+| **Per-repo instruction files** | each repo's own `.github/copilot-instructions.md` · `.github/instructions/*` · `.github/agents/*` | Only that repo            |
 
 > ⚠️ **Unlike community health files, Copilot instruction files do _not_ propagate
 > from this repo.** GitHub reads them only from the repository under review. The set
 > below is the **canonical reference** — copy what a new repo needs, then append its
 > domain rules (supply-chain contract, crypto/tenant, PII, pixel parity, fiscal math…).
 
-| File | For |
-| --- | --- |
-| [`copilot-instructions.md`](.github/copilot-instructions.md) | org baseline (mirror of the org-settings text) |
-| [`instructions/code.rust.instructions.md`](.github/instructions/code.rust.instructions.md) | Rust crates |
-| [`instructions/code.library.instructions.md`](.github/instructions/code.library.instructions.md) | `@bymax-one/*` libraries |
-| [`instructions/code.app.instructions.md`](.github/instructions/code.app.instructions.md) | apps consuming those libraries |
-| [`instructions/tests.instructions.md`](.github/instructions/tests.instructions.md) | test suites |
-| [`agents/agent-code-reviewer.agent.md`](.github/agents/agent-code-reviewer.agent.md) | reviewer agent definition |
+| File                                                                                             | For                                            |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| [`copilot-instructions.md`](.github/copilot-instructions.md)                                     | org baseline (mirror of the org-settings text) |
+| [`instructions/code.rust.instructions.md`](.github/instructions/code.rust.instructions.md)       | Rust crates                                    |
+| [`instructions/code.library.instructions.md`](.github/instructions/code.library.instructions.md) | `@bymax-one/*` libraries                       |
+| [`instructions/code.app.instructions.md`](.github/instructions/code.app.instructions.md)         | apps consuming those libraries                 |
+| [`instructions/tests.instructions.md`](.github/instructions/tests.instructions.md)               | test suites                                    |
+| [`agents/agent-code-reviewer.agent.md`](.github/agents/agent-code-reviewer.agent.md)             | reviewer agent definition                      |
 
 ---
 
@@ -141,17 +142,17 @@ to your repo's `.github/dependabot.yml`.
 
 ### ⚙️ `node-ci` inputs
 
-| Input | Default | Notes |
-| --- | --- | --- |
-| `node-version` | `24` | |
-| `library-repo` | `""` | sibling `file:` library to check out + build |
-| `has-web` | `true` | web build + web coverage + Playwright e2e |
-| `run-format-check` | `true` | `pnpm format:check` |
-| `run-e2e-api` | `true` | `pnpm test:e2e:api` (Testcontainers) |
-| `run-e2e-web` | `true` | Playwright web smoke (needs `has-web`) |
-| `run-export-audit` | `false` | `pnpm audit:exports` (library export contract) |
-| `run-mutation` | `false` | Stryker on default-branch push / dispatch only |
-| `mutation-source-globs` | api/web/src regex | which changed paths trigger mutation |
+| Input                   | Default           | Notes                                          |
+| ----------------------- | ----------------- | ---------------------------------------------- |
+| `node-version`          | `24`              |                                                |
+| `library-repo`          | `""`              | sibling `file:` library to check out + build   |
+| `has-web`               | `true`            | web build + web coverage + Playwright e2e      |
+| `run-format-check`      | `true`            | `pnpm format:check`                            |
+| `run-e2e-api`           | `true`            | `pnpm test:e2e:api` (Testcontainers)           |
+| `run-e2e-web`           | `true`            | Playwright web smoke (needs `has-web`)         |
+| `run-export-audit`      | `false`           | `pnpm audit:exports` (library export contract) |
+| `run-mutation`          | `false`           | Stryker on default-branch push / dispatch only |
+| `mutation-source-globs` | api/web/src regex | which changed paths trigger mutation           |
 
 ### 📚 `node-lib-ci` inputs (libraries)
 
@@ -160,18 +161,18 @@ build · mutation) through `node-lib-ci.yml` and keeps repo-specific jobs (`veri
 build+integrity+size, Testcontainers `e2e`, `secret-scan`) local, plus a
 visibility-gated `security` job.
 
-| Input | Default | Notes |
-| --- | --- | --- |
-| `node-version` | `24` | |
-| `library-repo` | `""` | sibling `file:` library to check out + build (usually empty for a library) |
-| `run-format-check` | `true` | `pnpm format:check` |
-| `unit-command` | `pnpm test:cov` | the gated unit+coverage command (e.g. `pnpm test:cov:all`) |
-| `build-command` | `pnpm build` | the library build command |
-| `run-build` | `true` | run the build job (set `false` when a local `verify` job builds) |
-| `database-url` | `""` | `DATABASE_URL` for libs with a Prisma client (empty to skip) |
-| `post-install` | `""` | command after install in every job (e.g. `prisma generate`) |
-| `run-mutation` | `false` | Stryker on default-branch push / dispatch only |
-| `mutation-source-globs` | `^(src/)` | which changed paths trigger mutation |
+| Input                   | Default         | Notes                                                                      |
+| ----------------------- | --------------- | -------------------------------------------------------------------------- |
+| `node-version`          | `24`            |                                                                            |
+| `library-repo`          | `""`            | sibling `file:` library to check out + build (usually empty for a library) |
+| `run-format-check`      | `true`          | `pnpm format:check`                                                        |
+| `unit-command`          | `pnpm test:cov` | the gated unit+coverage command (e.g. `pnpm test:cov:all`)                 |
+| `build-command`         | `pnpm build`    | the library build command                                                  |
+| `run-build`             | `true`          | run the build job (set `false` when a local `verify` job builds)           |
+| `database-url`          | `""`            | `DATABASE_URL` for libs with a Prisma client (empty to skip)               |
+| `post-install`          | `""`            | command after install in every job (e.g. `prisma generate`)                |
+| `run-mutation`          | `false`         | Stryker on default-branch push / dispatch only                             |
+| `mutation-source-globs` | `^(src/)`       | which changed paths trigger mutation                                       |
 
 ### 🦀 `rust-ci` inputs (Rust workspaces)
 
@@ -180,16 +181,16 @@ A Rust caller routes the universal Cargo gates (fmt · clippy · build & test ·
 bespoke job (wasm, fuzz, feature matrix, supply-chain, public-api, npm/web bundles,
 e2e) local.
 
-| Input | Default | Notes |
-| --- | --- | --- |
-| `run-build` | `true` | `cargo build` before the test job |
-| `run-coverage` | `true` | `cargo llvm-cov` line+function gate |
-| `coverage-fail-under` | `100` | minimum line & function coverage percent |
-| `run-msrv` | `true` | build on the declared MSRV floor |
-| `msrv-version` | `1.90` | the MSRV toolchain (matches `rust-version`) |
-| `run-mutation` | `false` | `cargo-mutants` on default-branch push / dispatch only |
-| `mutation-command` | `cargo mutants --all-features --in-place` | the mutation command |
-| `mutation-source-globs` | `^(crates/\|src/\|bindings/)` | which changed paths trigger mutation |
+| Input                   | Default                                   | Notes                                                  |
+| ----------------------- | ----------------------------------------- | ------------------------------------------------------ |
+| `run-build`             | `true`                                    | `cargo build` before the test job                      |
+| `run-coverage`          | `true`                                    | `cargo llvm-cov` line+function gate                    |
+| `coverage-fail-under`   | `100`                                     | minimum line & function coverage percent               |
+| `run-msrv`              | `true`                                    | build on the declared MSRV floor                       |
+| `msrv-version`          | `1.90`                                    | the MSRV toolchain (matches `rust-version`)            |
+| `run-mutation`          | `false`                                   | `cargo-mutants` on default-branch push / dispatch only |
+| `mutation-command`      | `cargo mutants --all-features --in-place` | the mutation command                                   |
+| `mutation-source-globs` | `^(crates/\|src/\|bindings/)`             | which changed paths trigger mutation                   |
 
 ### 🗓️ `peer-advisory-drift` inputs (publishable packages)
 
@@ -198,18 +199,18 @@ rather than what its own lockfile pins. Reports one row per declared range with 
 floor to move to, opens a tracking issue, rewrites it as findings change, and **closes
 it automatically** once every range is clear.
 
-| Input | Default | Notes |
-| --- | --- | --- |
-| `manifest-path` | `package.json` | the manifest whose declared ranges are audited |
-| `dependency-types` | `peerDependencies` | comma-separated manifest fields; every field listed is a public claim of support |
-| `severity-threshold` | `low` | lowest advisory severity to report — raise per repo rather than discovering later that a moderate finding was filtered |
-| `issue-label` | `peer-advisory-drift` | label on the tracking issue, and the key used to find it again |
-| `fail-on-drift` | `false` | also fail the job; off by default because a permanently red scheduled run trains people to ignore it |
+| Input                | Default               | Notes                                                                                                                  |
+| -------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `manifest-path`      | `package.json`        | the manifest whose declared ranges are audited                                                                         |
+| `dependency-types`   | `peerDependencies`    | comma-separated manifest fields; every field listed is a public claim of support                                       |
+| `severity-threshold` | `low`                 | lowest advisory severity to report — raise per repo rather than discovering later that a moderate finding was filtered |
+| `issue-label`        | `peer-advisory-drift` | label on the tracking issue, and the key used to find it again                                                         |
+| `fail-on-drift`      | `false`               | also fail the job; off by default because a permanently red scheduled run trains people to ignore it                   |
 
-| Output | Notes |
-| --- | --- |
-| `drift-count` | number of declared **ranges** that admit a vulnerable version — the number of lines to edit, not the number of advisories behind them |
-| `advisory-count` | total advisory matches, for reporting |
+| Output           | Notes                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `drift-count`    | number of declared **ranges** that admit a vulnerable version — the number of lines to edit, not the number of advisories behind them |
+| `advisory-count` | total advisory matches, for reporting                                                                                                 |
 
 The caller must grant `issues: write`: permissions on a reusable workflow can only
 narrow what the caller granted.
@@ -220,7 +221,7 @@ name: Peer Advisory Drift
 
 on:
   schedule:
-    - cron: '17 6 * * 1'
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 # Single-flight across the repository, deliberately NOT keyed by `github.ref`: the
@@ -244,19 +245,26 @@ jobs:
 
 ### 🏷️ Versioning
 
-Pin callers to **`@v1`** (a moving major tag): a deliberate `v1.x` release propagates to
-every repo, while a breaking change lands as `v2` behind an explicit bump. Never pin a
-caller to `@main`.
+Point callers at **`@v1`** (a moving major alias): a deliberate `v1.x` release propagates
+to every repo, while a breaking change lands as `v2` behind an explicit bump. Never point
+a caller at `@main`.
+
+**Do not pin these references to a commit SHA.** It was tried and reverted — see
+[AGENTS.md](AGENTS.md#how-consuming-repositories-should-reference-this). Propagating one
+change becomes ~58 Dependabot pull requests across the libraries, which removes the only
+reason this repository exists. The opposite rule holds for **third-party** actions: those
+are pinned to a full SHA with the version in a trailing comment, because that is where the
+supply-chain risk actually is.
 
 ---
 
 ## 🧭 Project types
 
-| Stack | Reusable | Status |
-| --- | --- | --- |
-| 🟢 **Node libraries** — `@bymax-one/nest-*` | `node-lib-ci.yml` · `security.yml` · `peer-advisory-drift.yml` | ✅ Live (`@v1`) |
-| 🟢 **Node example apps** — `nest-*-example` | `node-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
-| 🦀 **Rust** — `rust-auth` (library) + `rust-auth-example` (app) | `rust-ci.yml` · `security.yml` | ✅ Live (`@v1`) |
+| Stack                                                           | Reusable                                                       | Status          |
+| --------------------------------------------------------------- | -------------------------------------------------------------- | --------------- |
+| 🟢 **Node libraries** — `@bymax-one/nest-*`                     | `node-lib-ci.yml` · `security.yml` · `peer-advisory-drift.yml` | ✅ Live (`@v1`) |
+| 🟢 **Node example apps** — `nest-*-example`                     | `node-ci.yml` · `security.yml`                                 | ✅ Live (`@v1`) |
+| 🦀 **Rust** — `rust-auth` (library) + `rust-auth-example` (app) | `rust-ci.yml` · `security.yml`                                 | ✅ Live (`@v1`) |
 
 > 🗓️ **`peer-advisory-drift` is Node-only.** Example apps are not published, so nothing
 > reads the ranges they declare. Rust is a genuine gap rather than an exclusion: the
@@ -311,8 +319,8 @@ must be explicit.)
 
 A repo cannot run **both** the code-scanning **default setup** and an advanced
 `.github/workflows/codeql.yml`. When both are on, the advanced workflow fails its SARIF
-upload with *"CodeQL analyses from advanced configurations cannot be processed when the
-default setup is enabled."* Since the workflow is the source of truth, disable default
+upload with _"CodeQL analyses from advanced configurations cannot be processed when the
+default setup is enabled."_ Since the workflow is the source of truth, disable default
 setup:
 
 ```bash
@@ -331,14 +339,29 @@ security:
   uses: bymaxone/.github/.github/workflows/security.yml@v1
 ```
 
-### Moving the `@v1` tag
+### Publishing a change — never move `@v1` by hand
 
-The reusables are pinned by callers to the moving major `@v1`. After merging a change to a
-reusable, advance the tag so callers pick it up:
+Merging to `main` publishes **nothing**. Callers run `@v1`, and `v1` only moves when a
+version tag is pushed:
 
 ```bash
-git checkout main && git pull && git tag -f v1 && git push -f origin v1
+git checkout main && git pull
+git tag v1.5.0 && git push origin v1.5.0
 ```
+
+[`release-major-alias.yml`](.github/workflows/release-major-alias.yml) picks that up,
+verifies the tag is on `main`, and moves `v1` onto it.
+
+**Do not run `git push -f origin v1`.** That was the old instruction and it is what made
+`v1` a synonym for `main`: eight merges became eight silent deploys to every consuming
+repository in a single day. The version tag is the gate — `v*.*.*` is immutable by
+ruleset, so a caller pinning one gets the same bytes forever.
+
+Breaking changes get `v2` and a new alias rather than a `v1` move. Renaming a job counts
+as breaking: the job id prefixes the reported check name, and repositories require those
+names in their rulesets.
+
+Full contract, including what to check before touching a reusable: [AGENTS.md](AGENTS.md).
 
 ---
 
