@@ -14,7 +14,14 @@ name: Release major alias
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      # A deliberately loose glob, with the strict check moved into the job
+      # below. Filter patterns here do support `+` as a quantifier, so a precise
+      # pattern is expressible — but if that subtlety were ever misread, or the
+      # semantics changed, the workflow would simply never trigger and nothing
+      # would say so. A release that silently does not happen is the worst
+      # failure this file can have, so the trigger errs toward firing and the
+      # job rejects what does not belong.
+      - "v*"
 
 # The alias is a ref in this repository, so writing it needs `contents: write`.
 # Nothing else here does, and this is the only workflow that has it.
@@ -37,10 +44,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The trigger above is loose on purpose; this is where the shape is
+      # enforced. It skips rather than fails, because the alias `v1` matches the
+      # trigger too: it is a `v*` tag pushed by this workflow. Failing on it
+      # would paint every release red for doing exactly what it should.
+      - name: Is this a release tag?
+        id: shape
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "$TAG is a version tag."
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$TAG is not a vX.Y.Z release tag — nothing to publish."
+          fi
+
       # A version tag is only a release if it names a commit that went through
       # the default branch and its protections. Without this, tagging any commit
       # — a branch, a fork's merge base — would redirect every consumer's CI.
       - name: Refuse a tag that is not on the default branch
+        if: steps.shape.outputs.release == 'true'
         env:
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
@@ -54,6 +80,7 @@ jobs:
           echo "$TAG is on the default branch."
 
       - name: Move the alias onto this version
+        if: steps.shape.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -86,6 +113,7 @@ jobs:
           fi
 
       - name: Summarise
+        if: steps.shape.outputs.release == 'true'
         env:
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
