@@ -45,6 +45,17 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Records every outbound connection the job makes, so an unexpected
+      # destination — a compromised action exfiltrating, say — is visible after
+      # the fact. Audit, not block: the scanner reaches the OSV database and
+      # pulls its image from ghcr.io, and a per-repo egress allow-list is more
+      # than a read-only dependency scan should carry. Every caller inherits it
+      # without opting in.
+      - name: Harden runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
       # Without this the scanner runs against an empty workspace: it reports "No
       # package sources found" and "No lockfiles found", then exits 0. The job
       # would be green because it had nothing to read, which is
