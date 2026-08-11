@@ -36,6 +36,7 @@ It is public because organization-wide defaults require a public repo.
 | 🦀 [`.github/workflows/rust-ci.yml`](.github/workflows/rust-ci.yml)                                                                             | **Reusable CI — Rust workspaces** — fmt · clippy · build & test · llvm-cov · MSRV · cargo-mutants                                                       | Called by `rust-auth` / `rust-auth-example`                |
 | 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml)                                                                           | **Reusable dependency-review** (GitHub-owned action only)                                                                                               | Called on public-repo pull requests                        |
 | 🗓️ [`.github/workflows/peer-advisory-drift.yml`](.github/workflows/peer-advisory-drift.yml)                                                     | **Reusable advisory-drift audit** — cross-checks the ranges a package _declares_ against the advisory database; files and closes its own tracking issue | Called weekly by each publishable repo                     |
+| 🔎 [`.github/workflows/osv-scanner.yml`](.github/workflows/osv-scanner.yml)                                                                     | **Reusable OSV-Scanner** — scans the full resolved dependency tree (lockfile) against the OSV database; the audit dependency-review (PR diff) and peer-advisory-drift (declared ranges) don't do        | Called on push/PR + weekly by each library and the template |
 | 🏷️ [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml)                                                                           | **Reusable PR-title check** — Conventional Commits grammar on the pull-request title, which squash merges turn into the commit subject                  | Called by each repo's `pr-title.yml` on every title change |
 | 🔬 [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml)                                                                               | **Reusable CodeQL analysis** — gated on the repository being public, since code scanning is free there and licensed on private repos                    | Called by each public repo's `codeql.yml`                  |
 | 🚀 [`.github/workflows/release-major-alias.yml`](.github/workflows/release-major-alias.yml)                                                     | **Release** — on a pushed `vN.Y.Z` tag, moves the `vN` alias onto it. The only thing that moves `v1`; merging to `main` publishes nothing               | Runs here, on every release                                |
@@ -241,6 +242,40 @@ jobs:
     # would write findings that do not describe what the package declares.
     if: github.ref_name == github.event.repository.default_branch
     uses: bymaxone/.github/.github/workflows/peer-advisory-drift.yml@v1
+```
+
+### 🔎 `osv-scanner` inputs (dependency-tree audit)
+
+Scans the whole resolved dependency tree — every package the lockfile pins, direct and
+transitive — against the OSV database. This is the audit `dependency-review` (which only
+sees a PR's added dependencies) and `peer-advisory-drift` (which only reads declared
+ranges) leave uncovered: a transitive package already installed that turns vulnerable
+between releases. The scanner surfaces findings in the log and fails the run; it uploads
+nothing, so it is callable from private repos (the template included) as-is.
+
+| Input       | Default            | Notes                                                                                          |
+| ----------- | ------------------ | ---------------------------------------------------------------------------------------------- |
+| `scan-args` | `--recursive` `./` | newline-separated OSV-Scanner arguments; the default scans the whole checkout recursively      |
+
+```yaml
+# .github/workflows/osv-scanner.yml
+name: OSV-Scanner
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, off the hour so the scheduled run does not cluster at :00.
+    - cron: "42 6 * * 3"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    uses: bymaxone/.github/.github/workflows/osv-scanner.yml@v1
 ```
 
 ### 🏷️ Versioning
