@@ -59,8 +59,11 @@ pre-stable: breaking changes ship in minor and patch releases by explicit policy
 protect against nothing. The migration note under **Apply to a derived backend** in the library's own
 changelog is the compatibility contract.
 
-**Safe path:** read the adopted version's changelog entry and check every call site it names, not
-only the ones the compiler rejected. Diff the `.d.ts` of the **previously adopted** version against
+**Safe path:** read **every** changelog entry from the version being replaced up to the proposed
+one, not only the proposed one's, and check every call site they name — not only the ones the
+compiler rejected. Upgrades routinely skip releases, and the entry that matters is often not the
+last one: adopting `@bymax-one/nest-cache` 1.1.0 → 1.2.1 skipped 1.2.0, where a namespace-validation
+security fix lives; 1.2.1's own entry is a field rename. Diff the `.d.ts` of the **previously adopted** version against
 the **proposed** one — `npm pack` both, and name the two versions. Reaching for "the installed
 declarations" is the trap: in a checkout of the branch under review the installed tree is already
 the new version, so that diff compares a release with itself and shows nothing.
