@@ -88,6 +88,7 @@ jobs:
           AGENTS_PATH: ${{ inputs.agents-path }}
           BRANCH: ${{ inputs.branch }}
           CANONICAL_REF: ${{ inputs.canonical-ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
           GH_TOKEN: ${{ secrets.sync-token || github.token }}
         run: |
@@ -103,9 +104,35 @@ jobs:
             echo "::notice title=agents-sync::$AGENTS_PATH does not exist; nothing to synchronise."
             exit 0
           fi
-          if ! grep -qF "$begin" "$AGENTS_PATH" || ! grep -qF "$end" "$AGENTS_PATH"; then
+          # Count markers with the same predicate the splice uses -- at the start
+          # of a line -- so a marker mentioned inline in prose is not miscounted.
+          begin_count=$(awk -v m="$begin" 'index($0, m) == 1' "$AGENTS_PATH" | wc -l | tr -d ' ')
+          end_count=$(awk -v m="$end" 'index($0, m) == 1' "$AGENTS_PATH" | wc -l | tr -d ' ')
+
+          if [ "$begin_count" -eq 0 ] && [ "$end_count" -eq 0 ]; then
             echo "::notice title=agents-sync::$AGENTS_PATH carries no shared block; nothing to synchronise."
             exit 0
+          fi
+
+          # Anything other than one pair in order is refused rather than spliced.
+          # The awk below inserts at *every* begin marker and suppresses lines
+          # until an end marker or EOF, so a duplicated pair copies the canonical
+          # block twice and a reversed pair deletes everything after the begin
+          # marker -- both of which rewrite rules that live outside the block and
+          # break the guarantee that a repository's own rules are never touched.
+          begin_at=$(awk -v m="$begin" 'index($0, m) == 1 { print NR; exit }' "$AGENTS_PATH")
+          end_at=$(awk -v m="$end" 'index($0, m) == 1 { print NR; exit }' "$AGENTS_PATH")
+          if [ "$begin_count" -ne 1 ] || [ "$end_count" -ne 1 ] || [ "$begin_at" -ge "$end_at" ]; then
+            echo "::error title=agents-sync::$AGENTS_PATH has an ambiguous shared block (begin x$begin_count, end x$end_count); expected exactly one of each, begin first. Refusing to splice."
+            exit 1
+          fi
+
+          # `branch` is caller-supplied and this workflow force-pushes it. Pointed
+          # at the default branch it would commit straight past review; pointed at
+          # an unrelated branch it would replace that branch's commits.
+          if [ "$BRANCH" = "$DEFAULT_BRANCH" ]; then
+            echo "::error title=agents-sync::the branch input must not be the default branch ($DEFAULT_BRANCH); the synchronisation branch is force-pushed."
+            exit 1
           fi
 
           # `canonical-ref` may name a release that predates the rules file, and
@@ -136,30 +163,62 @@ jobs:
           echo "::warning title=agents-sync::the shared review-rules block is out of date"
           git diff --stat -- "$AGENTS_PATH"
 
+          subject="chore(agents): sync the shared review-rules block"
+
+          # One read of the remote branch answers three questions: whether it
+          # exists, whether this workflow is what put it there, and what value to
+          # lease the push against. The checkout fetched only the default branch,
+          # so without this `origin/$BRANCH` has no remote-tracking value and a
+          # bare --force-with-lease is rejected as `stale info` -- on exactly the
+          # path this reuses, an open synchronisation pull request.
+          remote_sha=""
+          if git fetch --no-tags --depth=1 origin "refs/heads/$BRANCH" 2>/dev/null; then
+            remote_sha=$(git rev-parse FETCH_HEAD)
+            # A lease proves nobody moved the branch between this read and the
+            # push. It does not prove the branch is ours to move, so check that
+            # its tip is a commit this workflow wrote before replacing it.
+            if [ "$(git log -1 --format=%s FETCH_HEAD)" != "$subject" ]; then
+              echo "::error title=agents-sync::$BRANCH exists and its tip is not an agents-sync commit; refusing to force-push over it."
+              exit 1
+            fi
+          fi
+
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add -- "$AGENTS_PATH"
-          git commit -m "chore(agents): sync the shared review-rules block
-
-          Taken from bymaxone/.github@${CANONICAL_REF}, agents/code-review-rules.md.
+          git commit -m "$subject" -m "Taken from bymaxone/.github@${CANONICAL_REF}, agents/code-review-rules.md.
           Only the block between the shared markers is rewritten; this repository's
           own rules are outside it and untouched."
-          # The checkout fetched only the default branch, so `origin/$BRANCH` has
-          # no remote-tracking value and a bare --force-with-lease is rejected as
-          # `stale info` -- on exactly the path this reuses, an open sync pull
-          # request. Measure the remote value and lease against that instead. An
-          # empty expected value means the branch must not already exist, so a
+
+          # While a synchronisation pull request stays open the default branch
+          # still carries the stale block, so every later run rebuilds the same
+          # commit. Pushing it would give the pull request a new SHA with an
+          # identical tree on every schedule -- rerunning checks and dismissing
+          # approvals for nothing. Comparing trees rather than commits still lets
+          # a genuine change through, including the default branch moving under an
+          # open pull request.
+          if [ -n "$remote_sha" ] \
+            && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "$remote_sha^{tree}")" ]; then
+            echo "::notice title=agents-sync::the open synchronisation pull request already carries this tree; nothing to push."
+            # The block is still out of date on the default branch, so a caller
+            # that asked to fail on drift still has to see it fail.
+            if [ "$FAIL_ON_DRIFT" = "true" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          # An empty expected value means the branch must not already exist, so a
           # concurrent run still loses the race rather than overwriting it.
-          lease=$(git ls-remote --heads origin "refs/heads/$BRANCH" | cut -f1)
-          git push --force-with-lease="$BRANCH:$lease" origin "$BRANCH"
+          git push --force-with-lease="$BRANCH:$remote_sha" origin "$BRANCH"
 
           # Reuse the open pull request when there is one, so a weekly schedule
           # does not accumulate a queue of identical pull requests.
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')" ]; then
             gh pr create \
               --head "$BRANCH" \
-              --title "chore(agents): sync the shared review-rules block" \
+              --title "$subject" \
               --body "The shared block in \`${AGENTS_PATH}\` is behind \`bymaxone/.github@${CANONICAL_REF}\`.
 
           Only the content between the \`shared:begin\` and \`shared:end\` markers is rewritten. Rules this repository wrote for itself live outside the block and are untouched.

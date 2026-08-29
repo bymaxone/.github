@@ -297,7 +297,7 @@ skipped — adoption is opt-in.
 | --------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `agents-path`   | `AGENTS.md`         | the file whose shared block is synchronised                                                                      |
 | `canonical-ref` | `v1`                | ref of `bymaxone/.github` the block is taken from; pin it only to hold a repository back deliberately            |
-| `branch`        | `chore/agents-sync` | branch the synchronisation pull request is opened from, and reused while that pull request stays open            |
+| `branch`        | `chore/agents-sync` | branch the pull request is opened from, and reused while it stays open. Force-pushed, so it must not be the default branch and must not be a branch anything else writes to |
 | `fail-on-drift` | `false`             | also fail the job; off by default because the pull request is the signal and a red scheduled run is unactionable |
 
 | Secret       | Notes                                                                                                                                                                                       |
