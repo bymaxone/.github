@@ -24,11 +24,17 @@ it is about.
 
 **Safe path**, by the kind of claim:
 
-| Claim about                         | Read this                                                                           |
-| ----------------------------------- | ----------------------------------------------------------------------------------- |
-| A library's API or behaviour        | `node_modules/<pkg>/dist/**/*.d.ts` in this tree, or that version's changelog entry |
-| Commit authorship, dates or history | `git log --format='%an <%ae> / %cn <%ce>' <sha>`                                    |
-| What a file contains                | the file at the revision under review, not an earlier one                           |
+| Claim about                         | Read this                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| A library's API **shape**           | `node_modules/<pkg>/dist/**/*.d.ts` in this tree                               |
+| A library's **runtime behaviour**   | that version's changelog entry, its documentation, or a test that exercises it |
+| Commit authorship, dates or history | `git log --format='%an <%ae> / %cn <%ce>' <sha>`                               |
+| What a file contains                | the file at the revision under review, not an earlier one                     |
+
+The first two rows are separate on purpose, and the rule below says why: a field can stay optional
+in the published type while becoming mandatory in behaviour. A `.d.ts` settles what a signature
+accepts and nothing about what the implementation does with it, so a behavioural claim resting on
+one is unfounded.
 
 Weight the checking by what acting on the finding would cost. A comment that asks for a reworded
 sentence is cheap to be wrong about; one that asks for history to be rewritten, a merge reverted, or
