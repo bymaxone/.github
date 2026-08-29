@@ -1,0 +1,147 @@
+# Keeps the SHARED half of every repository's AGENTS.md in step with the copy in
+# this repository, so the review rules that must not vary are edited once.
+#
+# Why this is a sync and not a reference. Codex reads AGENTS.md from the file
+# tree of the repository it is reviewing — there is no org-level inheritance and
+# no remote include, which is exactly how reusable workflows differ. A shared
+# rule therefore has to exist as a real file in each repository, and the only
+# question is whether it drifts silently or is offered as a pull request.
+#
+# Only the block between the `shared:begin` and `shared:end` markers is touched.
+# Everything a repository writes for itself lives outside that block and is never
+# read or rewritten here, because the org convention is that review configuration
+# is customised per repository rather than copied wholesale.
+name: agents-sync
+
+on:
+  workflow_call:
+    inputs:
+      agents-path:
+        description: Path to the AGENTS.md whose shared block is synchronised.
+        type: string
+        default: AGENTS.md
+      canonical-ref:
+        description: >-
+          Ref of bymaxone/.github to take the canonical block from. Defaults to
+          the moving `v1` alias, which is what consumers already reference for
+          CI; pin it only to hold a repository back deliberately.
+        type: string
+        default: v1
+      branch:
+        description: Branch the synchronisation pull request is opened from.
+        type: string
+        default: chore/agents-sync
+      fail-on-drift:
+        description: >-
+          Also fail the job when the block is out of date. Off by default: the
+          pull request is the signal, and a red scheduled run on the default
+          branch is noise nobody can act on differently.
+        type: boolean
+        default: false
+    secrets:
+      sync-token:
+        description: >-
+          Token used to push the branch and open the pull request. Optional, and
+          worth supplying: a pull request opened with the default GITHUB_TOKEN
+          does not start workflow runs, so in a repository whose ruleset requires
+          checks it cannot be merged until someone pushes to it. A token that is
+          not GITHUB_TOKEN does not carry that restriction.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: agents-sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out the consuming repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the canonical rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: bymaxone/.github
+          ref: ${{ inputs.canonical-ref }}
+          path: .agents-canonical
+
+      - name: Splice the shared block and open a pull request when it moved
+        env:
+          # Inputs are read from the environment rather than interpolated into the
+          # script, so a value containing shell syntax stays inert text.
+          AGENTS_PATH: ${{ inputs.agents-path }}
+          BRANCH: ${{ inputs.branch }}
+          CANONICAL_REF: ${{ inputs.canonical-ref }}
+          FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
+          GH_TOKEN: ${{ secrets.sync-token || github.token }}
+        run: |
+          set -euo pipefail
+
+          canonical=.agents-canonical/agents/code-review-rules.md
+          begin='<!-- shared:begin -->'
+          end='<!-- shared:end -->'
+
+          # A repository that has not adopted the shared block yet is not a
+          # failure: it opted out, or it has not been wired. Say so and stop.
+          if [ ! -f "$AGENTS_PATH" ]; then
+            echo "::notice title=agents-sync::$AGENTS_PATH does not exist; nothing to synchronise."
+            exit 0
+          fi
+          if ! grep -qF "$begin" "$AGENTS_PATH" || ! grep -qF "$end" "$AGENTS_PATH"; then
+            echo "::notice title=agents-sync::$AGENTS_PATH carries no shared block; nothing to synchronise."
+            exit 0
+          fi
+
+          # Rebuild the file as: everything before the marker, the canonical block,
+          # everything after. awk rather than sed, because the block is multi-line
+          # and contains characters sed would treat as syntax.
+          awk -v canonical="$canonical" -v b="$begin" -v e="$end" '
+            index($0, b) == 1 { print_block = 1; while ((getline line < canonical) > 0) print line; close(canonical); next }
+            index($0, e) == 1 { print_block = 0; next }
+            print_block != 1  { print }
+          ' "$AGENTS_PATH" > "$AGENTS_PATH.synced"
+          mv "$AGENTS_PATH.synced" "$AGENTS_PATH"
+
+          if git diff --quiet -- "$AGENTS_PATH"; then
+            echo "✓ shared block is current with bymaxone/.github@$CANONICAL_REF"
+            exit 0
+          fi
+
+          echo "::warning title=agents-sync::the shared review-rules block is out of date"
+          git diff --stat -- "$AGENTS_PATH"
+
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -- "$AGENTS_PATH"
+          git commit -m "chore(agents): sync the shared review-rules block
+
+          Taken from bymaxone/.github@${CANONICAL_REF}, agents/code-review-rules.md.
+          Only the block between the shared markers is rewritten; this repository's
+          own rules are outside it and untouched."
+          git push --force-with-lease origin "$BRANCH"
+
+          # Reuse the open pull request when there is one, so a weekly schedule
+          # does not accumulate a queue of identical pull requests.
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')" ]; then
+            gh pr create \
+              --head "$BRANCH" \
+              --title "chore(agents): sync the shared review-rules block" \
+              --body "The shared block in \`${AGENTS_PATH}\` is behind \`bymaxone/.github@${CANONICAL_REF}\`.
+
+          Only the content between the \`shared:begin\` and \`shared:end\` markers is rewritten. Rules this repository wrote for itself live outside the block and are untouched.
+
+          Edit the canonical copy in \`bymaxone/.github\` rather than this file — a local edit inside the block is reverted on the next run.
+
+          _Opened by the \`agents-sync\` reusable workflow._"
+          else
+            echo "::notice title=agents-sync::updated the existing synchronisation pull request."
+          fi
+
+          if [ "$FAIL_ON_DRIFT" = "true" ]; then
+            exit 1
+          fi
