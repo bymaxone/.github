@@ -85,9 +85,14 @@ request rather than as a finding.
 
 ### Suppressions are refusals, not exceptions
 
-`@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable` in any form, `as any`,
+`@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable` in any form,
 `as unknown as` laundering a real type error, `istanbul ignore`, and in Rust `#[allow(...)]` over a
 lint gate or `unsafe` without a `// SAFETY:` comment are blocking findings.
+
+Anything a configured gate already reports belongs to the gate, not to a review: where a repository
+lints `no-explicit-any` as an error — most do — an `as any` is a red check, and raising it here only
+duplicates it. Check the repository's lint configuration before reporting a suppression rather than
+assuming the list is exhaustive in either direction.
 
 A failing gate means the code is wrong, the type is wrong, or the rule is wrong. **Safe path:** fix
 whichever it is. Changing a rule's configuration with a stated reason is legitimate; scattering
@@ -101,9 +106,15 @@ the code. **Safe path:** state the constraint that still holds, and let `git log
 
 ### Size and layering
 
-Functions over **50 lines** and files over **800 lines** are findings in the repository's own source
-and test directories, as is nesting deeper than four levels. Every non-trivial source file opens with
-a header stating its purpose and its layer, and every exported symbol carries a doc comment.
+Functions over **50 lines** and nesting deeper than four levels are findings in the repository's own
+source and test directories. Every non-trivial source file opens with a header stating its purpose
+and its layer, and every exported symbol carries a doc comment.
+
+**The 800-line file limit applies to what a change introduces, not to what it inherits.** A
+repository that already carries a file past the line — a generator, a long end-to-end suite — would
+otherwise produce a finding on every pull request touching three lines of it, which the author
+cannot act on and did not cause. Raise it for a **new** file over the limit, or when a change pushes
+a file past it or materially grows one already over.
 
 Markdown, generated output and lockfiles are **out of scope**: a changelog is an append-only log that
 only grows, a lockfile is generated, and neither has layers. Reporting their length is a false
