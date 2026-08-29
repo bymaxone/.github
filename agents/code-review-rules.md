@@ -12,8 +12,15 @@ These rules hold in every Bymax repository. What is specific to this one is writ
 block, and the two are read together.
 
 The pipeline already enforces formatting, linting, dependency policy, coverage and — where the
-repository has one — the mutation gate. Do not spend a review on those: a failure there is a red
-check, not a comment. What follows is what CI cannot see.
+repository has one — the mutation gate. Do not spend a review on a **violation** of one of those: it
+is a red check, not a comment. What follows is what CI cannot see.
+
+**A change to the enforcing configuration is the opposite case, and it is in scope.** Every gate runs
+the configuration from the branch under review — that branch's lint config, its coverage thresholds,
+its mutation thresholds. So a pull request that deletes a rule, lowers a threshold or widens an
+ignore glob turns the check **green**, because a gate reports on the rules it was handed. For those
+diffs the review is the only independent check there is, and a weakened gate needs the same
+justification a suppression does.
 
 ### A finding names what it read
 
