@@ -200,21 +200,20 @@ jobs:
           # open pull request.
           if [ -n "$remote_sha" ] \
             && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "$remote_sha^{tree}")" ]; then
-            echo "::notice title=agents-sync::the open synchronisation pull request already carries this tree; nothing to push."
-            # The block is still out of date on the default branch, so a caller
-            # that asked to fail on drift still has to see it fail.
-            if [ "$FAIL_ON_DRIFT" = "true" ]; then
-              exit 1
-            fi
-            exit 0
+            echo "::notice title=agents-sync::$BRANCH already carries this tree; leaving it where it is."
+          else
+            # An empty expected value means the branch must not already exist, so
+            # a concurrent run still loses the race rather than overwriting it.
+            git push --force-with-lease="$BRANCH:$remote_sha" origin "$BRANCH"
           fi
 
-          # An empty expected value means the branch must not already exist, so a
-          # concurrent run still loses the race rather than overwriting it.
-          git push --force-with-lease="$BRANCH:$remote_sha" origin "$BRANCH"
-
-          # Reuse the open pull request when there is one, so a weekly schedule
-          # does not accumulate a queue of identical pull requests.
+          # Reconciled on every run rather than only after a push, because the
+          # branch being correct is not the same as the drift being offered. A run
+          # that pushed and was then cancelled or failed here, and a pull request
+          # someone closed without merging, both leave a branch whose tree already
+          # matches -- so keying this off the push would report success on every
+          # later schedule while nothing was open to act on. Reusing an open one
+          # keeps a schedule from queueing duplicates.
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')" ]; then
             gh pr create \
               --head "$BRANCH" \
@@ -227,7 +226,7 @@ jobs:
 
           _Opened by the \`agents-sync\` reusable workflow._"
           else
-            echo "::notice title=agents-sync::updated the existing synchronisation pull request."
+            echo "::notice title=agents-sync::the open synchronisation pull request already covers this."
           fi
 
           if [ "$FAIL_ON_DRIFT" = "true" ]; then
