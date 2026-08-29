@@ -37,11 +37,13 @@ It is public because organization-wide defaults require a public repo.
 | 🛡️ [`.github/workflows/security.yml`](.github/workflows/security.yml)                                                                           | **Reusable dependency-review** (GitHub-owned action only)                                                                                               | Called on public-repo pull requests                        |
 | 🗓️ [`.github/workflows/peer-advisory-drift.yml`](.github/workflows/peer-advisory-drift.yml)                                                     | **Reusable advisory-drift audit** — cross-checks the ranges a package _declares_ against the advisory database; files and closes its own tracking issue | Called weekly by each publishable repo                     |
 | 🔎 [`.github/workflows/osv-scanner.yml`](.github/workflows/osv-scanner.yml)                                                                     | **Reusable OSV-Scanner** — scans the full resolved dependency tree (lockfile) against the OSV database; the audit dependency-review (PR diff) and peer-advisory-drift (declared ranges) don't do        | Being wired into each library and the template — on push/PR + weekly |
+| 🔄 [`.github/workflows/agents-sync.yml`](.github/workflows/agents-sync.yml)                                                                 | **Reusable AGENTS.md sync** — rewrites only the marked shared block of a repository's `AGENTS.md` from the canonical copy here, and opens a pull request when it moved                                        | Called weekly by each repo that adopted the block   |
 | 🏷️ [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml)                                                                           | **Reusable PR-title check** — Conventional Commits grammar on the pull-request title, which squash merges turn into the commit subject                  | Called by each repo's `pr-title.yml` on every title change |
 | 🔬 [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml)                                                                               | **Reusable CodeQL analysis** — gated on the repository being public, since code scanning is free there and licensed on private repos                    | Called by each public repo's `codeql.yml`                  |
 | 🚀 [`.github/workflows/release-major-alias.yml`](.github/workflows/release-major-alias.yml)                                                     | **Release** — on a pushed `vN.Y.Z` tag, moves the `vN` alias onto it. The only thing that moves `v1`; merging to `main` publishes nothing               | Runs here, on every release                                |
 | 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm)                                                                         | **Composite action** — pnpm + Node + cache + local `file:` lib build + install                                                                          | Used by the reusable jobs                                  |
 | 📋 [`.github/workflow-templates/`](.github/workflow-templates)                                                                                  | **Starter workflows + `dependabot.yml`**                                                                                                                | In the repo "New workflow" gallery                         |
+| 📐 [`agents/code-review-rules.md`](agents/code-review-rules.md)                                                                                 | **Canonical shared review rules** — the half of `AGENTS.md` that must not vary between repositories; distributed by `agents-sync`, never edited in a consumer      | Spliced into each repo's `AGENTS.md`               |
 | 🤖 [`.github/copilot-instructions.md`](.github/copilot-instructions.md) · [`instructions/`](.github/instructions) · [`agents/`](.github/agents) | **Copilot code-review reference set** — org baseline + per-stack rules + reviewer agent                                                                 | Copied into a repo (does **not** auto-propagate)           |
 
 > 🩺 **Community health files** (`CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, issue/PR
@@ -276,6 +278,56 @@ permissions:
 jobs:
   scan:
     uses: bymaxone/.github/.github/workflows/osv-scanner.yml@v1
+```
+
+### 🔄 `agents-sync` inputs (shared review rules)
+
+Keeps the **shared** half of a repository's `AGENTS.md` in step with the canonical copy
+in [`agents/code-review-rules.md`](agents/code-review-rules.md). Codex reads `AGENTS.md`
+from the file tree of the repository it reviews — there is no org-level inheritance and
+no remote include, so a shared rule has to exist as a real file in every repository. This
+is the difference between it drifting silently and being offered as a pull request.
+
+Only the content between the `<!-- shared:begin -->` and `<!-- shared:end -->` markers is
+rewritten. A repository's own rules live outside the block and are never read. A
+repository with no `AGENTS.md`, or one carrying no markers, is reported as a notice and
+skipped — adoption is opt-in.
+
+| Input           | Default             | Notes                                                                                                            |
+| --------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `agents-path`   | `AGENTS.md`         | the file whose shared block is synchronised                                                                      |
+| `canonical-ref` | `v1`                | ref of `bymaxone/.github` the block is taken from; pin it only to hold a repository back deliberately            |
+| `branch`        | `chore/agents-sync` | branch the synchronisation pull request is opened from, and reused while that pull request stays open            |
+| `fail-on-drift` | `false`             | also fail the job; off by default because the pull request is the signal and a red scheduled run is unactionable |
+
+| Secret       | Notes                                                                                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sync-token` | optional, and worth supplying: a pull request opened with the default `GITHUB_TOKEN` starts no workflow runs, so in a repository whose ruleset requires checks it cannot be merged until someone pushes to it |
+
+The caller must grant `contents: write` and `pull-requests: write` **on the calling job**:
+permissions on a reusable workflow can only narrow what the caller granted, so without
+them the default-token path fails at the push or at the pull-request creation.
+
+```yaml
+# .github/workflows/agents-sync.yml
+name: Agents Sync
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: bymaxone/.github/.github/workflows/agents-sync.yml@v1
+    # secrets:
+    #   sync-token: ${{ secrets.AGENTS_SYNC_TOKEN }}
 ```
 
 ### 🏷️ Versioning

@@ -61,6 +61,18 @@ jobs:
     steps:
       - name: Check out the consuming repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The synchronisation branch is cut from whatever is checked out here,
+          # so it has to be the default branch: a `workflow_dispatch` from another
+          # ref, or a same-repository pull request, would otherwise carry that
+          # ref's unrelated commits into a pull request opened against the
+          # default one.
+          ref: ${{ github.event.repository.default_branch }}
+          # The push below reuses the credential this step persists, not GH_TOKEN.
+          # Without this, a supplied token authorises only the `gh` calls while
+          # the push keeps GITHUB_TOKEN -- which a ruleset may exclude, and whose
+          # pushes do not start workflow runs on the pull request being updated.
+          token: ${{ secrets.sync-token || github.token }}
 
       - name: Check out the canonical rules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,6 +108,16 @@ jobs:
             exit 0
           fi
 
+          # `canonical-ref` may name a release that predates the rules file, and
+          # the splice below reads it with getline, which is silent when the file
+          # is missing: the shared block would be replaced by nothing and the
+          # deletion offered as a pull request. Checked here rather than earlier
+          # so a repository that opted out still exits quietly above.
+          if [ ! -s "$canonical" ]; then
+            echo "::error title=agents-sync::bymaxone/.github@$CANONICAL_REF carries no agents/code-review-rules.md; refusing to splice an empty block."
+            exit 1
+          fi
+
           # Rebuild the file as: everything before the marker, the canonical block,
           # everything after. awk rather than sed, because the block is multi-line
           # and contains characters sed would treat as syntax.
@@ -123,7 +145,14 @@ jobs:
           Taken from bymaxone/.github@${CANONICAL_REF}, agents/code-review-rules.md.
           Only the block between the shared markers is rewritten; this repository's
           own rules are outside it and untouched."
-          git push --force-with-lease origin "$BRANCH"
+          # The checkout fetched only the default branch, so `origin/$BRANCH` has
+          # no remote-tracking value and a bare --force-with-lease is rejected as
+          # `stale info` -- on exactly the path this reuses, an open sync pull
+          # request. Measure the remote value and lease against that instead. An
+          # empty expected value means the branch must not already exist, so a
+          # concurrent run still loses the race rather than overwriting it.
+          lease=$(git ls-remote --heads origin "refs/heads/$BRANCH" | cut -f1)
+          git push --force-with-lease="$BRANCH:$lease" origin "$BRANCH"
 
           # Reuse the open pull request when there is one, so a weekly schedule
           # does not accumulate a queue of identical pull requests.
