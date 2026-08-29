@@ -36,7 +36,7 @@ it is about.
 | A library's API **shape**           | `node_modules/<pkg>/dist/**/*.d.ts` in this tree                               |
 | A library's **runtime behaviour**   | that version's changelog entry, its documentation, or a test that exercises it |
 | Commit authorship, dates or history | `git log --format='%an <%ae> / %cn <%ce>' <sha>`                               |
-| What a file contains                | the file at the revision under review, not an earlier one                     |
+| What a file contains                | the file at the revision under review, not an earlier one                      |
 
 The first two rows are separate on purpose, and the rule below says why: a field can stay optional
 in the published type while becoming mandatory in behaviour. A `.d.ts` settles what a signature
