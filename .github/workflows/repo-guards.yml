@@ -90,49 +90,80 @@ jobs:
       - name: Check every action reference against the allow-list
         run: |
           set -euo pipefail
-          patterns=$(grep -vE '^\s*(#|$)' .github/actions-allowlist.txt)
-          refs=$(grep -rhoE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+\S+' \
-            .github/workflows/ .github/actions/ .github/workflow-templates/ \
-            | sed 's/.*uses:[[:space:]]*//' | sort -u)
-          status=0
-          while IFS= read -r ref; do
-            [ -n "$ref" ] || continue
-            case "$ref" in
-              actions/*|bymaxone/*) continue ;;               # github-owned / same-org
-              ./*) continue ;;                                 # local reusable
-              docker://*)
-                echo "::error title=actions-policy::$ref is a container reference. The allow-list gates it the same way it gates an action, and a rejection is a startup failure with no logs. Fetch the tool in a run: step instead."
-                status=1; continue ;;
-            esac
-            name=${ref%%@*}
-            owner=${ref%%/*}
-            if printf '%s\n' "$patterns" | grep -qxF -- "$name@*"; then continue; fi
-            # The policy also admits verified marketplace creators. That set is
-            # not readable from CI, so the mirrored file names the owners this
-            # organisation uses, each recorded there with the run that proves it.
-            if printf '%s\n' "$patterns" | grep -qxF -- "verified:$owner"; then continue; fi
-            echo "::error title=actions-policy::$ref is not covered by the organisation allow-list. Every consumer calling a workflow that references it fails at startup, with no jobs and no logs. Add $name@* to the org policy and to .github/actions-allowlist.txt, or avoid the reference."
-            status=1
-            continue
-          done <<EOF
-          $(printf '%s\n' "$refs")
-          EOF
+          python3 - <<'CHECK'
+          import pathlib, re, sys, yaml
 
-          # Being on the allow-list is not the same as being pinned. The pattern
-          # is `owner/repo@*`, so it admits a floating tag, while this
-          # repository's own rule pins third-party actions to a commit SHA --
-          # that is where the supply-chain risk lives, and the allow-list does
-          # nothing about it.
-          while IFS= read -r ref; do
-            [ -n "$ref" ] || continue
-            case "$ref" in actions/*|bymaxone/*|./*|docker://*) continue ;; esac
-            case "$ref" in
-              *@[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) continue ;;
-            esac
-            echo "::error title=actions-policy::$ref is a third-party action on a mutable tag. Pin it to the full commit SHA the tag resolves to today, with the version in a trailing comment. Pinning is not an upgrade."
-            status=1
-          done <<EOF
-          $(printf '%s\n' "$refs")
-          EOF
-          [ "$status" = "0" ] && echo "every uses: is covered"
-          exit "$status"
+          # The reference set is taken from the PARSED yaml, not from a grep.
+          # Four review rounds each found another spelling a pattern missed --
+          # flow-style steps, quoted scalars, spacing after `uses:`, spacing
+          # after the sequence hyphen. They are all the same defect: a regular
+          # expression approximating a YAML parser. The parser has no such gaps.
+          ROOTS = ("workflows", "actions", "workflow-templates")
+          SHA = re.compile(r"^[0-9a-f]{40}$")
+
+          def references(node):
+              """Every `uses:` value anywhere in a parsed document."""
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      if k == "uses" and isinstance(v, str):
+                          yield v
+                      else:
+                          yield from references(v)
+              elif isinstance(node, list):
+                  for v in node:
+                      yield from references(v)
+
+          allow, verified = set(), set()
+          for line in pathlib.Path(".github/actions-allowlist.txt").read_text().splitlines():
+              line = line.strip()
+              if not line or line.startswith("#"):
+                  continue
+              (verified if line.startswith("verified:") else allow).add(line)
+
+          status = 0
+          for root in ROOTS:
+              for path in sorted(pathlib.Path(".github", root).rglob("*")):
+                  if path.suffix not in (".yml", ".yaml"):
+                      continue
+                  doc = yaml.safe_load(path.read_text())
+                  for ref in references(doc):
+                      if ref.startswith("./") or ref.startswith("bymaxone/"):
+                          continue
+                      if ref.startswith("docker://"):
+                          print(f"::error title=actions-policy::{path}: {ref} is a container "
+                                "reference. The allow-list gates it the way it gates an action, "
+                                "and a rejection is a startup failure with no logs. Fetch the "
+                                "tool in a run: step instead.")
+                          status = 1
+                          continue
+
+                      name, _, rev = ref.partition("@")
+                      owner = name.split("/")[0]
+
+                      # Covered by policy: github-owned, an allow-list pattern,
+                      # or a verified creator the mirror records.
+                      covered = (owner == "actions"
+                                 or f"{name}@*" in allow
+                                 or f"verified:{owner}" in verified)
+                      if not covered:
+                          print(f"::error title=actions-policy::{path}: {ref} is not covered by "
+                                f"the organisation allow-list. Every consumer calling a workflow "
+                                f"that references it fails at startup, with no jobs and no logs. "
+                                f"Add {name}@* to the org policy and to "
+                                ".github/actions-allowlist.txt, or avoid the reference.")
+                          status = 1
+                          continue
+
+                      # Covered is not pinned. Applies to github-owned too: the
+                      # repository rule shows `actions/checkout@<sha>` as its own
+                      # example, and a floating ref is mutable whoever owns it.
+                      if not SHA.fullmatch(rev):
+                          print(f"::error title=actions-policy::{path}: {ref} is on a mutable "
+                                "ref. Pin it to the full 40-character commit SHA the ref "
+                                "resolves to today, with the version in a trailing comment. "
+                                "Pinning is not an upgrade.")
+                          status = 1
+
+          print("every action reference is covered and pinned" if status == 0 else "", end="")
+          sys.exit(status)
+          CHECK
