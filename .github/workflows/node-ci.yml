@@ -110,13 +110,12 @@ jobs:
   # deliberate throughout these workflows, and the finding is advice about shell
   # interpolation that does not apply to a program passed to another interpreter.
   #
-  # The actionlint reference is a TAG and not a digest, which is the one place in
-  # these workflows that departs from SHA-pinning. `docker://` is resolved when
-  # the workflow starts rather than when the step runs, and a digest there makes
-  # Actions reject the file outright: startup_failure, no jobs, no annotations,
-  # no logs, in every consuming repository at once. Measured -- it took every
-  # node-lib-ci consumer down. `docker://{image}:{tag}` is the form Actions
-  # accepts. Change it back to a digest and the alias move breaks the org again.
+  # actionlint is fetched in a `run:` step rather than referenced with `uses:`.
+  # This organisation restricts Actions to an allow-list, and a reference outside
+  # it -- a `docker://` image included, by digest or by tag -- makes Actions
+  # reject the whole file at startup: startup_failure, no jobs, no annotations,
+  # no logs, nothing to re-run. A downloaded release verified by checksum also
+  # pins the artefact itself, which is stronger than a tag or an allow-list entry.
   hygiene:
     name: Workflow and tree hygiene
     runs-on: ubuntu-latest
@@ -125,9 +124,17 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Lint the workflow files
-        uses: docker://rhysd/actionlint:1.7.12
-        with:
-          args: -color -shellcheck="shellcheck -e SC2016"
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          curl -fsSL -o actionlint.tar.gz "${base}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color -shellcheck="shellcheck -e SC2016"
+          rm -f actionlint actionlint.tar.gz
 
       # A directory exists when there is a real file to put in it. This was a
       # review rule until a check could decide it; a grep decides it, so it lives
