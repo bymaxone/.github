@@ -139,7 +139,14 @@ jobs:
           # did not.
           tools='claude|codex|copilot|chatgpt|anthropic|openai'
           identities="(^|[^a-zA-Z])($tools)([^a-zA-Z]|$)|@(anthropic|openai)\.com"
-          trailer="co-authored-by:.*($tools)"
+
+          # The body pattern matches ATTRIBUTION, not mention. A commit whose
+          # subject is "answer a Codex review comment" names a tool and claims
+          # nothing; "Generated with Claude Code" claims authorship. Matching the
+          # tool name anywhere in the body would reject the first, which is a
+          # legitimate message and the kind of false positive that gets a check
+          # switched off.
+          attribution="(co-authored-by:|generated (with|by)|authored by|created (with|by)|written by):?.*($tools)"
 
           # `grep` exits 1 for "no match" and 2 for a real error, and `|| true`
           # collapses both into success -- which would turn a broken check into a
@@ -155,7 +162,7 @@ jobs:
             esac
           }
           offenders=$(match "$identities" "$(git log "$range" --format='%H %an <%ae> / %cn <%ce>')")
-          trailers=$(match "$trailer" "$(git log "$range" --format='%H%n%B')")
+          trailers=$(match "$attribution" "$(git log "$range" --format='%H%n%B')")
 
           if [ -n "$offenders" ] || [ -n "$trailers" ]; then
             echo "::error title=authorship::a commit in this change attributes authorship to an AI tool. Amend the identity or drop the trailer; the organisation rule is that no commit, pull request or comment does this."
