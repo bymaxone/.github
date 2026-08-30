@@ -140,7 +140,11 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          git fetch --quiet --depth=50 origin "$BASE_REF"
+          # No --depth here. The checkout above is unshallow, and `git fetch
+          # --depth` RE-shallows a complete repository -- it would undo the
+          # fetch-depth: 0 two steps up and reintroduce the empty range this
+          # check is built to refuse.
+          git fetch --quiet origin "$BASE_REF"
           range="origin/${BASE_REF}..HEAD"
 
           # Identity fields come from the contributor's git configuration, and
@@ -150,8 +154,13 @@ jobs:
           # POSIX ERE rather than -P: perl regex is a GNU extension, so a -P
           # pattern cannot be exercised on a BSD grep before it ships here.
           # The word boundaries are spelled out so "Claudia" is not "Claude".
-          identities='(^|[^a-zA-Z])(codex|claude|copilot|chatgpt)([^a-zA-Z]|$)|@(anthropic|openai)\.com'
-          trailer='co-authored-by:.*(claude|codex|copilot|anthropic|openai)'
+          # One list, used by both patterns. They drifted apart when written
+          # separately: the trailer pattern omitted chatgpt, so a
+          # `Co-Authored-By: ChatGPT` passed while an author of the same name
+          # did not.
+          tools='claude|codex|copilot|chatgpt|anthropic|openai'
+          identities="(^|[^a-zA-Z])($tools)([^a-zA-Z]|$)|@(anthropic|openai)\.com"
+          trailer="co-authored-by:.*($tools)"
 
           # `grep` exits 1 for "no match" and 2 for a real error, and `|| true`
           # collapses both into success -- which would turn a broken check into a

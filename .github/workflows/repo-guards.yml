@@ -109,7 +109,7 @@ jobs:
             echo "::error title=actions-policy::$ref is not covered by the organisation allow-list. Every consumer calling a workflow that references it fails at startup, with no jobs and no logs. Add $name@* to the org policy and to .github/actions-allowlist.txt, or avoid the reference."
             status=1
           done <<EOF
-          $(grep -rhoE '^\s*(- )?uses: \S+' .github/workflows/ .github/actions/ | sed 's/.*uses: //' | sort -u)
+          $(grep -rhoE '^[[:space:]]*(- )?uses:[[:space:]]+\S+' .github/workflows/ .github/actions/ | sed 's/.*uses:[[:space:]]*//' | sort -u)
           EOF
           [ "$status" = "0" ] && echo "every uses: is covered"
           exit "$status"
