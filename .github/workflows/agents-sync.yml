@@ -232,3 +232,104 @@ jobs:
           if [ "$FAIL_ON_DRIFT" = "true" ]; then
             exit 1
           fi
+
+      # Runs after the splice, against the tree the pull request would carry, so
+      # the numbers describe what a consumer is being offered rather than what it
+      # had. Reports on every run and not only on breach: a canonical release that
+      # eats 3 KB is then visible as a delta here before it is visible as a
+      # failure in the repository with the least room.
+      - name: Report the AGENTS.md budget and refuse a nested template
+        if: ${{ !cancelled() }}
+        env:
+          AGENTS_PATH: ${{ inputs.agents-path }}
+        run: |
+          set -euo pipefail
+
+          # The cap is a Codex setting, so read the repository's own value where it
+          # has one. Failing a repository against a number it deliberately moved
+          # would be this guard committing the error it exists to catch.
+          cap=32768
+          if [ -f .codex/config.toml ]; then
+            configured=$(sed -n 's/^[[:space:]]*project_doc_max_bytes[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' .codex/config.toml | head -1)
+            [ -n "$configured" ] && cap="$configured"
+          fi
+
+          [ -f "$AGENTS_PATH" ] || exit 0
+
+          # core.quotePath escapes a non-ASCII path into a quoted C string, which
+          # matches nothing on disk: such a file would be silently absent from both
+          # the byte count and the template check below.
+          nested_docs=$(git -c core.quotePath=false ls-files \
+            | grep -E '.+/AGENTS(\.override)?\.md$' || true)
+
+          # What one directory contributes: Codex takes its AGENTS.override.md if it
+          # has one, otherwise its AGENTS.md, otherwise nothing.
+          dir_bytes() {
+            for candidate in "$1/AGENTS.override.md" "$1/AGENTS.md"; do
+              if [ -f "$candidate" ]; then
+                wc -c < "$candidate" | tr -d ' '
+                return
+              fi
+            done
+            echo 0
+          }
+
+          # Codex walks the root down to the directory being worked in, takes at
+          # most one file per directory, and stops once the combined size reaches
+          # the cap. So the figure to report is the worst single chain, not the sum
+          # of every doc in the tree: sibling package docs are never read together,
+          # and adding them fails a repository that is under the cap on every path
+          # Codex can actually take. Every directory is measured by the one rule
+          # above, the root included, so each file is counted exactly once whatever
+          # its name and wherever `agents-path` points.
+          root_bytes=$(dir_bytes .)
+          worst=$root_bytes
+          worst_chain="the repository root"
+          while IFS= read -r dir; do
+            [ -n "$dir" ] || continue
+            total=$root_bytes
+            prefix=""
+            IFS='/' read -ra segments <<< "$dir"
+            for segment in "${segments[@]}"; do
+              prefix="${prefix:+$prefix/}$segment"
+              total=$((total + $(dir_bytes "$prefix")))
+            done
+            if [ "$total" -gt "$worst" ]; then
+              worst=$total
+              worst_chain="the root down to $dir"
+            fi
+          done <<EOF
+          $(printf '%s\n' "$nested_docs" | sed 's#/[^/]*$##' | sort -u)
+          EOF
+
+          status=0
+
+          # The block this workflow keeps current lives in $AGENTS_PATH, and Codex
+          # prefers an override file in the same directory -- so an override beside
+          # it means the synced rules are never read at all. Reported rather than
+          # failed: a repository may have done it deliberately.
+          override="$(dirname "$AGENTS_PATH")/AGENTS.override.md"
+          if [ "$override" != "$AGENTS_PATH" ] && [ -f "$override" ]; then
+            echo "::warning title=agents-sync::$override shadows $AGENTS_PATH, so Codex reads the override and never the shared block this workflow keeps current. Merge the two, or move the block into $override."
+          fi
+
+          # A nested doc carrying `{{` is a template: a change under its directory
+          # would have Codex read a fictional project's specification as this
+          # repository's own guidance.
+          while IFS= read -r nested; do
+            [ -n "$nested" ] || continue
+            if grep -q '{{' "$nested"; then
+              echo "::error title=agents-sync::$nested is a template, but under that name Codex reads it as guidance for changes in $(dirname "$nested"). Rename it (for example AGENTS.starter.md)."
+              status=1
+            fi
+          done <<EOF
+          $nested_docs
+          EOF
+
+          free=$((cap - worst))
+          echo "AGENTS.md budget: $worst of $cap ($free free) on the longest chain Codex can read -- $worst_chain" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$free" -lt 0 ]; then
+            echo "::error title=agents-sync::the chain from $worst_chain is $worst bytes against a $cap cap. Codex stops adding files at the cap, so the tail is dropped with no error and no failed check. Remove or relocate content, and keep the shared block above the material that can be lost."
+            status=1
+          fi
+          exit "$status"
