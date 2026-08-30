@@ -336,11 +336,17 @@ jobs:
           # repository's own guidance.
           #
           # Code spans and fences are stripped first, because a document that
-          # *explains* the hazard quotes a placeholder to do it, and this repository
-          # writes `${{ ... }}` in every workflow example. This is a heuristic and
-          # not an exact test -- a starter that backticks its own placeholders slips
-          # through. That is the direction to be wrong in for a check that fails a
-          # build: a rare miss beats failing a narrowing for stating the rule.
+          # *explains* the hazard quotes a placeholder to do it, and this
+          # organisation writes GitHub expression syntax -- a dollar sign and two
+          # braces -- in every workflow example. This is a heuristic and not an
+          # exact test: a starter that backticks its own placeholders slips through.
+          # That is the direction to be wrong in for a check that fails a build, as
+          # a rare miss beats failing a narrowing for stating the rule.
+          #
+          # Note for whoever edits this comment: Actions interpolates an expression
+          # anywhere in this file, inside a run script and its comments included, so
+          # writing that syntax literally here makes the workflow file itself
+          # invalid -- no jobs, no logs, just a red run. Describe it, never quote it.
           while IFS= read -r nested; do
             [ -n "$nested" ] || continue
             if awk '/^[[:space:]]*```/ { fenced = !fenced; next } !fenced' "$nested" \
