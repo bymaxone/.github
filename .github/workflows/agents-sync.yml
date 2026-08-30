@@ -250,8 +250,23 @@ jobs:
           # would be this guard committing the error it exists to catch.
           cap=32768
           if [ -f .codex/config.toml ]; then
-            configured=$(sed -n 's/^[[:space:]]*project_doc_max_bytes[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' .codex/config.toml | head -1)
-            [ -n "$configured" ] && cap="$configured"
+            # A TOML integer may carry underscore separators, a leading sign and a
+            # 0x/0o/0b radix prefix. Matching only a run of digits reads 65_536 as
+            # 65, which is not a wrong cap so much as an invented one: it fails
+            # every run, hardest in the repository that deliberately raised it. So
+            # take the whole value and convert it, and where it cannot be converted
+            # keep the default and say so rather than compute from a fragment.
+            raw=$(sed -n 's/^[[:space:]]*project_doc_max_bytes[[:space:]]*=[[:space:]]*\([^#[:space:]]*\).*/\1/p' .codex/config.toml | head -1)
+            value=${raw//_/}
+            value=${value#+}
+            case "$value" in
+              '') ;;
+              0[xX]*) cap=$((value)) ;;
+              0[oO]*) cap=$((8#${value#0[oO]})) ;;
+              0[bB]*) cap=$((2#${value#0[bB]})) ;;
+              *[!0-9]*) echo "::warning title=agents-sync::could not read project_doc_max_bytes ($raw) from .codex/config.toml; using the $cap default." ;;
+              *) cap=$((value)) ;;
+            esac
           fi
 
           [ -f "$AGENTS_PATH" ] || exit 0
@@ -319,9 +334,17 @@ jobs:
           # A nested doc carrying `{{` is a template: a change under its directory
           # would have Codex read a fictional project's specification as this
           # repository's own guidance.
+          #
+          # Code spans and fences are stripped first, because a document that
+          # *explains* the hazard quotes a placeholder to do it, and this repository
+          # writes `${{ ... }}` in every workflow example. This is a heuristic and
+          # not an exact test -- a starter that backticks its own placeholders slips
+          # through. That is the direction to be wrong in for a check that fails a
+          # build: a rare miss beats failing a narrowing for stating the rule.
           while IFS= read -r nested; do
             [ -n "$nested" ] || continue
-            if grep -q '{{' "$nested"; then
+            if awk '/^[[:space:]]*```/ { fenced = !fenced; next } !fenced' "$nested" \
+              | sed 's/`[^`]*`//g' | grep -q '{{'; then
               echo "::error title=agents-sync::$nested is a template, but under that name Codex reads it as guidance for changes in $(dirname "$nested"). Rename it (for example AGENTS.starter.md)."
               status=1
             fi
