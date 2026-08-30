@@ -109,6 +109,14 @@ jobs:
   # SC2016 is excluded because a single-quoted `$` in an awk or sed program is
   # deliberate throughout these workflows, and the finding is advice about shell
   # interpolation that does not apply to a program passed to another interpreter.
+  #
+  # The actionlint reference is a TAG and not a digest, which is the one place in
+  # these workflows that departs from SHA-pinning. `docker://` is resolved when
+  # the workflow starts rather than when the step runs, and a digest there makes
+  # Actions reject the file outright: startup_failure, no jobs, no annotations,
+  # no logs, in every consuming repository at once. Measured -- it took every
+  # node-lib-ci consumer down. `docker://{image}:{tag}` is the form Actions
+  # accepts. Change it back to a digest and the alias move breaks the org again.
   hygiene:
     name: Workflow and tree hygiene
     runs-on: ubuntu-latest
@@ -117,7 +125,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Lint the workflow files
-        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+        uses: docker://rhysd/actionlint:1.7.12
         with:
           args: -color -shellcheck="shellcheck -e SC2016"
 
