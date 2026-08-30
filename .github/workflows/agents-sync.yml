@@ -39,6 +39,20 @@ on:
         type: boolean
         default: false
     secrets:
+      app-id:
+        description: >-
+          App ID of a GitHub App installed on the consuming repository with
+          contents: write and pull_requests: write. Preferred over sync-token:
+          the token is minted per run and expires within the hour, so there is
+          no long-lived credential to rotate and none to expire unnoticed.
+          Supply both this and app-private-key, or neither.
+        required: false
+      app-private-key:
+        description: >-
+          Private key of the app named by app-id. The two are read together;
+          supplying one alone is a misconfiguration and the job says so before
+          falling back.
+        required: false
       sync-token:
         description: >-
           Token used to push the branch and open the pull request. Optional, and
@@ -58,7 +72,34 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    # The `secrets` context is not available in a step's `if` -- an expression
+    # naming it there evaluates to empty, so the condition would read false on
+    # every run and the App would look uninstalled rather than misconfigured.
+    # Job-level env is where `secrets` may be read, so the decision is carried
+    # down as env instead. The key itself is deliberately NOT here: a job-level
+    # env is readable by every `run:` in the job, and presence is all the
+    # condition needs.
+    env:
+      APP_ID: ${{ secrets.app-id }}
+      HAS_APP_KEY: ${{ secrets.app-private-key != '' }}
     steps:
+      # Both or neither. One alone is silent otherwise -- the run falls back and
+      # looks like a repository that never configured an App at all.
+      - name: Refuse a half-configured App
+        if: ${{ (env.APP_ID != '') != (env.HAS_APP_KEY == 'true') }}
+        run: |
+          echo "::error title=agents-sync::app-id and app-private-key are supplied together or not at all; exactly one is set, so the App cannot be used and the run would silently fall back to sync-token."
+          exit 1
+
+      # Ahead of both checkouts: the first one consumes this token.
+      - name: Mint an installation token
+        id: app-token
+        if: ${{ env.APP_ID != '' && env.HAS_APP_KEY == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
       - name: Check out the consuming repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,7 +113,7 @@ jobs:
           # Without this, a supplied token authorises only the `gh` calls while
           # the push keeps GITHUB_TOKEN -- which a ruleset may exclude, and whose
           # pushes do not start workflow runs on the pull request being updated.
-          token: ${{ secrets.sync-token || github.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.sync-token || github.token }}
 
       - name: Check out the canonical rules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,7 +131,7 @@ jobs:
           CANONICAL_REF: ${{ inputs.canonical-ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
-          GH_TOKEN: ${{ secrets.sync-token || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.sync-token || github.token }}
         run: |
           set -euo pipefail
 
