@@ -73,9 +73,11 @@ jobs:
       # how `uses: docker://rhysd/actionlint` reached twenty repositories and
       # took every node-lib-ci consumer down at startup.
       #
-      # Composite actions are scanned as well as workflows: this repository's
-      # actions run inside the reusables, so a reference added there reaches
-      # every consumer the same way and is gated identically at startup.
+      # Composite actions and starter templates are scanned as well as
+      # workflows. The actions run inside the reusables, so a reference added
+      # there reaches every consumer the same way; the templates are copied into
+      # new repositories, so a bad reference there is seeded rather than shared.
+      # All three are gated identically at startup, so all three are scanned.
       #
       # This reads a mirrored copy of the list rather than the API, because the
       # endpoint serving it needs an org-admin scope GITHUB_TOKEN does not have.
@@ -109,7 +111,7 @@ jobs:
             echo "::error title=actions-policy::$ref is not covered by the organisation allow-list. Every consumer calling a workflow that references it fails at startup, with no jobs and no logs. Add $name@* to the org policy and to .github/actions-allowlist.txt, or avoid the reference."
             status=1
           done <<EOF
-          $(grep -rhoE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+\S+' .github/workflows/ .github/actions/ | sed 's/.*uses:[[:space:]]*//' | sort -u)
+          $(grep -rhoE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+\S+' .github/workflows/ .github/actions/ .github/workflow-templates/ | sed 's/.*uses:[[:space:]]*//' | sort -u)
           EOF
           [ "$status" = "0" ] && echo "every uses: is covered"
           exit "$status"
