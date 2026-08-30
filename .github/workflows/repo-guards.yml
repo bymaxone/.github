@@ -91,6 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           patterns=$(grep -vE '^\s*(#|$)' .github/actions-allowlist.txt)
+          refs=$(grep -rhoE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+\S+' \
+            .github/workflows/ .github/actions/ .github/workflow-templates/ \
+            | sed 's/.*uses:[[:space:]]*//' | sort -u)
           status=0
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue
@@ -110,8 +113,26 @@ jobs:
             if printf '%s\n' "$patterns" | grep -qxF -- "verified:$owner"; then continue; fi
             echo "::error title=actions-policy::$ref is not covered by the organisation allow-list. Every consumer calling a workflow that references it fails at startup, with no jobs and no logs. Add $name@* to the org policy and to .github/actions-allowlist.txt, or avoid the reference."
             status=1
+            continue
           done <<EOF
-          $(grep -rhoE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+\S+' .github/workflows/ .github/actions/ .github/workflow-templates/ | sed 's/.*uses:[[:space:]]*//' | sort -u)
+          $(printf '%s\n' "$refs")
+          EOF
+
+          # Being on the allow-list is not the same as being pinned. The pattern
+          # is `owner/repo@*`, so it admits a floating tag, while this
+          # repository's own rule pins third-party actions to a commit SHA --
+          # that is where the supply-chain risk lives, and the allow-list does
+          # nothing about it.
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            case "$ref" in actions/*|bymaxone/*|./*|docker://*) continue ;; esac
+            case "$ref" in
+              *@[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) continue ;;
+            esac
+            echo "::error title=actions-policy::$ref is a third-party action on a mutable tag. Pin it to the full commit SHA the tag resolves to today, with the version in a trailing comment. Pinning is not an upgrade."
+            status=1
+          done <<EOF
+          $(printf '%s\n' "$refs")
           EOF
           [ "$status" = "0" ] && echo "every uses: is covered"
           exit "$status"
