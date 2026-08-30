@@ -90,6 +90,14 @@ jobs:
       - name: Check every action reference against the allow-list
         run: |
           set -euo pipefail
+
+          # PyYAML is ambient on ubuntu-latest today -- this job has run green on
+          # it -- but that is the runner image's choice, not a contract. Install
+          # it only if the import fails, so the guard does not become the thing
+          # that breaks when the image changes.
+          python3 -c 'import yaml' 2>/dev/null \
+            || python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
           python3 - <<'CHECK'
           import pathlib, re, sys, yaml
 
