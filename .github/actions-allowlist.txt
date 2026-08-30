@@ -14,6 +14,12 @@
 #
 # github-owned (actions/*) and same-org (bymaxone/*) references are allowed by
 # policy without appearing here.
+#
+# Staleness is only safe in one direction. A pattern added to the policy but
+# missing here fails a reference that would work -- loud and harmless. A pattern
+# REMOVED from the policy but left here passes a reference consumers will reject
+# at startup, and this file cannot detect that on its own. Refresh it whenever
+# the organisation policy narrows.
 pnpm/action-setup@*
 actions-rust-lang/setup-rust-toolchain@*
 Swatinem/rust-cache@*

@@ -73,10 +73,18 @@ jobs:
       # how `uses: docker://rhysd/actionlint` reached twenty repositories and
       # took every node-lib-ci consumer down at startup.
       #
+      # Composite actions are scanned as well as workflows: this repository's
+      # actions run inside the reusables, so a reference added there reaches
+      # every consumer the same way and is gated identically at startup.
+      #
       # This reads a mirrored copy of the list rather than the API, because the
       # endpoint serving it needs an org-admin scope GITHUB_TOKEN does not have.
-      # A stale mirror can only produce a false failure here, never a false pass
-      # in a consumer, which is the safe direction for a copy.
+      # The copy is only safe in one direction, and it is worth being exact
+      # about which: a pattern ADDED to the policy but missing here fails a
+      # reference that would actually work, which is loud and harmless. A
+      # pattern REMOVED from the policy but still listed here passes a reference
+      # that consumers will reject at startup -- the mirror cannot detect its own
+      # staleness, so refresh it when the org policy narrows.
       - name: Check every action reference against the allow-list
         run: |
           set -euo pipefail
@@ -101,7 +109,7 @@ jobs:
             echo "::error title=actions-policy::$ref is not covered by the organisation allow-list. Every consumer calling a workflow that references it fails at startup, with no jobs and no logs. Add $name@* to the org policy and to .github/actions-allowlist.txt, or avoid the reference."
             status=1
           done <<EOF
-          $(grep -rhoE '^\s*(- )?uses: \S+' .github/workflows/ | sed 's/.*uses: //' | sort -u)
+          $(grep -rhoE '^\s*(- )?uses: \S+' .github/workflows/ .github/actions/ | sed 's/.*uses: //' | sort -u)
           EOF
           [ "$status" = "0" ] && echo "every uses: is covered"
           exit "$status"
