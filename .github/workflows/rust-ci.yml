@@ -82,6 +82,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # The authorship check walks the commits this change introduces. On a
+          # pull_request the checkout is the merge ref, and at the default depth
+          # of 1 its parents are absent -- the range would resolve to nothing and
+          # the check would report a pass over zero commits.
+          fetch-depth: 0
 
       - name: Lint the workflow files
         env:
@@ -148,7 +154,15 @@ jobs:
             [ -n "$trailers" ] && printf 'trailer:\n%s\n' "$trailers"
             exit 1
           fi
-          echo "no AI identity in $(git rev-list --count "$range") commit(s)"
+          # A pull request always introduces at least one commit. An empty range
+          # means the history is not traversable, not that the change is clean --
+          # reporting a pass there is the failure this check exists to prevent.
+          count=$(git rev-list --count "$range")
+          if [ "$count" -eq 0 ]; then
+            echo "::error title=authorship::the range $range resolved to no commits, so nothing was checked. This is a checkout-depth problem, not a clean result."
+            exit 1
+          fi
+          echo "no AI identity in $count commit(s)"
 
       # A directory exists when there is a real file to put in it. This was a
       # review rule until a check could decide it; a grep decides it, so it lives
