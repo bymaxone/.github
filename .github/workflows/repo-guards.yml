@@ -1,0 +1,107 @@
+# Guards the one file in this repository that is copied into every other one.
+#
+# `agents/code-review-rules.md` is spliced verbatim into each consumer's
+# AGENTS.md by `agents-sync`. A consumer whose CI formats markdown then checks a
+# file it did not write and cannot fix: the correction has to happen here, and a
+# local edit there is reverted on the next run. So a formatting defect authored
+# here is invisible to its author and red for everybody else, which is what makes
+# a check proportionate on this file and not on the rest of this repository's
+# markdown -- most of which prettier would also rewrite, and none of which
+# travels anywhere.
+#
+# This has happened before. The block was already reformatted once, in "store the
+# canonical block in the form a formatter keeps", and regressed on the next edit
+# that added a rule. A convention nobody can see at authoring time needs a gate
+# rather than a memory.
+name: repo-guards
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Canonical block is formatter-stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Pinned rather than floating, so a prettier release cannot turn every
+      # consumer red without a commit here first. Run with no configuration
+      # because consumers apply their own, and prettier's defaults are what a
+      # repository with no markdown overrides uses -- which is the case in the
+      # consumers checked when this was written.
+      - name: Check the block against prettier defaults
+        run: |
+          set -euo pipefail
+          if ! npx --yes prettier@3.6.2 --check agents/code-review-rules.md; then
+            echo "::error title=canonical-block::agents/code-review-rules.md is not formatter-stable. It is spliced verbatim into every consumer's AGENTS.md, so a consumer whose CI formats markdown goes red on a file it cannot fix. Run: npx prettier@3.6.2 --write agents/code-review-rules.md"
+            exit 1
+          fi
+
+      # The splice refuses anything other than one pair in order, and a block
+      # that lost a marker here would be offered to every consumer as a deletion.
+      - name: Check the shared markers
+        run: |
+          set -euo pipefail
+          begin=$(grep -c '^<!-- shared:begin -->' agents/code-review-rules.md || true)
+          end=$(grep -c '^<!-- shared:end -->' agents/code-review-rules.md || true)
+          if [ "$begin" != "1" ] || [ "$end" != "1" ]; then
+            echo "::error title=canonical-block::expected exactly one shared:begin and one shared:end (found $begin and $end)."
+            exit 1
+          fi
+          head -1 agents/code-review-rules.md | grep -q '^<!-- shared:begin -->'
+          tail -1 agents/code-review-rules.md | grep -q '^<!-- shared:end -->'
+
+  actions-policy:
+    name: Action references are inside the org allow-list
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # A `uses:` outside the organisation's allow-list is rejected when a
+      # workflow STARTS: the whole file is refused, with no jobs, no annotations
+      # and no logs. This repository publishes reusable workflows and consumes
+      # none of them, so nothing here ever executes what it ships -- the first
+      # run of a new reference is in a consumer, after a release. That is exactly
+      # how `uses: docker://rhysd/actionlint` reached twenty repositories and
+      # took every node-lib-ci consumer down at startup.
+      #
+      # This reads a mirrored copy of the list rather than the API, because the
+      # endpoint serving it needs an org-admin scope GITHUB_TOKEN does not have.
+      # A stale mirror can only produce a false failure here, never a false pass
+      # in a consumer, which is the safe direction for a copy.
+      - name: Check every action reference against the allow-list
+        run: |
+          set -euo pipefail
+          patterns=$(grep -vE '^\s*(#|$)' .github/actions-allowlist.txt)
+          status=0
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            case "$ref" in
+              actions/*|bymaxone/*) continue ;;               # github-owned / same-org
+              ./*) continue ;;                                 # local reusable
+              docker://*)
+                echo "::error title=actions-policy::$ref is a container reference. The allow-list gates it the same way it gates an action, and a rejection is a startup failure with no logs. Fetch the tool in a run: step instead."
+                status=1; continue ;;
+            esac
+            name=${ref%%@*}
+            owner=${ref%%/*}
+            if printf '%s\n' "$patterns" | grep -qxF -- "$name@*"; then continue; fi
+            # The policy also admits verified marketplace creators. That set is
+            # not readable from CI, so the mirrored file names the owners this
+            # organisation uses, each recorded there with the run that proves it.
+            if printf '%s\n' "$patterns" | grep -qxF -- "verified:$owner"; then continue; fi
+            echo "::error title=actions-policy::$ref is not covered by the organisation allow-list. Every consumer calling a workflow that references it fails at startup, with no jobs and no logs. Add $name@* to the org policy and to .github/actions-allowlist.txt, or avoid the reference."
+            status=1
+          done <<EOF
+          $(grep -rhoE '^\s*(- )?uses: \S+' .github/workflows/ | sed 's/.*uses: //' | sort -u)
+          EOF
+          [ "$status" = "0" ] && echo "every uses: is covered"
+          exit "$status"

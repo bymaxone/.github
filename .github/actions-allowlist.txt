@@ -1,0 +1,41 @@
+# Mirror of the organisation's Actions allow-list (Settings > Actions > Policies).
+#
+# It is a COPY, and the workflow that reads it says so: the API that serves the
+# real list needs an org-admin scope that GITHUB_TOKEN does not have, so CI
+# cannot read the authority directly. Refresh it with:
+#
+#   gh api orgs/bymaxone/actions/permissions/selected-actions --jq '.patterns_allowed[]'
+#
+# Why it exists: a `uses:` outside the allow-list is rejected when a workflow
+# STARTS, so the whole file is refused -- startup_failure, no jobs, no logs. This
+# repository publishes reusable workflows and consumes none of them, so the first
+# execution of anything it ships is in another repository, after a release. That
+# is how one such reference took every node-lib-ci consumer's CI down.
+#
+# github-owned (actions/*) and same-org (bymaxone/*) references are allowed by
+# policy without appearing here.
+pnpm/action-setup@*
+actions-rust-lang/setup-rust-toolchain@*
+Swatinem/rust-cache@*
+taiki-e/install-action@*
+ossf/scorecard-action@*
+dtolnay/rust-toolchain@*
+dorny/paths-filter@*
+stefanzweifel/git-auto-commit-action@*
+docker/build-push-action@*
+docker/login-action@*
+docker/metadata-action@*
+docker/setup-buildx-action@*
+trufflesecurity/trufflehog@*
+appleboy/ssh-action@*
+
+# --- owners covered by `verified_allowed: true` rather than by a pattern ---
+#
+# The policy also admits verified marketplace creators, and that set is not
+# enumerable through any endpoint CI can reach. These are the ones this
+# organisation actually references, each confirmed by a green run rather than by
+# assumption -- OSV-Scanner completes successfully in nest-queue and nest-auth,
+# and it uses two of them. Add an owner here only with the same evidence.
+verified:github
+verified:google
+verified:step-security
