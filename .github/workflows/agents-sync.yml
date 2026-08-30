@@ -263,7 +263,10 @@ jobs:
             | grep -E '.+/AGENTS(\.override)?\.md$' || true)
 
           # What one directory contributes: Codex takes its AGENTS.override.md if it
-          # has one, otherwise its AGENTS.md, otherwise nothing.
+          # has one, otherwise its AGENTS.md, otherwise nothing. A repository that
+          # sets `project_doc_fallback_filenames` adds a third name to that chain,
+          # which this does not measure -- unhandled deliberately, because no Bymax
+          # repository sets it and a branch nobody exercises is a branch that rots.
           dir_bytes() {
             for candidate in "$1/AGENTS.override.md" "$1/AGENTS.md"; do
               if [ -f "$candidate" ]; then
