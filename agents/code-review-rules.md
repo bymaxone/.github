@@ -33,7 +33,7 @@ on a pull request, so a rule whose violations land at P2 is a rule nobody sees.
 
 **When a rule moves from here into a check, it leaves here.** A red check is proportionate to a
 correctness failure that is invisible without it, and disproportionate to style enforced at an
-inconvenient moment. Never carry both: a rule stated here *and* enforced by CI spends a reviewer's
+inconvenient moment. Never carry both: a rule stated here _and_ enforced by CI spends a reviewer's
 attention on what a gate already reports.
 
 **A change to the enforcing configuration is the opposite case, and it is in scope.** Every gate runs
