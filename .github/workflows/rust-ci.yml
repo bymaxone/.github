@@ -56,6 +56,44 @@ permissions:
   contents: read
 
 jobs:
+  # Two checks that need no toolchain and belong to the tree rather than to the
+  # language, so they are identical in every reusable and run without `needs`.
+  #
+  # actionlint validates the workflows themselves. A workflow file carrying an
+  # invalid expression is rejected by Actions wholesale: no jobs start, no logs
+  # are produced, and the run reports only "This run likely failed because of a
+  # workflow file issue". A YAML parser does not see it, because the file is
+  # valid YAML -- the expression is what is malformed. That failure is invisible
+  # without a check, which is what makes a red check proportionate here.
+  #
+  # SC2016 is excluded because a single-quoted `$` in an awk or sed program is
+  # deliberate throughout these workflows, and the finding is advice about shell
+  # interpolation that does not apply to a program passed to another interpreter.
+  hygiene:
+    name: Workflow and tree hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Lint the workflow files
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+        with:
+          args: -color -shellcheck="shellcheck -e SC2016"
+
+      # A directory exists when there is a real file to put in it. This was a
+      # review rule until a check could decide it; a grep decides it, so it lives
+      # here and the shared block no longer carries the section.
+      - name: Refuse empty-directory placeholders
+        run: |
+          set -euo pipefail
+          found=$(git ls-files | grep -E '(^|/)\.(git)?keep$' || true)
+          if [ -n "$found" ]; then
+            echo "::error title=hygiene::placeholder files for empty directories do not belong in the tree; a directory exists when there is a real file to put in it."
+            printf '%s\n' "$found"
+            exit 1
+          fi
+
   fmt:
     name: format
     runs-on: ubuntu-latest

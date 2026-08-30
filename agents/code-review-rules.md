@@ -31,6 +31,11 @@ is a red check, not a comment. What follows is what CI cannot see.
 A violation of a rule in this block is reported at **P1** at minimum. Codex surfaces only P0 and P1
 on a pull request, so a rule whose violations land at P2 is a rule nobody sees.
 
+**When a rule moves from here into a check, it leaves here.** A red check is proportionate to a
+correctness failure that is invisible without it, and disproportionate to style enforced at an
+inconvenient moment. Never carry both: a rule stated here *and* enforced by CI spends a reviewer's
+attention on what a gate already reports.
+
 **A change to the enforcing configuration is the opposite case, and it is in scope.** Every gate runs
 the configuration from the branch under review — that branch's lint config, its coverage thresholds,
 its mutation thresholds. So a pull request that deletes a rule, lowers a threshold or widens an
@@ -145,15 +150,6 @@ positive on every dependency bump and every release note.
 
 **Safe path:** extract by responsibility rather than by line count — the limit is a symptom, and one
 file doing two jobs is the defect.
-
-### No placeholders for empty directories
-
-`.gitkeep`, `.keep` and pre-created empty directory skeletons do not belong in the tree. A directory
-exists when there is a real file to put in it. **Safe path:** document the intended structure in a
-plan or README, and let the first real file create the path.
-
-A grep decides this one — `git ls-files | grep -E '/\.(git)?keep$'` — so it belongs in the reusable
-CI, and this section is removed in the release that adds it there. Never carry both.
 
 ### Language and attribution
 

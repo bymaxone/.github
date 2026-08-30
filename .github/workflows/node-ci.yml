@@ -96,12 +96,50 @@ env:
   DATABASE_URL: ${{ inputs.database-url }}
 
 jobs:
+  # Two checks that need no toolchain and belong to the tree rather than to the
+  # language, so they are identical in every reusable and run without `needs`.
+  #
+  # actionlint validates the workflows themselves. A workflow file carrying an
+  # invalid expression is rejected by Actions wholesale: no jobs start, no logs
+  # are produced, and the run reports only "This run likely failed because of a
+  # workflow file issue". A YAML parser does not see it, because the file is
+  # valid YAML -- the expression is what is malformed. That failure is invisible
+  # without a check, which is what makes a red check proportionate here.
+  #
+  # SC2016 is excluded because a single-quoted `$` in an awk or sed program is
+  # deliberate throughout these workflows, and the finding is advice about shell
+  # interpolation that does not apply to a program passed to another interpreter.
+  hygiene:
+    name: Workflow and tree hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Lint the workflow files
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+        with:
+          args: -color -shellcheck="shellcheck -e SC2016"
+
+      # A directory exists when there is a real file to put in it. This was a
+      # review rule until a check could decide it; a grep decides it, so it lives
+      # here and the shared block no longer carries the section.
+      - name: Refuse empty-directory placeholders
+        run: |
+          set -euo pipefail
+          found=$(git ls-files | grep -E '(^|/)\.(git)?keep$' || true)
+          if [ -n "$found" ]; then
+            echo "::error title=hygiene::placeholder files for empty directories do not belong in the tree; a directory exists when there is a real file to put in it."
+            printf '%s\n' "$found"
+            exit 1
+          fi
+
   install:
     name: Install dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -114,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -128,7 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -143,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -158,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -171,7 +209,7 @@ jobs:
         run: ${{ inputs.unit-command }}
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-unit
           path: |
@@ -189,7 +227,7 @@ jobs:
     # its own services directly — no `services:` block required.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -204,7 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -222,7 +260,7 @@ jobs:
       NEXT_PUBLIC_API_URL: http://localhost:${{ inputs.api-port }}
       NEXT_PUBLIC_WS_URL: http://localhost:${{ inputs.api-port }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -259,7 +297,7 @@ jobs:
       PLAYWRIGHT_BASE_URL: http://localhost:${{ inputs.web-port }}
       PLAYWRIGHT_API_URL: http://localhost:${{ inputs.api-port }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -289,7 +327,7 @@ jobs:
           echo '----- WEB -----'; cat /tmp/web.log || true
       - name: Upload Playwright results on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-results
           path: apps/web/test-results/
@@ -310,7 +348,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           # Full history so the whole push range (before..sha) is available —
           # a multi-commit push must not miss source touched by an earlier commit.
@@ -341,7 +379,7 @@ jobs:
           post-install: ${{ inputs.post-install }}
       - name: Restore Stryker incremental cache
         if: steps.changes.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             apps/*/reports/stryker-incremental.json
@@ -354,7 +392,7 @@ jobs:
         run: pnpm mutation
       - name: Upload mutation reports
         if: always() && steps.changes.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mutation-reports
           path: |
@@ -371,13 +409,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download coverage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: coverage-unit
           path: coverage-artifacts
         continue-on-error: true
       - name: Publish combined coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-combined
           path: coverage-artifacts/
