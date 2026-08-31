@@ -1,0 +1,282 @@
+# Guards the one file in this repository that is copied into every other one.
+#
+# `agents/code-review-rules.md` is spliced verbatim into each consumer's
+# AGENTS.md by `agents-sync`. A consumer whose CI formats markdown then checks a
+# file it did not write and cannot fix: the correction has to happen here, and a
+# local edit there is reverted on the next run. So a formatting defect authored
+# here is invisible to its author and red for everybody else, which is what makes
+# a check proportionate on this file and not on the rest of this repository's
+# markdown -- most of which prettier would also rewrite, and none of which
+# travels anywhere.
+#
+# This has happened before. The block was already reformatted once, in "store the
+# canonical block in the form a formatter keeps", and regressed on the next edit
+# that added a rule. A convention nobody can see at authoring time needs a gate
+# rather than a memory.
+name: repo-guards
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Canonical block is formatter-stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Pinned rather than floating, so a prettier release cannot turn every
+      # consumer red without a commit here first. Run with no configuration
+      # because consumers apply their own, and prettier's defaults are what a
+      # repository with no markdown overrides uses -- which is the case in the
+      # consumers checked when this was written.
+      - name: Check the block against prettier defaults
+        run: |
+          set -euo pipefail
+          if ! npx --yes prettier@3.6.2 --check agents/code-review-rules.md; then
+            echo "::error title=canonical-block::agents/code-review-rules.md is not formatter-stable. It is spliced verbatim into every consumer's AGENTS.md, so a consumer whose CI formats markdown goes red on a file it cannot fix. Run: npx prettier@3.6.2 --write agents/code-review-rules.md"
+            exit 1
+          fi
+
+      # The splice refuses anything other than one pair in order, and a block
+      # that lost a marker here would be offered to every consumer as a deletion.
+      - name: Check the shared markers
+        run: |
+          set -euo pipefail
+          begin=$(grep -c '^<!-- shared:begin -->' agents/code-review-rules.md || true)
+          end=$(grep -c '^<!-- shared:end -->' agents/code-review-rules.md || true)
+          if [ "$begin" != "1" ] || [ "$end" != "1" ]; then
+            echo "::error title=canonical-block::expected exactly one shared:begin and one shared:end (found $begin and $end)."
+            exit 1
+          fi
+          head -1 agents/code-review-rules.md | grep -q '^<!-- shared:begin -->'
+          tail -1 agents/code-review-rules.md | grep -q '^<!-- shared:end -->'
+
+  actions-policy:
+    name: Action references are inside the org allow-list
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # A `uses:` outside the organisation's allow-list is rejected when a
+      # workflow STARTS: the whole file is refused, with no jobs, no annotations
+      # and no logs. This repository publishes reusable workflows and consumes
+      # none of them, so nothing here ever executes what it ships -- the first
+      # run of a new reference is in a consumer, after a release. That is exactly
+      # how `uses: docker://rhysd/actionlint` reached twenty repositories and
+      # took every node-lib-ci consumer down at startup.
+      #
+      # Composite actions and starter templates are scanned as well as
+      # workflows. The actions run inside the reusables, so a reference added
+      # there reaches every consumer the same way; the templates are copied into
+      # new repositories, so a bad reference there is seeded rather than shared.
+      # All three are gated identically at startup, so all three are scanned.
+      #
+      # This reads a mirrored copy of the list rather than the API, because the
+      # endpoint serving it needs an org-admin scope GITHUB_TOKEN does not have.
+      # The copy is only safe in one direction, and it is worth being exact
+      # about which: a pattern ADDED to the policy but missing here fails a
+      # reference that would actually work, which is loud and harmless. A
+      # pattern REMOVED from the policy but still listed here passes a reference
+      # that consumers will reject at startup -- the mirror cannot detect its own
+      # staleness, so refresh it when the org policy narrows.
+      - name: Check every action reference against the allow-list
+        run: |
+          set -euo pipefail
+
+          # PyYAML is ambient on ubuntu-latest today -- this job has run green on
+          # it -- but that is the runner image's choice, not a contract. Install
+          # it only if the import fails, so the guard does not become the thing
+          # that breaks when the image changes.
+          python3 -c 'import yaml' 2>/dev/null \
+            || python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+          python3 - <<'CHECK'
+          import pathlib, re, sys, yaml
+
+          # The reference set is taken from the PARSED yaml, not from a grep.
+          # Four review rounds each found another spelling a pattern missed --
+          # flow-style steps, quoted scalars, spacing after `uses:`, spacing
+          # after the sequence hyphen. They are all the same defect: a regular
+          # expression approximating a YAML parser. The parser has no such gaps.
+          ROOTS = ("workflows", "actions", "workflow-templates")
+          SHA = re.compile(r"^[0-9a-f]{40}$")
+
+          def references(node):
+              """Every `uses:` value anywhere in a parsed document."""
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      if k == "uses" and isinstance(v, str):
+                          yield v
+                      else:
+                          yield from references(v)
+              elif isinstance(node, list):
+                  for v in node:
+                      yield from references(v)
+
+          allow, verified = set(), set()
+          for line in pathlib.Path(".github/actions-allowlist.txt").read_text().splitlines():
+              line = line.strip()
+              if not line or line.startswith("#"):
+                  continue
+              (verified if line.startswith("verified:") else allow).add(line)
+
+          status = 0
+          for root in ROOTS:
+              for path in sorted(pathlib.Path(".github", root).rglob("*")):
+                  if path.suffix not in (".yml", ".yaml"):
+                      continue
+                  doc = yaml.safe_load(path.read_text())
+                  for ref in references(doc):
+                      if ref.startswith("./") or ref.startswith("bymaxone/"):
+                          continue
+                      if ref.startswith("docker://"):
+                          print(f"::error title=actions-policy::{path}: {ref} is a container "
+                                "reference. The allow-list gates it the way it gates an action, "
+                                "and a rejection is a startup failure with no logs. Fetch the "
+                                "tool in a run: step instead.")
+                          status = 1
+                          continue
+
+                      name, _, rev = ref.partition("@")
+                      owner = name.split("/")[0]
+
+                      # Covered by policy: github-owned, an allow-list pattern,
+                      # or a verified creator the mirror records.
+                      covered = (owner == "actions"
+                                 or f"{name}@*" in allow
+                                 or f"verified:{owner}" in verified)
+                      if not covered:
+                          print(f"::error title=actions-policy::{path}: {ref} is not covered by "
+                                f"the organisation allow-list. Every consumer calling a workflow "
+                                f"that references it fails at startup, with no jobs and no logs. "
+                                f"Add {name}@* to the org policy and to "
+                                ".github/actions-allowlist.txt, or avoid the reference.")
+                          status = 1
+                          continue
+
+                      # Covered is not pinned. Applies to github-owned too: the
+                      # repository rule shows `actions/checkout@<sha>` as its own
+                      # example, and a floating ref is mutable whoever owns it.
+                      if not SHA.fullmatch(rev):
+                          print(f"::error title=actions-policy::{path}: {ref} is on a mutable "
+                                "ref. Pin it to the full 40-character commit SHA the ref "
+                                "resolves to today, with the version in a trailing comment. "
+                                "Pinning is not an upgrade.")
+                          status = 1
+
+                  # A SHA alone is unreadable, so the repository rule pairs it
+                  # with the version in a trailing comment. The parser cannot see
+                  # that -- comments are discarded by definition -- so this one
+                  # property is checked against the source line. Discovery still
+                  # comes from the parser; only the annotation is textual,
+                  # because only the annotation is.
+                  for number, line in enumerate(path.read_text().splitlines(), 1):
+                      if not re.search(r"@[0-9a-f]{40}\b", line) or "uses:" not in line:
+                          continue
+                      comment = line.split("#", 1)[1].strip() if "#" in line.split("uses:", 1)[1] else ""
+                      # A comment is required, and it has to be the version. `# TODO`
+                      # satisfies "has a comment" and defeats the point, which is that
+                      # a reader can tell what the SHA is without resolving it.
+                      if not re.fullmatch(r"v?\d+(\.\d+)*[\w.\-+]*", comment):
+                          print(f"::error title=actions-policy::{path}:{number}: a pinned "
+                                f"reference needs the version in a trailing comment"
+                                f"{f', and {comment!r} is not one' if comment else ''}. "
+                                "A bare SHA is unreadable and unauditable; write it as "
+                                "`owner/action@<sha> # vX.Y.Z`.")
+                          status = 1
+
+          print("every action reference is covered and pinned" if status == 0 else "", end="")
+          sys.exit(status)
+          CHECK
+
+  authorship:
+    name: No AI identity in the commits this change introduces
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # The check walks the commits this change introduces. On a
+          # pull_request the checkout is the merge ref, and at the default depth
+          # of 1 its parents are absent -- the range would resolve to nothing
+          # and the check would report a pass over zero commits.
+          fetch-depth: 0
+
+      - name: No AI identity in the commits this change introduces
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # No --depth here. The checkout above is unshallow, and `git fetch
+          # --depth` RE-shallows a complete repository -- it would undo the
+          # fetch-depth: 0 two steps up and reintroduce the empty range this
+          # check is built to refuse.
+          git fetch --quiet origin "$BASE_REF"
+          range="origin/${BASE_REF}..HEAD"
+
+          # Identity fields come from the contributor's git configuration, and
+          # the trailer comes from the commit body; both are checked, because a
+          # change introduces either one the same way.
+          #
+          # POSIX ERE rather than -P: perl regex is a GNU extension, so a -P
+          # pattern cannot be exercised on a BSD grep before it ships here.
+          # The word boundaries are spelled out so "Claudia" is not "Claude".
+          # One list, used by both patterns. They drifted apart when written
+          # separately: the trailer pattern omitted chatgpt, so a
+          # `Co-Authored-By: ChatGPT` passed while an author of the same name
+          # did not.
+          tools='claude|codex|copilot|chatgpt|anthropic|openai'
+          identities="(^|[^a-zA-Z])($tools)([^a-zA-Z]|$)|@(anthropic|openai)\.com"
+
+          # Attribution is a LINE, not a substring. A trailer occupies its own
+          # line in `Key: Value` form and a "generated with" line opens one;
+          # prose that quotes either does not. The pattern is anchored for that
+          # reason, and the reason is not theoretical -- an unanchored version
+          # failed this very pull request, because commit messages explaining
+          # the rule quote the phrases the rule forbids.
+          #
+          # It is the third time on this branch that documenting a rule tripped
+          # it: `{{` in a document about `{{`, an Actions expression in a comment
+          # about Actions expressions, and now this.
+          attribution="^[[:space:]]*(co-authored-by:|generated (with|by)|authored by|created (with|by)|written by)[[:space:]:].*($tools)"
+
+          # `grep` exits 1 for "no match" and 2 for a real error, and `|| true`
+          # collapses both into success -- which would turn a broken check into a
+          # silent pass. Each status is handled on its own.
+          match() {
+            local out rc
+            out=$(printf '%s\n' "$2" | grep -iE "$1") && rc=0 || rc=$?
+            case "$rc" in
+              0) printf '%s' "$out" ;;
+              1) ;;
+              *) echo "::error title=authorship::grep failed with status $rc; refusing to report a pass." >&2
+                 exit 3 ;;
+            esac
+          }
+          offenders=$(match "$identities" "$(git log "$range" --format='%H %an <%ae> / %cn <%ce>')")
+          trailers=$(match "$attribution" "$(git log "$range" --format='%H%n%B')")
+
+          if [ -n "$offenders" ] || [ -n "$trailers" ]; then
+            echo "::error title=authorship::a commit in this change attributes authorship to an AI tool. Amend the identity or drop the trailer; the organisation rule is that no commit, pull request or comment does this."
+            [ -n "$offenders" ] && printf 'author/committer:\n%s\n' "$offenders"
+            [ -n "$trailers" ] && printf 'trailer:\n%s\n' "$trailers"
+            exit 1
+          fi
+          # A pull request always introduces at least one commit. An empty range
+          # means the history is not traversable, not that the change is clean --
+          # reporting a pass there is the failure this check exists to prevent.
+          count=$(git rev-list --count "$range")
+          if [ "$count" -eq 0 ]; then
+            echo "::error title=authorship::the range $range resolved to no commits, so nothing was checked. This is a checkout-depth problem, not a clean result."
+            exit 1
+          fi
+          echo "no AI identity in $count commit(s)"

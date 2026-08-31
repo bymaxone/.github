@@ -82,6 +82,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # The authorship check walks the commits this change introduces. On a
+          # pull_request the checkout is the merge ref, and at the default depth
+          # of 1 its parents are absent -- the range would resolve to nothing and
+          # the check would report a pass over zero commits.
+          fetch-depth: 0
 
       - name: Lint the workflow files
         env:
@@ -95,6 +101,88 @@ jobs:
           tar -xzf actionlint.tar.gz actionlint
           ./actionlint -color -shellcheck="shellcheck -e SC2016"
           rm -f actionlint actionlint.tar.gz
+
+      # Authorship is mechanically decidable, so it is checked rather than
+      # reviewed. The shared block asks a reviewer to read the field before
+      # reporting it; that guard works, but it is spent on findings that are
+      # usually wrong -- seven fabricated commit SHAs across three repositories
+      # in one day, each quoting a `git log` that was never run. A check settles
+      # every one of those before a person reads it, and unlike prose it also
+      # catches a real violation.
+      #
+      # Scoped to the commits a pull request introduces, never to history: an
+      # old commit is not something this author can act on, and asking for
+      # history to be rewritten is the expensive mistake the block warns about.
+      - name: No AI identity in the commits this change introduces
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # No --depth here. The checkout above is unshallow, and `git fetch
+          # --depth` RE-shallows a complete repository -- it would undo the
+          # fetch-depth: 0 two steps up and reintroduce the empty range this
+          # check is built to refuse.
+          git fetch --quiet origin "$BASE_REF"
+          range="origin/${BASE_REF}..HEAD"
+
+          # Identity fields come from the contributor's git configuration, and
+          # the trailer comes from the commit body; both are checked, because a
+          # change introduces either one the same way.
+          #
+          # POSIX ERE rather than -P: perl regex is a GNU extension, so a -P
+          # pattern cannot be exercised on a BSD grep before it ships here.
+          # The word boundaries are spelled out so "Claudia" is not "Claude".
+          # One list, used by both patterns. They drifted apart when written
+          # separately: the trailer pattern omitted chatgpt, so a
+          # `Co-Authored-By: ChatGPT` passed while an author of the same name
+          # did not.
+          tools='claude|codex|copilot|chatgpt|anthropic|openai'
+          identities="(^|[^a-zA-Z])($tools)([^a-zA-Z]|$)|@(anthropic|openai)\.com"
+
+          # Attribution is a LINE, not a substring. A trailer occupies its own
+          # line in `Key: Value` form and a "generated with" line opens one;
+          # prose that quotes either does not. The pattern is anchored for that
+          # reason, and the reason is not theoretical -- an unanchored version
+          # failed this very pull request, because commit messages explaining
+          # the rule quote the phrases the rule forbids.
+          #
+          # It is the third time on this branch that documenting a rule tripped
+          # it: `{{` in a document about `{{`, an Actions expression in a comment
+          # about Actions expressions, and now this.
+          attribution="^[[:space:]]*(co-authored-by:|generated (with|by)|authored by|created (with|by)|written by)[[:space:]:].*($tools)"
+
+          # `grep` exits 1 for "no match" and 2 for a real error, and `|| true`
+          # collapses both into success -- which would turn a broken check into a
+          # silent pass. Each status is handled on its own.
+          match() {
+            local out rc
+            out=$(printf '%s\n' "$2" | grep -iE "$1") && rc=0 || rc=$?
+            case "$rc" in
+              0) printf '%s' "$out" ;;
+              1) ;;
+              *) echo "::error title=authorship::grep failed with status $rc; refusing to report a pass." >&2
+                 exit 3 ;;
+            esac
+          }
+          offenders=$(match "$identities" "$(git log "$range" --format='%H %an <%ae> / %cn <%ce>')")
+          trailers=$(match "$attribution" "$(git log "$range" --format='%H%n%B')")
+
+          if [ -n "$offenders" ] || [ -n "$trailers" ]; then
+            echo "::error title=authorship::a commit in this change attributes authorship to an AI tool. Amend the identity or drop the trailer; the organisation rule is that no commit, pull request or comment does this."
+            [ -n "$offenders" ] && printf 'author/committer:\n%s\n' "$offenders"
+            [ -n "$trailers" ] && printf 'trailer:\n%s\n' "$trailers"
+            exit 1
+          fi
+          # A pull request always introduces at least one commit. An empty range
+          # means the history is not traversable, not that the change is clean --
+          # reporting a pass there is the failure this check exists to prevent.
+          count=$(git rev-list --count "$range")
+          if [ "$count" -eq 0 ]; then
+            echo "::error title=authorship::the range $range resolved to no commits, so nothing was checked. This is a checkout-depth problem, not a clean result."
+            exit 1
+          fi
+          echo "no AI identity in $count commit(s)"
 
       # A directory exists when there is a real file to put in it. This was a
       # review rule until a check could decide it; a grep decides it, so it lives
