@@ -172,21 +172,26 @@ jobs:
                                 "Pinning is not an upgrade.")
                           status = 1
 
-              # A SHA alone is unreadable, so the repository rule pairs it with
-              # the version in a trailing comment. The parser cannot see that --
-              # comments are discarded by definition -- so this one property is
-              # checked against the source line. Discovery still comes from the
-              # parser; only the annotation is textual, because only the
-              # annotation is.
-              for number, line in enumerate(path.read_text().splitlines(), 1):
-                  if "uses:" not in line or "#" in line.split("uses:", 1)[1]:
-                      continue
-                  if not re.search(r"@[0-9a-f]{40}\b", line):
-                      continue
-                  print(f"::error title=actions-policy::{path}:{number}: a pinned reference "
-                        "carries no version comment. A bare SHA is unreadable and unauditable; "
-                        "write it as `owner/action@<sha> # vX.Y.Z`.")
-                  status = 1
+                  # A SHA alone is unreadable, so the repository rule pairs it
+                  # with the version in a trailing comment. The parser cannot see
+                  # that -- comments are discarded by definition -- so this one
+                  # property is checked against the source line. Discovery still
+                  # comes from the parser; only the annotation is textual,
+                  # because only the annotation is.
+                  for number, line in enumerate(path.read_text().splitlines(), 1):
+                      if not re.search(r"@[0-9a-f]{40}\b", line) or "uses:" not in line:
+                          continue
+                      comment = line.split("#", 1)[1].strip() if "#" in line.split("uses:", 1)[1] else ""
+                      # A comment is required, and it has to be the version. `# TODO`
+                      # satisfies "has a comment" and defeats the point, which is that
+                      # a reader can tell what the SHA is without resolving it.
+                      if not re.fullmatch(r"v?\d+(\.\d+)*[\w.\-+]*", comment):
+                          print(f"::error title=actions-policy::{path}:{number}: a pinned "
+                                f"reference needs the version in a trailing comment"
+                                f"{f', and {comment!r} is not one' if comment else ''}. "
+                                "A bare SHA is unreadable and unauditable; write it as "
+                                "`owner/action@<sha> # vX.Y.Z`.")
+                          status = 1
 
           print("every action reference is covered and pinned" if status == 0 else "", end="")
           sys.exit(status)
