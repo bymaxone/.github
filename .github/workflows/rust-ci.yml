@@ -102,13 +102,13 @@ jobs:
           ./actionlint -color -shellcheck="shellcheck -e SC2016"
           rm -f actionlint actionlint.tar.gz
 
-      # Authorship is mechanically decidable, so it is checked rather than
-      # reviewed. The shared block asks a reviewer to read the field before
-      # reporting it; that guard works, but it is spent on findings that are
-      # usually wrong -- seven fabricated commit SHAs across three repositories
-      # in one day, each quoting a `git log` that was never run. A check settles
-      # every one of those before a person reads it, and unlike prose it also
-      # catches a real violation.
+      # Authorship is mechanically decidable, so it is checked here rather than
+      # left to a review. A reviewer reading a diff cannot see the author and
+      # committer fields at all, so asking one to report on them yields
+      # invention rather than evidence. A check settles the question before a
+      # person reads the pull request, and unlike prose it also catches a real
+      # violation. The tool list below is finite -- it catches the names it
+      # knows, not an arbitrary one.
       #
       # Scoped to the commits a pull request introduces, never to history: an
       # old commit is not something this author can act on, and asking for
