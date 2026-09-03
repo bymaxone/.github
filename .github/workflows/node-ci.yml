@@ -176,8 +176,17 @@ jobs:
           # One list, used by both patterns. They drifted apart when written
           # separately: the trailer pattern omitted chatgpt, so a
           # `Co-Authored-By: ChatGPT` passed while an author of the same name
-          # did not.
-          tools='claude|codex|copilot|chatgpt|anthropic|openai'
+          # did not. Keep it one list for that reason, not two.
+          #
+          # A name belongs here when a bare-word match for it is acceptable,
+          # because that is what this is: a contributor whose own name collides
+          # is blocked and has to amend. That cost is already carried for
+          # `claude`, and `devin` is added knowing it -- an agent of that name
+          # commits code directly, which is the case this check exists for.
+          # `cody` and `jules` are left out on the same reasoning read the other
+          # way: common given names first, tools second, and a check that blocks
+          # people by their own name is a check somebody switches off.
+          tools='claude|codex|copilot|chatgpt|anthropic|openai|gemini|cursor|windsurf|codeium|tabnine|devin|aider'
           identities="(^|[^a-zA-Z])($tools)([^a-zA-Z]|$)|@(anthropic|openai)\.com"
 
           # Attribution is a LINE, not a substring. A trailer occupies its own
