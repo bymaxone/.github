@@ -128,11 +128,13 @@ A comment must read as true for whoever opens the file next. Flag any comment th
 previous version did, names a phase, task, ticket or review round, or explains a change rather than
 the code. **Safe path:** state the constraint that still holds, and let `git log` carry the history.
 
-Evidence for a constraint is not history. A measurement that establishes **why** a rule holds — what
-the alternative did when it was tried, what the cost is in numbers — reads as true for whoever opens
-the file next and belongs beside the constraint it supports. What ages is the narration around it:
-what a previous version of this code did, a version number, a registry state, an incident, a review
-round. Flag those; keep the measurement.
+Evidence for a constraint is not history, and how the evidence was obtained does not decide which it
+is. The test is whether the fact still binds the next reader. A measurement that predicts what they
+will hit if they take the other path — what the alternative did when it was tried, what the cost is
+in numbers — belongs beside the constraint it supports, whether it came from a deliberate trial or
+from something breaking. What ages is the part that cannot recur for them: what a previous version
+of this code did, a version number, a registry state, a review round, a failure that has since been
+fixed. Flag those; keep the measurement.
 
 ### Size and layering
 
