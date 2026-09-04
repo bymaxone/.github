@@ -106,9 +106,30 @@ jobs:
 
           # The alias is what consumers actually run. Read it back rather than
           # trusting the write, so a silent failure cannot look like a release.
-          landed=$(gh api "repos/$REPO/git/ref/tags/$major" --jq .object.sha)
+          #
+          # The read is retried because the refs API is eventually consistent: a
+          # read issued immediately after the write can be served the previous
+          # value. Measured on v1.6.0 -- the PATCH reported success, the read
+          # 0.4s later returned the old SHA, and the release was marked failed
+          # while the alias was in fact correct. A guard that turns a good
+          # release red teaches everyone to ignore it, which costs more than the
+          # silent failure it was built to catch.
+          landed=""
+          for attempt in 1 2 3 4 5; do
+            landed=$(gh api "repos/$REPO/git/ref/tags/$major" --jq .object.sha)
+            if [ "$landed" = "$SHA" ]; then
+              break
+            fi
+            # Only between attempts, never after the last one. Written as an if
+            # rather than `[ ] && sleep`, whose exit status is the test's when
+            # the test fails -- harmless here, and the kind of thing that stops
+            # being harmless when a line is added after it.
+            if [ "$attempt" -lt 5 ]; then
+              sleep "$attempt"
+            fi
+          done
           if [ "$landed" != "$SHA" ]; then
-            echo "::error::$major is at $landed, expected $SHA."
+            echo "::error::$major is at $landed, expected $SHA after 5 attempts."
             exit 1
           fi
 
