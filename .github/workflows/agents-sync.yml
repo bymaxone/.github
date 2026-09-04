@@ -82,6 +82,7 @@ jobs:
     env:
       APP_ID: ${{ secrets.app-id }}
       HAS_APP_KEY: ${{ secrets.app-private-key != '' }}
+      HAS_SYNC_TOKEN: ${{ secrets.sync-token != '' }}
     steps:
       # Both or neither. One alone is silent otherwise -- the run falls back and
       # looks like a repository that never configured an App at all.
@@ -129,6 +130,7 @@ jobs:
           AGENTS_PATH: ${{ inputs.agents-path }}
           BRANCH: ${{ inputs.branch }}
           CANONICAL_REF: ${{ inputs.canonical-ref }}
+          HAS_APP_TOKEN: ${{ steps.app-token.outputs.token != '' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.sync-token || github.token }}
@@ -204,6 +206,28 @@ jobs:
           echo "::warning title=agents-sync::the shared review-rules block is out of date"
           git diff --stat -- "$AGENTS_PATH"
 
+          # Warned where a credential is actually used, not merely where drift
+          # exists. A rerun whose branch already carries the tree and whose pull
+          # request is still open writes nothing and must not be told it is
+          # about to fall back -- that is the steady state of every repository
+          # with a sync pull request awaiting merge.
+          #
+          # `sync-token` is optional and `github.token` is a documented
+          # fallback, so this warns rather than refuses: a repository requiring
+          # no status checks runs credential-free and merges the result by hand.
+          # What cost the time was that the failure never named its cause. An
+          # unmapped secret and one mapped to a secret that no longer exists
+          # both arrive here empty, so the callee is the only place that can.
+          warned_no_credential=''
+          warn_no_credential() {
+            if [ -z "$warned_no_credential" ] \
+              && [ "$HAS_APP_TOKEN" != 'true' ] \
+              && [ "$HAS_SYNC_TOKEN" != 'true' ]; then
+              echo "::warning title=agents-sync::no usable credential, so this write falls back to github.token. Where an organisation forbids Actions to create pull requests the run fails next, reporting a permission rather than the credential behind it; where it allows them, the pull request starts no workflow runs and cannot satisfy a ruleset that requires them. Pass app-id with app-private-key, or sync-token."
+              warned_no_credential=1
+            fi
+          }
+
           subject="chore(agents): sync the shared review-rules block"
 
           # One read of the remote branch answers three questions: whether it
@@ -245,6 +269,7 @@ jobs:
           else
             # An empty expected value means the branch must not already exist, so
             # a concurrent run still loses the race rather than overwriting it.
+            warn_no_credential
             git push --force-with-lease="$BRANCH:$remote_sha" origin "$BRANCH"
           fi
 
@@ -256,6 +281,7 @@ jobs:
           # later schedule while nothing was open to act on. Reusing an open one
           # keeps a schedule from queueing duplicates.
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')" ]; then
+            warn_no_credential
             gh pr create \
               --head "$BRANCH" \
               --title "$subject" \
