@@ -280,20 +280,52 @@ jobs:
           # matches -- so keying this off the push would report success on every
           # later schedule while nothing was open to act on. Reusing an open one
           # keeps a schedule from queueing duplicates.
-          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')" ]; then
-            warn_no_credential
-            gh pr create \
-              --head "$BRANCH" \
-              --title "$subject" \
-              --body "The shared block in \`${AGENTS_PATH}\` is behind \`bymaxone/.github@${CANONICAL_REF}\`.
+          # Built once and used for both paths below, so a pull request that
+          # stays open through a change to this text does not keep the wording
+          # it was created with.
+          body="The shared block in \`${AGENTS_PATH}\` is behind \`bymaxone/.github@${CANONICAL_REF}\`.
 
           Only the content between the \`shared:begin\` and \`shared:end\` markers is rewritten. Rules this repository wrote for itself live outside the block and are untouched.
 
           Edit the canonical copy in \`bymaxone/.github\` rather than this file — a local edit inside the block is reverted on the next run.
 
+          That includes an edit nobody made on purpose. A repository whose commit hooks format Markdown — \`prettier --write\` through lint-staged, for example — can reformat the block on commit, and the next run reverts the churn silently in a file nobody watches. The canonical copy is kept stable against prettier's **defaults**, so this bites where a repository's own formatter configuration differs from them. If yours does, check the block against the canonical copy after any commit that touches this file.
+
+          Codex reads this file up to \`project_doc_max_bytes\`, 32 KiB by default, and **truncates the rest silently** — no error, no failed check. The block is spliced above this repository's own rules, so what a repository loses when it goes over is its own material, from the end of the file backwards. Keep the rules that invert a reviewer's default near the top: without one of those a reviewer does not merely miss something, it files the finding the rule exists to prevent.
+
           _Opened by the \`agents-sync\` reusable workflow._"
+
+          # Filtered to this repository's own branch. `--head` matches on branch
+          # NAME, so a fork whose branch is also called this selects here too.
+          # That was survivable while the result only decided whether to create
+          # -- the worst case was skipping a creation -- and is not now that it
+          # decides what to overwrite: editing a contributor's pull request body
+          # with a synchronisation notice would be this workflow writing outside
+          # the repository it was asked to touch.
+          open_pr=$(gh pr list --head "$BRANCH" --state open \
+            --json number,isCrossRepository \
+            --jq 'map(select(.isCrossRepository == false)) | .[0].number // empty')
+          if [ -z "$open_pr" ]; then
+            warn_no_credential
+            gh pr create --head "$BRANCH" --title "$subject" --body "$body"
           else
-            echo "::notice title=agents-sync::the open synchronisation pull request already covers this."
+            # Reconciled rather than left as created. A sync pull request can sit
+            # open for weeks -- awaiting a merge, or blocked on an unrelated red
+            # check -- and it is exactly those repositories that most need the
+            # guidance this body carries. Rewritten only when it actually
+            # differs, so a weekly run does not edit the pull request, and
+            # notify everybody watching it, to store the bytes it already has.
+            # Compared with carriage returns stripped: GitHub returns the body
+            # with CRLF line endings, so a byte comparison against the value
+            # sent would never match and every scheduled run would edit the
+            # pull request -- notifying everyone watching it, weekly, to store
+            # bytes it already has.
+            if [ "$(gh pr view "$open_pr" --json body --jq .body | tr -d '\r')" = "$(printf '%s' "$body" | tr -d '\r')" ]; then
+              echo "::notice title=agents-sync::the open synchronisation pull request already covers this."
+            else
+              gh pr edit "$open_pr" --body "$body"
+              echo "::notice title=agents-sync::refreshed the body of the open synchronisation pull request."
+            fi
           fi
 
           if [ "$FAIL_ON_DRIFT" = "true" ]; then
