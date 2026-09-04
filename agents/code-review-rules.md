@@ -189,8 +189,8 @@ signature in a comment or a description.
 A commit's author and committer fields are not that: they come from the contributor's git
 configuration rather than from the diff, and a review reading the diff cannot see them. Never report
 an identity field, and never present a command's reconstructed output as evidence for one. Measured:
-eight P1 findings in a single day across four pull requests, each naming a commit SHA that does not
-exist in the repository it was reported against and quoting `git log` output no review had run. What
-each one asked for was a force-push rewriting published history.
+twenty-six such findings here, eleven in one repository against four true ones, every SHA resolving
+nowhere and every `git log` line unrun — one byte-identical invented identity across all eleven,
+which is a template filled rather than an author guessed. Each asked to rewrite published history.
 
 <!-- shared:end -->
