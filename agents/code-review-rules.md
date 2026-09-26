@@ -69,6 +69,14 @@ sentence is cheap to be wrong about; one that asks for history to be rewritten, 
 a release pulled is not — verify that class before raising it, and raise it at the severity the
 evidence supports rather than the severity the consequence would deserve if true.
 
+### A finding reproduces, and is this change's
+
+Raise a finding only with its trigger: the input or repository state, the command, the wrong
+result. Letting through what should be refused is P1; a crash or a refusal on input the project
+does not claim to support is not. Behaviour already present at the merge base belongs to another
+change. On new commits, review what changed since the last reviewed commit, and treat a thread
+resolved or answered with a reason as settled. One comment per root cause, its siblings named in it.
+
 ### A dependency upgrade migrates every call site, not only the ones that fail to compile
 
 When an upgrade tightens a contract, the compiler catches only the call sites whose **shape**
