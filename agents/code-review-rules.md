@@ -71,11 +71,12 @@ evidence supports rather than the severity the consequence would deserve if true
 
 ### A bug reproduces, and a finding is this change's
 
-Raise a bug only with its trigger: the input or repository state, the command, the wrong
-result. Letting through what should be refused is P1; a crash or a refusal on input the project
-does not claim to support is not. Behaviour already present at the merge base belongs to another
-change. On new commits, review what changed since the last reviewed commit, and treat a thread
-resolved or answered with a reason as settled. One comment per root cause, its siblings named in it.
+Unless a rule here says to report without one, raise a bug only with its trigger: the input or
+repository state, the command, the wrong result. Letting through what should be refused is P1 at
+least; a crash or a refusal on input the project does not claim to support is not. Behaviour already
+present at the merge base belongs to another change. On new commits, review what changed since the
+last reviewed commit, and treat a thread resolved or answered with a reason as settled. One comment
+per root cause, its siblings named in it.
 
 ### A dependency upgrade migrates every call site, not only the ones that fail to compile
 
