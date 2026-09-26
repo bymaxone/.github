@@ -59,7 +59,7 @@ it is about.
 | A commit's author or committer identity | out of scope: it is not text a change introduces                               |
 | What a file contains                    | the file at the revision under review, not an earlier one                      |
 
-The first two rows are separate on purpose, and the rule below says why: a field can stay optional
+The first two rows are separate on purpose, and the upgrade rule says why: a field can stay optional
 in the published type while becoming mandatory in behaviour. A `.d.ts` settles what a signature
 accepts and nothing about what the implementation does with it, so a behavioural claim resting on
 one is unfounded.
@@ -69,9 +69,9 @@ sentence is cheap to be wrong about; one that asks for history to be rewritten, 
 a release pulled is not — verify that class before raising it, and raise it at the severity the
 evidence supports rather than the severity the consequence would deserve if true.
 
-### A finding reproduces, and is this change's
+### A bug reproduces, and a finding is this change's
 
-Raise a finding only with its trigger: the input or repository state, the command, the wrong
+Raise a bug only with its trigger: the input or repository state, the command, the wrong
 result. Letting through what should be refused is P1; a crash or a refusal on input the project
 does not claim to support is not. Behaviour already present at the merge base belongs to another
 change. On new commits, review what changed since the last reviewed commit, and treat a thread
