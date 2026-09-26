@@ -109,6 +109,25 @@ tags.
 
 ---
 
+## Editing the shared review block
+
+`agents/code-review-rules.md` is spliced verbatim into every consuming repository's
+`AGENTS.md`. These notes are for whoever edits it, and live here rather than in the
+block so that no consumer pays for them.
+
+- Codex reads one `AGENTS.md` per directory, root to nested, within
+  `project_doc_max_bytes` (32 KiB by default). Never name a template or fixture
+  `AGENTS.md` below the root: a change under it is read as the repo's guidance.
+- The block is charged against every consumer's budget. A rule added here must be
+  worth the bytes in the smallest-headroom repository, not only in this one, and the
+  headroom is measured against the block each consumer will receive, since
+  `agents-sync` replaces the whole block, not against the one it carries today.
+  `agents-sync` reports each consumer's headroom and fails when it is exceeded.
+- When you scope a rule, scope every rule in its paragraph or split the paragraph:
+  an unscoped neighbour reads as deliberate.
+
+---
+
 ## Before changing a reusable workflow
 
 It ships to every consumer at the next release. Ask:
