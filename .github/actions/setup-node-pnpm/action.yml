@@ -26,7 +26,10 @@ inputs:
     required: false
     default: "true"
   post-install:
-    description: Command to run right after install (e.g. a Prisma client generate). Empty to skip.
+    description: >-
+      Command to run after the workspace is set up (e.g. a Prisma client generate).
+      It runs whether or not `install` is true, so with `install: "false"` it runs
+      without a fresh install. Empty to skip.
     required: false
     default: ""
 
@@ -48,6 +51,23 @@ runs:
     # sibling of the repo checkout, so the lockfile cannot resolve until the
     # library is on disk. Check it out, position it beside the workspace, and
     # build it. Dropped automatically once the dependency becomes a registry range.
+    # The value reaches a shell below and names a directory that `rm -rf` clears, so it
+    # is checked first and, from here on, only ever read from the environment.
+    - name: Validate the library repository
+      if: inputs.library-repo != ''
+      shell: bash
+      env:
+        LIBRARY_REPO: ${{ inputs.library-repo }}
+      run: |
+        set -euo pipefail
+        owner="${LIBRARY_REPO%%/*}"
+        name="${LIBRARY_REPO#*/}"
+        if ! [[ "$LIBRARY_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+          || [ "$owner" = "." ] || [ "$owner" = ".." ] || [ "$name" = "." ] || [ "$name" = ".." ]; then
+          echo "::error title=library-repo::expected owner/name (letters, digits, '.', '_' or '-'; neither part may be '.' or '..')."
+          exit 1
+        fi
+
     - name: Check out the library source
       if: inputs.library-repo != ''
       uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -59,10 +79,11 @@ runs:
     - name: Position and build the library
       if: inputs.library-repo != ''
       shell: bash
+      env:
+        LIBRARY_REPO: ${{ inputs.library-repo }}
       run: |
         set -euo pipefail
-        libname="${{ inputs.library-repo }}"
-        libname="${libname##*/}"
+        libname="${LIBRARY_REPO##*/}"
         rm -rf "${GITHUB_WORKSPACE}/../${libname}"
         mv "${GITHUB_WORKSPACE}/.bymax-library-src" "${GITHUB_WORKSPACE}/../${libname}"
         cd "${GITHUB_WORKSPACE}/../${libname}"

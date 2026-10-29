@@ -46,7 +46,10 @@ on:
         type: string
         default: pnpm test:e2e:api
       database-url:
-        description: DATABASE_URL env for jobs touching a Prisma client (empty to skip).
+        description: >-
+          DATABASE_URL env for jobs touching a Prisma client. Empty exports an empty
+          DATABASE_URL, it does not leave it unset. The value sits in the caller's workflow
+          file, so pass the URL of a throwaway CI database, never a credential for a real one.
         type: string
         default: ""
       post-install:
@@ -468,17 +471,23 @@ jobs:
       - name: Detect application-source changes
         id: changes
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          SOURCE_GLOBS: ${{ inputs.mutation-source-globs }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Manual dispatch — running mutation."; exit 0
           fi
-          base="${{ github.event.before }}"
-          # First push of a branch (all-zero SHA) or a missing base → diff the last commit.
+          base="$BEFORE"
+          # No usable "before" (first push of a branch is all zeros): diff the last
+          # commit, or the whole tree when this is the repository's root commit.
           if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            base="${{ github.sha }}^"
+            base=$(git rev-parse --verify --quiet "${SHA}^" || git hash-object -t tree /dev/null)
           fi
-          if git diff --name-only "$base" "${{ github.sha }}" | grep -qE '${{ inputs.mutation-source-globs }}'; then
+          if git diff --name-only "$base" "$SHA" | grep -qE -- "$SOURCE_GLOBS"; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Application source changed — running mutation."
           else
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "No application-source changes — skipping mutation."
