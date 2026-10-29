@@ -35,7 +35,7 @@ open-source libraries — engineered with discipline to remove vendor lock-in.
 Web3-ready systems. We operate **like an architecture firm, not an agency** — focused
 on systems that scale, perform under load, and stay maintainable over time.
 
-Everything we open-source is **typed end to end, multi-tenant ready, and vendor-neutral**,
+Everything we open-source is **typed end-to-end, multi-tenant-ready, and vendor-neutral**,
 with a production-first mindset: zero (or near-zero) direct dependencies, strict TypeScript,
 and a runnable reference app for every library.
 
@@ -57,7 +57,7 @@ Pick one, or compose the whole platform — each is independent and installable 
 
 | Library | What it does |
 | --- | --- |
-| 🔑 [`nest-auth`](https://github.com/bymaxone/nest-auth) | Full-stack auth for NestJS 11 · React 19 · Next.js 16 — JWT, MFA, OAuth, sessions, RBAC, multi-tenant SaaS ready. Zero external crypto deps |
+| 🔑 [`nest-auth`](https://github.com/bymaxone/nest-auth) | Full-stack auth for NestJS 11 · React 19 · Next.js 16 — JWT, MFA, OAuth, sessions, RBAC, multi-tenant SaaS-ready. Zero external crypto deps |
 | 🦀 [`rust-auth`](https://github.com/bymaxone/rust-auth) | Full-stack auth for Rust (Axum) & React/Next.js — pure-Rust crypto with WebAssembly edge verification (crates.io + npm) |
 
 #### 🗄️ Data & Infrastructure
@@ -89,7 +89,7 @@ Pick one, or compose the whole platform — each is independent and installable 
 | 🤖 [`bymax-claude-code`](https://github.com/bymaxone/bymax-claude-code) | Production-ready Claude Code toolkit — phased workflow, strict quality gates & specialist review agents for TypeScript & Rust |
 
 > 📘 **Every library ships with a runnable reference app** (`*-example`) — a full NestJS + Next.js
-> implementation proving each feature end to end. Start with
+> implementation proving each feature end-to-end. Start with
 > [`nest-auth-example`](https://github.com/bymaxone/nest-auth-example) or
 > [`nest-cache-example`](https://github.com/bymaxone/nest-cache-example).
 
@@ -134,7 +134,7 @@ Then explore the matching `*-example` repo for a copy-pasteable, production-shap
 
 ## 🌐 Connect
 
-**[🌍 bymax.one](https://bymax.one)** · **[𝕏 @bymax_one](https://x.com/bymax_one)** · **[in Bymax One](https://linkedin.com/company/bymax-one)** · **[📷 @bymax.one](https://www.instagram.com/bymax.one/)**
+**[🌍 bymax.one](https://bymax.one)** · **[𝕏 @bymax_one](https://x.com/bymax_one)** · **[LinkedIn](https://linkedin.com/company/bymax-one)** · **[📷 @bymax.one](https://www.instagram.com/bymax.one/)**
 
 <div align="center">
 

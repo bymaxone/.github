@@ -7,7 +7,9 @@
 ### 🏛️ The special repository that powers every Bymax One repo.
 
 Org-wide defaults live **here, once** — the public profile, shared CI, workflow
-templates, and community health files — and propagate to every repository automatically.
+templates, and community health files. Community health files apply to every
+repository automatically; the reusable workflows are picked up through `@v1`, and the
+templates are copied into a repository when it adopts them.
 
 [![Org profile](https://img.shields.io/badge/🏠_Org_profile-bymaxone-0ea5e9?style=flat-square)](https://github.com/bymaxone)
 [![Website](https://img.shields.io/badge/🌐_Website-bymax.one-0ea5e9?style=flat-square)](https://bymax.one)
@@ -93,7 +95,7 @@ here that every repo inherits.
   (push / pull_request) or on-demand (`workflow_dispatch`).
 - 🧬 **Mutation is the deepest gate** — it runs **only** on a default-branch push (or
   manual dispatch), and only when application source changed (Stryker incremental for
-  Node, `cargo-mutants --in-diff` for Rust). PRs stay gated by 100% coverage + e2e,
+  Node, `cargo-mutants` for Rust). PRs stay gated by 100% coverage + e2e,
   which is fast. No mutation runs on a schedule or on the PR path anywhere in the org.
 - 🤖 **Third-party dependency/security updates are handled by Dependabot** on GitHub
   infrastructure (≈ zero Action minutes) — not a cron CI job.
@@ -156,6 +158,9 @@ to your repo's `.github/dependabot.yml`.
 | `run-export-audit`      | `false`           | `pnpm audit:exports` (library export contract) |
 | `run-mutation`          | `false`           | Stryker on default-branch push / dispatch only |
 | `mutation-source-globs` | api/web/src regex | which changed paths trigger mutation           |
+
+These are the common inputs; the [`on.workflow_call.inputs`](.github/workflows/node-ci.yml)
+block of the workflow is the complete list, with defaults.
 
 ### 📚 `node-lib-ci` inputs (libraries)
 

@@ -19,6 +19,7 @@ jobs:
     secrets: inherit
 
   security:
+    if: github.event_name == 'pull_request'
     uses: bymaxone/.github/.github/workflows/security.yml@v1
     with:
       fail-on-severity: high
