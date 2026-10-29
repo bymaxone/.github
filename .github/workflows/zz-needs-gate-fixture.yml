@@ -1,0 +1,142 @@
+# Throwaway evidence for the mutation gate in node-ci.yml. It repeats the job's
+# needs/if shape with stub steps and asserts what GitHub did with each combination.
+name: zz-needs-gate-fixture
+on:
+  pull_request:
+    paths: [".github/workflows/zz-needs-gate-fixture.yml"]
+permissions:
+  contents: read
+jobs:
+  install-ok:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ran
+  install-failed:
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+  unit-ok:
+    runs-on: ubuntu-latest
+    needs: [install-ok]
+    steps:
+      - run: echo ran
+  unit-skipped:
+    runs-on: ubuntu-latest
+    needs: [install-ok]
+    if: github.event_name == 'push'
+    steps:
+      - run: echo ran
+  unit-failed:
+    runs-on: ubuntu-latest
+    needs: [install-ok]
+    steps:
+      - run: exit 1
+  unit-after-failed-install:
+    runs-on: ubuntu-latest
+    needs: [install-failed]
+    if: github.event_name == 'pull_request'
+    steps:
+      - run: echo ran
+  m-ok-true:
+    runs-on: ubuntu-latest
+    needs: [install-ok, unit-ok]
+    if: >-
+      !cancelled() &&
+      needs.install-ok.result == 'success' &&
+      (needs.unit-ok.result == 'success' || needs.unit-ok.result == 'skipped') &&
+      true
+    steps:
+      - run: echo ran
+  m-ok-false:
+    runs-on: ubuntu-latest
+    needs: [install-ok, unit-ok]
+    if: >-
+      !cancelled() &&
+      needs.install-ok.result == 'success' &&
+      (needs.unit-ok.result == 'success' || needs.unit-ok.result == 'skipped') &&
+      false
+    steps:
+      - run: echo ran
+  m-skipped-true:
+    runs-on: ubuntu-latest
+    needs: [install-ok, unit-skipped]
+    if: >-
+      !cancelled() &&
+      needs.install-ok.result == 'success' &&
+      (needs.unit-skipped.result == 'success' || needs.unit-skipped.result == 'skipped') &&
+      true
+    steps:
+      - run: echo ran
+  m-skipped-false:
+    runs-on: ubuntu-latest
+    needs: [install-ok, unit-skipped]
+    if: >-
+      !cancelled() &&
+      needs.install-ok.result == 'success' &&
+      (needs.unit-skipped.result == 'success' || needs.unit-skipped.result == 'skipped') &&
+      false
+    steps:
+      - run: echo ran
+  m-failed-true:
+    runs-on: ubuntu-latest
+    needs: [install-ok, unit-failed]
+    if: >-
+      !cancelled() &&
+      needs.install-ok.result == 'success' &&
+      (needs.unit-failed.result == 'success' || needs.unit-failed.result == 'skipped') &&
+      true
+    steps:
+      - run: echo ran
+  m-failed-false:
+    runs-on: ubuntu-latest
+    needs: [install-ok, unit-failed]
+    if: >-
+      !cancelled() &&
+      needs.install-ok.result == 'success' &&
+      (needs.unit-failed.result == 'success' || needs.unit-failed.result == 'skipped') &&
+      false
+    steps:
+      - run: echo ran
+  m-install-failed:
+    runs-on: ubuntu-latest
+    needs: [install-failed, unit-after-failed-install]
+    if: >-
+      !cancelled() &&
+      needs.install-failed.result == 'success' &&
+      (needs.unit-after-failed-install.result == 'success' || needs.unit-after-failed-install.result == 'skipped') &&
+      true
+    steps:
+      - run: echo ran
+  m-old-condition-unit-skipped:
+    runs-on: ubuntu-latest
+    needs: [unit-skipped]
+    if: github.event_name == 'pull_request'
+    steps:
+      - run: echo ran
+  verdict:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [m-ok-true, m-ok-false, m-skipped-true, m-skipped-false, m-failed-true, m-failed-false, m-install-failed, m-old-condition-unit-skipped]
+    steps:
+      - name: Compare each result with the expected one
+        env:
+          R_m_ok_true: ${{ needs.m-ok-true.result }}
+          R_m_ok_false: ${{ needs.m-ok-false.result }}
+          R_m_skipped_true: ${{ needs.m-skipped-true.result }}
+          R_m_skipped_false: ${{ needs.m-skipped-false.result }}
+          R_m_failed_true: ${{ needs.m-failed-true.result }}
+          R_m_failed_false: ${{ needs.m-failed-false.result }}
+          R_m_install_failed: ${{ needs.m-install-failed.result }}
+          R_m_old_condition_unit_skipped: ${{ needs.m-old-condition-unit-skipped.result }}
+        run: |
+          bad=0
+          check() { printf '%-32s expected=%-8s got=%s\n' "$1" "$2" "$3"; [ "$2" = "$3" ] || bad=1; }
+          check m-ok-true success "$R_m_ok_true"
+          check m-ok-false skipped "$R_m_ok_false"
+          check m-skipped-true success "$R_m_skipped_true"
+          check m-skipped-false skipped "$R_m_skipped_false"
+          check m-failed-true skipped "$R_m_failed_true"
+          check m-failed-false skipped "$R_m_failed_false"
+          check m-install-failed skipped "$R_m_install_failed"
+          check m-old-condition-unit-skipped skipped "$R_m_old_condition_unit_skipped"
+          exit $bad
