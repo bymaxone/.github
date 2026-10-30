@@ -13,7 +13,7 @@ templates are copied into a repository when it adopts them.
 
 [![Org profile](https://img.shields.io/badge/🏠_Org_profile-bymaxone-0ea5e9?style=flat-square)](https://github.com/bymaxone)
 [![Website](https://img.shields.io/badge/🌐_Website-bymax.one-0ea5e9?style=flat-square)](https://bymax.one)
-![License](https://img.shields.io/badge/License-MIT-000000?style=flat-square)
+[![License](https://img.shields.io/badge/License-MIT-000000?style=flat-square)](LICENSE)
 
 </div>
 
