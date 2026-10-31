@@ -41,17 +41,22 @@ on:
     secrets:
       app-id:
         description: >-
-          App ID of a GitHub App installed on the consuming repository with
-          contents: write and pull_requests: write. Preferred over sync-token:
-          the token is minted per run and expires within the hour, so there is
-          no long-lived credential to rotate and none to expire unnoticed.
-          Supply both this and app-private-key, or neither.
+          Deprecated: the numeric App ID, used only while the organisation
+          variable AGENTS_SYNC_CLIENT_ID is empty, because the minting action
+          deprecates its `app-id` input in favour of `client-id`. Kept declared
+          so a caller that still maps it does not fail, and so the move to the
+          variable needs no change in any caller.
         required: false
       app-private-key:
         description: >-
-          Private key of the app named by app-id. The two are read together;
-          supplying one alone is a misconfiguration and the job says so before
-          falling back.
+          Private key of a GitHub App installed on the consuming repository with
+          contents: write and pull_requests: write. Preferred over sync-token:
+          the token is minted per run and expires within the hour, so there is
+          no long-lived credential to rotate and none to expire unnoticed. The
+          App is named by the organisation variable AGENTS_SYNC_CLIENT_ID, or
+          by the deprecated `app-id` secret while that variable is empty. The
+          key is read together with that identifier; supplying one without the
+          other is a misconfiguration and the job says so before falling back.
         required: false
       sync-token:
         description: >-
@@ -80,6 +85,10 @@ jobs:
     # env is readable by every `run:` in the job, and presence is all the
     # condition needs.
     env:
+      # A client ID is a public identifier, which is why it is a variable and
+      # not a secret. `vars` in a called workflow is the caller's, so an
+      # organisation variable reaches every caller with no change on their side.
+      CLIENT_ID: ${{ vars.AGENTS_SYNC_CLIENT_ID }}
       APP_ID: ${{ secrets.app-id }}
       HAS_APP_KEY: ${{ secrets.app-private-key != '' }}
       HAS_SYNC_TOKEN: ${{ secrets.sync-token != '' }}
@@ -87,15 +96,26 @@ jobs:
       # Both or neither. One alone is silent otherwise -- the run falls back and
       # looks like a repository that never configured an App at all.
       - name: Refuse a half-configured App
-        if: ${{ (env.APP_ID != '') != (env.HAS_APP_KEY == 'true') }}
+        if: ${{ (env.CLIENT_ID != '' || env.APP_ID != '') != (env.HAS_APP_KEY == 'true') }}
         run: |
-          echo "::error title=agents-sync::app-id and app-private-key are supplied together or not at all; exactly one is set, so the App cannot be used and the run would silently fall back to sync-token."
+          echo "::error title=agents-sync::the App key and its identifier (the AGENTS_SYNC_CLIENT_ID variable, or the deprecated app-id secret) are supplied together or not at all; exactly one side is set, so the App cannot be used and the run would silently fall back to sync-token."
           exit 1
 
       # Ahead of both checkouts: the first one consumes this token.
       - name: Mint an installation token
         id: app-token
-        if: ${{ env.APP_ID != '' && env.HAS_APP_KEY == 'true' }}
+        if: ${{ env.CLIENT_ID != '' && env.HAS_APP_KEY == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.AGENTS_SYNC_CLIENT_ID }}
+          private-key: ${{ secrets.app-private-key }}
+
+      # The variable wins when both are set, so exactly one of the two mint
+      # steps runs. A separate step rather than both inputs on one: passing
+      # `app-id` at all, even empty, is what the action deprecates.
+      - name: Mint an installation token (deprecated app-id)
+        id: app-token-legacy
+        if: ${{ env.CLIENT_ID == '' && env.APP_ID != '' && env.HAS_APP_KEY == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.app-id }}
@@ -114,7 +134,7 @@ jobs:
           # Without this, a supplied token authorises only the `gh` calls while
           # the push keeps GITHUB_TOKEN -- which a ruleset may exclude, and whose
           # pushes do not start workflow runs on the pull request being updated.
-          token: ${{ steps.app-token.outputs.token || secrets.sync-token || github.token }}
+          token: ${{ steps.app-token.outputs.token || steps.app-token-legacy.outputs.token || secrets.sync-token || github.token }}
 
       - name: Check out the canonical rules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -130,10 +150,10 @@ jobs:
           AGENTS_PATH: ${{ inputs.agents-path }}
           BRANCH: ${{ inputs.branch }}
           CANONICAL_REF: ${{ inputs.canonical-ref }}
-          HAS_APP_TOKEN: ${{ steps.app-token.outputs.token != '' }}
+          HAS_APP_TOKEN: ${{ (steps.app-token.outputs.token || steps.app-token-legacy.outputs.token) != '' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.sync-token || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || steps.app-token-legacy.outputs.token || secrets.sync-token || github.token }}
         run: |
           set -euo pipefail
 
