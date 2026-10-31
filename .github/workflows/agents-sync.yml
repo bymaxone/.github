@@ -88,6 +88,9 @@ jobs:
       # A client ID is a public identifier, which is why it is a variable and
       # not a secret. `vars` in a called workflow is the caller's, so an
       # organisation variable reaches every caller with no change on their side.
+      # For the same reason it is ambient: set in every caller, mapped by none.
+      # Only the key and `app-id` are the caller's own declaration, so the guard
+      # below never counts the variable alone as half of a pair.
       CLIENT_ID: ${{ vars.AGENTS_SYNC_CLIENT_ID }}
       APP_ID: ${{ secrets.app-id }}
       HAS_APP_KEY: ${{ secrets.app-private-key != '' }}
@@ -96,9 +99,9 @@ jobs:
       # Both or neither. One alone is silent otherwise -- the run falls back and
       # looks like a repository that never configured an App at all.
       - name: Refuse a half-configured App
-        if: ${{ (env.CLIENT_ID != '' || env.APP_ID != '') != (env.HAS_APP_KEY == 'true') }}
+        if: ${{ (env.HAS_APP_KEY == 'true' && env.CLIENT_ID == '' && env.APP_ID == '') || (env.APP_ID != '' && env.HAS_APP_KEY != 'true') }}
         run: |
-          echo "::error title=agents-sync::the App key and its identifier (the AGENTS_SYNC_CLIENT_ID variable, or the deprecated app-id secret) are supplied together or not at all; exactly one side is set, so the App cannot be used and the run would silently fall back to sync-token."
+          echo "::error title=agents-sync::the App key and its identifier are supplied together or not at all: either app-private-key is mapped with neither the AGENTS_SYNC_CLIENT_ID variable nor the deprecated app-id secret, or app-id is mapped without the key. The App cannot be used and the run would silently fall back to sync-token."
           exit 1
 
       # Ahead of both checkouts: the first one consumes this token.
