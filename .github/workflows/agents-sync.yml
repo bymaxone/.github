@@ -96,8 +96,10 @@ jobs:
       HAS_APP_KEY: ${{ secrets.app-private-key != '' }}
       HAS_SYNC_TOKEN: ${{ secrets.sync-token != '' }}
     steps:
-      # Both or neither. One alone is silent otherwise -- the run falls back and
-      # looks like a repository that never configured an App at all.
+      # The key needs an identifier, and `app-id` needs the key. Either alone is
+      # silent otherwise -- the run falls back and looks like a repository that
+      # never configured an App at all. The client ID variable is ambient (set
+      # for every caller), so it alone is not a declaration and never errors.
       - name: Refuse a half-configured App
         if: ${{ (env.HAS_APP_KEY == 'true' && env.CLIENT_ID == '' && env.APP_ID == '') || (env.APP_ID != '' && env.HAS_APP_KEY != 'true') }}
         run: |
