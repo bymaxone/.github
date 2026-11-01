@@ -61,21 +61,25 @@ function fail(message) {
 }
 
 /**
- * Lists the full names a mutation run recorded, and the spec files the report attributes them to.
+ * Lists the full names a mutation run recorded, the spec files the report attributes them to, and
+ * each name together with its file.
  *
  * @param report - The parsed Stryker report.
- * @returns The recorded names, and the files that carry at least one of them.
+ * @returns The recorded names, the files that carry at least one of them, and the file-and-name
+ * pairs.
  */
 function strykerInventory(report) {
   const names = new Set();
   const files = new Set();
+  const pairs = new Set();
   for (const [file, entry] of Object.entries(report.testFiles ?? {})) {
     for (const test of entry.tests ?? []) {
       names.add(test.name);
       files.add(file);
+      pairs.add(`${file}\0${test.name}`);
     }
   }
-  return { names, files };
+  return { names, files, pairs };
 }
 
 /**
@@ -178,7 +182,9 @@ function main(argv) {
   }
   const testsOf = (files) => files.reduce((total, [, tests]) => total + tests, 0);
   const total = required.reduce((sum, [, files]) => sum + testsOf(files), 0);
-  const missing = required.filter(([name]) => !recorded.names.has(name));
+  // The name alone is not enough: the same full name recorded under another spec file, one only
+  // Stryker's Jest config includes, would otherwise hide a unit test that never ran.
+  const missing = required.filter(([name, [[file]]]) => !recorded.pairs.has(`${file}\0${name}`));
   if (missing.length > 0) {
     failListing(
       `${missing.reduce((sum, [, files]) => sum + testsOf(files), 0)} of ${total} unit tests did not run in the mutation run:`,
