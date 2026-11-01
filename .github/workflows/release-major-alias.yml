@@ -42,6 +42,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # This job holds `contents: write`, and the step that uses it is `gh api` with
+          # GH_TOKEN, not git. The only git network call is the fetch below, which reads
+          # this public repository without a credential.
+          persist-credentials: false
           fetch-depth: 0
 
       # The trigger above is loose on purpose; this is where the shape is

@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       # Pinned rather than floating, so a prettier release cannot turn every
       # consumer red without a commit here first. Run with no configuration
@@ -64,6 +66,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       # A `uses:` outside the organisation's allow-list is rejected when a
       # workflow STARTS: the whole file is refused, with no jobs, no annotations
@@ -204,6 +208,9 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          # This repository is public, so the `git fetch origin` below needs no credential.
+          # (The reusable hygiene jobs keep theirs because their callers can be private.)
+          persist-credentials: false
           # The check walks the commits this change introduces. On a
           # pull_request the checkout is the merge ref, and at the default depth
           # of 1 its parents are absent -- the range would resolve to nothing
