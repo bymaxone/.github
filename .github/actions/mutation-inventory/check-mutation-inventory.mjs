@@ -82,6 +82,9 @@ function strykerInventory(report) {
   return { names, files, pairs };
 }
 
+/** Assertion statuses in which Jest did not run the test, so the mutation run owes it nothing. */
+const NOT_RUN = new Set(['pending', 'skipped', 'todo', 'disabled']);
+
 /**
  * Lists the full names a Jest run executed, each with the spec files, relative to `root`, that
  * carry it, and how many of the file's tests carry it.
@@ -95,6 +98,9 @@ function jestInventory(results, root) {
   for (const file of results.testResults ?? []) {
     const relative = path.relative(root, file.name).split(path.sep).join('/');
     for (const test of file.assertionResults ?? []) {
+      if (NOT_RUN.has(test.status)) {
+        continue;
+      }
       const name = [...test.ancestorTitles, test.title].join(' ');
       const files = filesByName.get(name) ?? new Map();
       filesByName.set(name, files.set(relative, (files.get(relative) ?? 0) + 1));
