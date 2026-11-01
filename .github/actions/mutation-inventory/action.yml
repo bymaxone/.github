@@ -1,0 +1,95 @@
+name: Mutation inventory
+description: >-
+  Fail (or warn) when the mutation run did not run every unit test. Runs the library's unit suite
+  with `jest --json` and compares the tests it executed with the tests the Stryker run recorded in
+  its own incremental report. Must run after `stryker run`, from the workspace root, with
+  dependencies installed.
+
+inputs:
+  mode:
+    description: >-
+      `enforce` fails the step on a missing test. `warn` reports the same text as a warning
+      annotation and a job summary, and exits 0.
+    required: false
+    default: warn
+  jest-config:
+    description: >-
+      The library's UNIT Jest config, not the Stryker one: the unit suite is the set of tests that
+      must have run.
+    required: false
+    default: jest.config.ts
+  exempt:
+    description: >-
+      JSON array of `{ "file": "<spec path>", "reason": "<why>" }`: spec files the mutation run may
+      leave out. A missing file at the default path is an empty list; a missing file at a path the
+      caller chose is an error, since that is a typo and not an absence.
+    required: false
+    default: scripts/mutation-inventory.exempt.json
+  report:
+    description: The Stryker incremental report the run wrote.
+    required: false
+    default: reports/stryker-incremental.json
+
+runs:
+  using: composite
+  steps:
+    - name: Compare the unit suite with the mutation run
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        JEST_CONFIG: ${{ inputs.jest-config }}
+        EXEMPT: ${{ inputs.exempt }}
+        REPORT: ${{ inputs.report }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+
+        case "$MODE" in
+          warn | enforce) ;;
+          *) echo "::error::inventory mode must be 'warn' or 'enforce', got '$MODE'."; exit 1 ;;
+        esac
+
+        # Written under RUNNER_TEMP, never the workspace: the next step may upload the workspace's
+        # reports, and this file is scratch.
+        jest_out="$RUNNER_TEMP/mutation-inventory-jest.json"
+        out="$RUNNER_TEMP/mutation-inventory.out"
+
+        # A caller that left the default and has no such file has no exemptions. One that named a
+        # file and got it wrong must hear about it.
+        exempt_arg=()
+        if [ -f "$EXEMPT" ]; then
+          exempt_arg=("$EXEMPT")
+        elif [ "$EXEMPT" != "scripts/mutation-inventory.exempt.json" ]; then
+          echo "::error::The exempt file '$EXEMPT' does not exist."
+          exit 1
+        fi
+
+        # Jest's own failure is reported as Jest's: a red unit suite must not read as "tests did
+        # not run in the mutation run". `--ci` keeps it from writing snapshots.
+        if ! pnpm exec jest --config "$JEST_CONFIG" --ci --json --outputFile="$jest_out" >"$RUNNER_TEMP/mutation-inventory-jest.log" 2>&1; then
+          cat "$RUNNER_TEMP/mutation-inventory-jest.log"
+          echo "::error::The unit suite failed under '$JEST_CONFIG', so there is no inventory to compare."
+          exit 1
+        fi
+
+        if node "$ACTION_PATH/check-mutation-inventory.mjs" "$REPORT" "$jest_out" ${exempt_arg[@]+"${exempt_arg[@]}"} >"$out" 2>&1; then
+          cat "$out"
+          exit 0
+        fi
+
+        cat "$out"
+        {
+          echo "### Mutation inventory"
+          echo
+          echo '```'
+          cat "$out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$MODE" = "warn" ]; then
+          # One annotation line per output line would flood the page; the first line names the
+          # failure and the summary carries the list.
+          echo "::warning title=Mutation inventory::$(head -n 1 "$out") (warn mode; the list is in the job summary)"
+          exit 0
+        fi
+        echo "::error title=Mutation inventory::$(head -n 1 "$out")"
+        exit 1

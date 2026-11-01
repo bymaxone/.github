@@ -45,6 +45,26 @@ on:
         default: >-
           src/ test/ package.json pnpm-lock.yaml stryker.config.json jest.config.ts
           jest.stryker.config.ts jest.coverage.config.ts tsconfig.json tsconfig.jest.json
+      inventory:
+        description: >-
+          What to do when the unit suite has a test the mutation run did not run: `warn` reports
+          it and passes, `enforce` fails the job, `off` skips the comparison. Stryker picks each
+          run's tests through Jest's related-test lookup, which follows imports only inside
+          Jest's `roots`, so a spec that reaches the source through a helper outside them is
+          never run and the score cannot notice. `warn` is the default so that adopting this
+          release turns nothing red.
+        type: string
+        default: warn
+      inventory-exempt:
+        description: >-
+          JSON file listing spec files the run may leave out, as `[{ "file", "reason" }]`. Absent
+          at the default path means none.
+        type: string
+        default: scripts/mutation-inventory.exempt.json
+      inventory-jest-config:
+        description: The library's unit Jest config, whose tests the mutation run must have run.
+        type: string
+        default: jest.config.ts
 
 permissions:
   contents: read
@@ -141,6 +161,16 @@ jobs:
       - name: Run the full mutation suite
         if: steps.changed.outputs.run == 'true'
         run: ${{ inputs.full-command }}
+
+      - name: Check the mutation run ran every unit test
+        # Before the baseline is saved, so that a report that cannot be read never becomes the
+        # baseline the week's pushes reuse. In `warn` mode this passes either way.
+        if: steps.changed.outputs.run == 'true' && inputs.inventory != 'off'
+        uses: bymaxone/.github/.github/actions/mutation-inventory@v1
+        with:
+          mode: ${{ inputs.inventory }}
+          exempt: ${{ inputs.inventory-exempt }}
+          jest-config: ${{ inputs.inventory-jest-config }}
 
       - name: Save the incremental baseline for the week's pushes
         # Only on success, and for the same reason the job is pinned to the default branch:
