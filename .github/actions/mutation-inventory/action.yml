@@ -68,7 +68,14 @@ runs:
         # not run in the mutation run". `--ci` keeps it from writing snapshots.
         if ! pnpm exec jest --config "$JEST_CONFIG" --ci --json --outputFile="$jest_out" >"$RUNNER_TEMP/mutation-inventory-jest.log" 2>&1; then
           cat "$RUNNER_TEMP/mutation-inventory-jest.log"
-          echo "::error::The unit suite failed under '$JEST_CONFIG', so there is no inventory to compare."
+          # In warn mode nothing here may turn the job red, and that includes a unit config that
+          # is not green on its own: the weekly run would lose its baseline over a check that is
+          # not yet enforced.
+          if [ "$MODE" = "warn" ]; then
+            echo "::warning title=Mutation inventory::The unit suite failed under '$JEST_CONFIG', so there is no inventory to compare (warn mode)."
+            exit 0
+          fi
+          echo "::error title=Mutation inventory::The unit suite failed under '$JEST_CONFIG', so there is no inventory to compare."
           exit 1
         fi
 
