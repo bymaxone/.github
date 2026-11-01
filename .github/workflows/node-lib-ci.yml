@@ -104,6 +104,10 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          # Credentials stay: the authorship step below runs `git fetch origin`, which a
+          # private caller repository refuses without them. The job runs actionlint (a
+          # checksum-pinned download), grep and find, and no code from the repository.
+          persist-credentials: true
           # The authorship check walks the commits this change introduces. On a
           # pull_request the checkout is the merge ref, and at the default depth
           # of 1 its parents are absent -- the range would resolve to nothing and
@@ -233,6 +237,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -246,6 +252,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -260,6 +268,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -275,6 +285,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -289,6 +301,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -313,6 +327,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ inputs.node-version }}
@@ -334,6 +350,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Detect source changes
         id: changes

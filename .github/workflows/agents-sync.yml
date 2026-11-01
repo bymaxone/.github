@@ -130,6 +130,9 @@ jobs:
       - name: Check out the consuming repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The push below reuses the credential this checkout persists, and the job runs
+          # no repository code between the two.
+          persist-credentials: true
           # The synchronisation branch is cut from whatever is checked out here,
           # so it has to be the default branch: a `workflow_dispatch` from another
           # ref, or a same-repository pull request, would otherwise carry that
@@ -145,6 +148,7 @@ jobs:
       - name: Check out the canonical rules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: bymaxone/.github
           ref: ${{ inputs.canonical-ref }}
           path: .agents-canonical

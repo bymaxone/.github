@@ -155,6 +155,13 @@ top of their file.
 
 Keep the workflow-level default here at `contents: read` and raise it per job.
 
+Every `actions/checkout` sets `persist-credentials` explicitly. The default
+leaves the job's token in `.git/config`, where any later step that runs
+repository code (`pnpm install` lifecycle scripts, a build, the tests) can read
+it. Set it to `false` unless a later step needs git itself to authenticate: a
+push, or a `git fetch` against a repository that can be private. Where it stays
+`true`, say why in a comment next to it.
+
 ## Session memory (Obsidian vault)
 
 Lessons from earlier sessions live outside the repository, in the owner's Obsidian vault at `~/Documents/MyApps/obsidian/Brain/`, when it is present on this machine. Before a task, find this repository's hub under `02 - Areas/`: the table in `02 - Areas/Bymax/Bymax.md` maps each Bymax repository to its folder; for any other repository, search `02 - Areas/` for the repository name. Read the hub with its `Learnings.md` and `Decisions.md`, and the relevant stack notes under `03 - Resources/`. When the vault and the code disagree, the code wins. Record each non-obvious gotcha, root cause or decision in the hub as the vault's `_meta/conventions.md` describes; a repository without a hub gets one from `_meta/templates/project-hub.md`.
