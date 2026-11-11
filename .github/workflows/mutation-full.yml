@@ -497,11 +497,23 @@ jobs:
           } > "reports/shard-$SHARD.meta"
           echo "- shard $SHARD: $(cat "reports/shard-$SHARD.timing"), peak RSS ${peak} MiB. ${dry}" >> "$GITHUB_STEP_SUMMARY"
 
-          # The numbers go into the summary BEFORE the upload below: if the artifact service fails,
-          # the finished shard still leaves its score, its counts and its files in the run page.
+      - name: Write this shard's score and counts to the summary
+        # Its own step, before the upload and best-effort: if the artifact service fails, a finished
+        # shard still leaves its score, counts and files in the run page, and a failure here (a
+        # report that cannot be scored) must never turn a completed shard into a failed one.
+        if: always()
+        continue-on-error: true
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          tools=.mutation-shards/.github/scripts/mutation-shards
+          [ -f "reports/stryker-shard-$SHARD.json" ] || { echo "No report for shard $SHARD."; exit 0; }
           {
             echo "- shard $SHARD score and counts (its own slice, no break threshold applied):"
-            node "$tools/score.mjs" --report "reports/stryker-shard-$SHARD.json" --config ".stryker-shard-$SHARD.json" | sed 's/^/  - /'
+            # score.mjs also appends to the summary itself; unset here so the line appears once,
+            # indented under this shard.
+            env -u GITHUB_STEP_SUMMARY node "$tools/score.mjs" --report "reports/stryker-shard-$SHARD.json" --config ".stryker-shard-$SHARD.json" | sed 's/^/  - /'
             echo "  - files: $(node -p 'require("./mutation-plan/plan.json").shards.find((s) => s.index === Number(process.argv[1])).files.join(", ")' "$SHARD")"
           } >> "$GITHUB_STEP_SUMMARY"
 

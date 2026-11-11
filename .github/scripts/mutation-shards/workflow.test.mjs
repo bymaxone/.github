@@ -45,3 +45,14 @@ test('every path that triggers the self-test is covered by the score-paths it pa
   const uncovered = triggers.filter((t) => !scorePaths.some((s) => t === s || t.startsWith(`${s}/`)));
   assert.deepEqual(uncovered, []);
 });
+
+// A finished shard must keep its numbers and must not be failed by writing them. The summary is
+// its own best-effort step, before the first upload, and it keeps score.mjs from also appending to
+// the summary (which would print the line twice).
+test('the shard summary is a best-effort step before the upload and writes the score once', () => {
+  const [summary] = stepsNamed("Write this shard's score and counts to the summary");
+  assert.ok(summary, 'the summary step exists');
+  assert.match(summary, /continue-on-error: true/);
+  assert.match(summary, /env -u GITHUB_STEP_SUMMARY node "\$tools\/score\.mjs"/);
+  assert.ok(workflow.indexOf(summary) < workflow.indexOf("      - name: Upload this shard's report\n"));
+});
