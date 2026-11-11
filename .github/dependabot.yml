@@ -14,3 +14,10 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # The fixture exists to run on the Stryker and Jest lines the libraries use, so a major bump
+      # here would move it off the fleet it represents. Minor and patch updates still flow.
+      - dependency-name: "@stryker-mutator/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: jest
+        update-types: ["version-update:semver-major"]
