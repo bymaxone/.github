@@ -31,3 +31,17 @@ test('the decide step is identical in the single job and the plan job', () => {
   assert.ok(copies[0].includes('git diff --quiet'), 'the extraction found the whole step');
   assert.equal(copies[1], copies[0]);
 });
+
+// A push the self-test reacts to must also be a change the reusable's decide step counts as able to
+// move the score. Otherwise the plan skips, no report is uploaded, and the self-test's compare job
+// fails on an edit to the self-test itself.
+test('every path that triggers the self-test is covered by the score-paths it passes', () => {
+  const selftest = readFileSync(new URL('../../workflows/mutation-full-selftest.yml', import.meta.url), 'utf8');
+  const pushBlock = selftest.slice(selftest.indexOf('  push:'), selftest.indexOf('permissions:'));
+  const triggers = [...pushBlock.matchAll(/^ {6}- (\S+)$/gm)].map((m) => m[1].replace(/\/\*\*$/, ''));
+  const scoreBlock = selftest.slice(selftest.indexOf('score-paths: >-'), selftest.indexOf('\n\n', selftest.indexOf('score-paths: >-')));
+  const scorePaths = scoreBlock.split('\n').slice(1).join(' ').split(/\s+/).filter(Boolean).map((p) => p.replace(/\/$/, ''));
+  assert.ok(triggers.length > 0 && scorePaths.length > 0, 'both lists were found');
+  const uncovered = triggers.filter((t) => !scorePaths.some((s) => t === s || t.startsWith(`${s}/`)));
+  assert.deepEqual(uncovered, []);
+});

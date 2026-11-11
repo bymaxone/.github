@@ -81,6 +81,7 @@ jobs:
       score-paths: >-
         fixture/ package.json pnpm-lock.yaml stryker.config.json jest.config.js
         jest.stryker.config.js .github/scripts .github/workflows/mutation-full.yml
+        .github/workflows/mutation-full-selftest.yml
 
   compare:
     name: Sharded run equals the single run
