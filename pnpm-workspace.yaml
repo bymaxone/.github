@@ -5,3 +5,23 @@ allowBuilds:
   # source when asked to, which no install here does, so `false` and `true` behave the same; `false`
   # records it as reviewed without granting anything.
   '@parcel/watcher': false
+
+# Forced versions for vulnerable transitive dev dependencies, the same set the libraries carry. They
+# live here and NOT in package.json: pnpm 11 no longer reads the `pnpm` field of package.json.
+overrides:
+  # GHSA-6j4f-fj2g-mc7p, GHSA-qhr7-859c-m2p7, GHSA-q2hr-2g5m-vwhr. Reaches this tree through
+  # `minimatch`. Scoped to major 5: the 1.x and 2.x lines other minimatch versions require carry no
+  # advisory, and forcing them onto 5.x breaks `minimatch.braceExpand`.
+  'brace-expansion@5': '^5.0.12'
+  # GHSA-g3hv-75wg-m249 (medium): `minimatch` denial of service, fixed in 11.0.1. Dev tooling only.
+  # `glob` 10 does NOT work on minimatch 11: it returns no matches and says nothing. So every
+  # parent that still pulls glob 10 moves off it instead: `test-exclude` 7 (jest coverage, through
+  # babel-plugin-istanbul) to the 8 line, which uses glob 13, and `glob@10` itself to 13. The
+  # minimatch selector stops at 10 on purpose: forcing 11 onto 7 to 9 is what breaks glob 10.
+  'minimatch@>=10.0.0 <11.0.1': '>=11.0.1'
+  'test-exclude@^7': '^8'
+  'glob@10': '^13.0.6'
+  # Floor the PACKAGE, never a window of it: a selector like `qs@>=6.11.1 <=6.15.1` stops matching
+  # once the resolved version leaves the window, and the entry keeps reading as coverage.
+  # GHSA-4mjr-xmp4-gh2g, GHSA-x5fp-wj9c-mxmx, GHSA-6pq8-jhm2-2vcw, GHSA-q8mj-m7cp-5q26: fixed in 6.16.1.
+  'qs': '^6.16.1'

@@ -1,0 +1,16 @@
+# Advisories this repository's test fixture carries and cannot fix, each with a date after which the
+# scan reports it again. Same posture as the libraries; the fixture is never published and none of
+# these packages is reachable outside CI.
+#
+# Everything with a fix inside the majors in use is fixed by the overrides in pnpm-workspace.yaml
+# instead of being listed here.
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2027-01-27T00:00:00Z
+reason = "deepmerge <=4.3.1 (prototype poisoning in mergeObject) has no patched release. Reached only through jest-config (test tooling, devDependency). Remove when a fixed deepmerge ships or jest drops it."
+
+[[IgnoredVulns]]
+id = "GHSA-3g3m-2fjr-6pw4"
+ignoreUntil = 2026-11-30T00:00:00Z
+reason = "glob >=9.0.0 <=14.0.1 (AbortSignal cancellation bypass): dev tooling only, reached through jest; the fix is glob 14.0.2, a major beyond the one the overrides move jest's tree to and that the libraries use. Re-evaluate on an in-major backport or at expiry."
