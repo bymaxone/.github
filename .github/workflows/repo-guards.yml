@@ -296,3 +296,23 @@ jobs:
             exit 1
           fi
           echo "no AI identity in $count commit(s)"
+
+  mutation-shard-scripts:
+    name: Mutation shard scripts pass their tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # The scripts use `node:path` matching and top-level await, so the Node version is pinned
+      # here and not left to whatever the runner image carries.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+
+      # Built-ins only, so no install. It also holds the check that the two copies of the
+      # "decide whether anything moved the score" step in mutation-full.yml are identical.
+      - name: Run the tests
+        run: node --test '.github/scripts/mutation-shards/*.test.mjs'

@@ -65,6 +65,34 @@ on:
         description: The library's unit Jest config, whose tests the mutation run must have run.
         type: string
         default: jest.config.ts
+      shards:
+        description: >-
+          How many runners to split the cold run across. `1` is the single job, exactly as it has
+          always run. Above 1 the files are partitioned into balanced slices, each cold-run on its
+          own runner, and one job merges the reports, scores them, enforces the break threshold and
+          saves the baseline. Each shard pays its own dry run, so total CPU rises by about that much
+          per extra shard; the gain is that no runner holds the whole run, in time or in memory.
+        type: number
+        default: 1
+      concurrency:
+        description: >-
+          Stryker workers per shard. `0` keeps the caller's configured value. Sized against one
+          runner's memory: workers grow to several GiB each over a long run, so a shard's workers
+          must fit the runner together with the parent process.
+        type: number
+        default: 0
+      stryker-config:
+        description: >-
+          The caller's Stryker configuration, read to find the files to mutate and written back,
+          with per-shard overrides, as each shard's own config. Used only when `shards` is above 1.
+        type: string
+        default: stryker.config.json
+      break-threshold:
+        description: >-
+          Minimum merged mutation score, enforced by the aggregate job when `shards` is above 1.
+          Empty takes `thresholds.break` from the Stryker configuration.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -78,7 +106,7 @@ jobs:
     # feature branch would therefore hand the default branch's CI a baseline built from code
     # that is not on it — verdicts reused for mutants that no longer exist, or missing for ones
     # that do. That window is exactly where an incremental run is least trustworthy.
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: inputs.shards == 1 && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -190,6 +218,421 @@ jobs:
         # `always()` so a failed run still uploads its partial report, but only when the suite
         # actually ran — a skipped week has nothing to upload.
         if: always() && steps.changed.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-full
+          path: reports/mutation/
+          if-no-files-found: ignore
+
+  # --- Sharded path (`shards` > 1) -------------------------------------------------------------
+  #
+  # The single job above holds every mutant on one runner. Past a size that stops fitting: a Stryker
+  # worker grows to several GiB over a long run, so the runner's memory runs out before the work
+  # does, and the runner is lost rather than the job failing. Lowering `concurrency` makes it fit
+  # and makes it slower; sharding splits the files across runners and keeps scaling with the mutant
+  # count. These three jobs run only when `shards` is above 1, so a caller that does not opt in
+  # sees the single job and nothing else.
+  #
+  # Every script they run comes from this repository at the commit of THIS workflow file
+  # (`job.workflow_sha`), not from a tag: the scripts and the file that calls them can never be
+  # out of step, and a change here can be proven from a workflow in this repository before any
+  # tag moves.
+
+  plan:
+    name: Plan mutation shards
+    # Same default-branch guard as the single job, for the same reason: the aggregate job saves the
+    # baseline the default branch's pushes restore.
+    if: inputs.shards > 1 && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # `gh run list` / `gh run download`: the last run's report weights the split.
+      actions: read
+    outputs:
+      run: ${{ steps.changed.outputs.run }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      started: ${{ steps.start.outputs.epoch }}
+    steps:
+      - name: Note when the sharded run started
+        id: start
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Decide whether anything can have moved the score
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCORE_PATHS: ${{ inputs.score-paths }}
+          # The CALLER's workflow file, derived rather than hardcoded. `github.workflow_ref`
+          # reads `owner/repo/.github/workflows/<file>@refs/heads/<branch>`, and `gh run list
+          # --workflow` matches the file in the caller's repository. Hardcoding a name here
+          # would mean a caller that names its file anything else silently finds no previous
+          # run — forever, and green, because "no previous run" fails open into running.
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT: ${{ github.event_name }}
+        # A week with no relevant change produces the same verdict as the week before, and this
+        # run costs real minutes to say so.
+        #
+        # A manual dispatch always runs: asking for it IS the decision.
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch — running."
+            exit 0
+          fi
+
+          workflow_file="${WORKFLOW_REF%@*}"
+          workflow_file="${workflow_file##*/}"
+          echo "Comparing against the last successful run of $workflow_file."
+
+          # `|| true` is load-bearing under `set -e`: without it a transient API failure kills
+          # the step, which is the opposite of failing open. An empty result falls through to
+          # the "no previous run" branch below and runs the suite.
+          last="$(gh run list --workflow "$workflow_file" --status success \
+            --branch "$DEFAULT_BRANCH" --limit 1 \
+            --json headSha --jq '.[0].headSha // empty' 2>/dev/null || true)"
+
+          if [ -z "$last" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "No previous successful run to compare against — running."
+            exit 0
+          fi
+
+          # An unreachable SHA (history rewritten, or the commit garbage-collected) is not a
+          # reason to skip: it is a reason to stop trusting the comparison.
+          if ! git cat-file -e "${last}^{commit}" 2>/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Last measured commit $last is unreachable — running."
+            exit 0
+          fi
+
+          # Unquoted on purpose: SCORE_PATHS is a space-separated pathspec list and must split.
+          # shellcheck disable=SC2086
+          if git diff --quiet "$last" HEAD -- $SCORE_PATHS; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing that can move the score changed since $last — skipping."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Changed since $last:"
+            # shellcheck disable=SC2086
+            git diff --name-only "$last" HEAD -- $SCORE_PATHS
+          fi
+
+
+      - name: Require this workflow's own commit
+        # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
+        # empty, the checkout below would fall back to the CALLER's default branch and run its
+        # files as tooling, so an empty or malformed value stops the job instead.
+        if: steps.changed.outputs.run == 'true'
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WORKFLOW_REPOSITORY" ] || ! printf '%s' "$WORKFLOW_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error title=Mutation shards::job.workflow_repository='$WORKFLOW_REPOSITORY' job.workflow_sha='$WORKFLOW_SHA' is not a repository and a commit."
+            exit 1
+          fi
+
+      - name: Fetch the shard tooling from this workflow's own commit
+        if: steps.changed.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .mutation-shards
+          sparse-checkout: .github/scripts/mutation-shards
+          persist-credentials: false
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+        if: steps.changed.outputs.run == 'true'
+
+      - name: Fetch the last run's report, to weight the split
+        if: steps.changed.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        # Best effort and never fatal: with no report the plan falls back to file size.
+        run: |
+          set -uo pipefail
+          workflow_file="${WORKFLOW_REF%@*}"
+          workflow_file="${workflow_file##*/}"
+          run_id="$(gh run list --workflow "$workflow_file" --status success \
+            --branch "$DEFAULT_BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
+          if [ -z "$run_id" ]; then
+            echo "No previous successful run; the split will use file sizes."
+            exit 0
+          fi
+          if gh run download "$run_id" --name mutation-full --dir mutation-weights 2>/dev/null \
+            && [ -f mutation-weights/mutation.json ]; then
+            echo "Weighting the split by run $run_id."
+          else
+            echo "Run $run_id has no mutation report; the split will use file sizes."
+          fi
+
+      - name: Split the files into shards
+        id: plan
+        if: steps.changed.outputs.run == 'true'
+        env:
+          SHARDS: ${{ inputs.shards }}
+          STRYKER_CONFIG: ${{ inputs.stryker-config }}
+        run: |
+          set -euo pipefail
+          weights=()
+          if [ -f mutation-weights/mutation.json ]; then
+            weights=(--weights mutation-weights/mutation.json)
+          fi
+          node .mutation-shards/.github/scripts/mutation-shards/plan.mjs \
+            --config "$STRYKER_CONFIG" --shards "$SHARDS" --out mutation-plan \
+            ${weights[@]+"${weights[@]}"} | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Tooling commit: ${{ job.workflow_sha }} from ${{ job.workflow_repository }}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the plan
+        if: steps.changed.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-plan
+          path: mutation-plan/plan.json
+          if-no-files-found: error
+
+  shard:
+    name: Mutation shard
+    needs: plan
+    if: needs.plan.outputs.run == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    strategy:
+      # One lost shard must not cancel the others: it is rerun alone, and the others' work stands.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require this workflow's own commit
+        # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
+        # empty, the checkout below would fall back to the CALLER's default branch and run its
+        # files as tooling, so an empty or malformed value stops the job instead.
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WORKFLOW_REPOSITORY" ] || ! printf '%s' "$WORKFLOW_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error title=Mutation shards::job.workflow_repository='$WORKFLOW_REPOSITORY' job.workflow_sha='$WORKFLOW_SHA' is not a repository and a commit."
+            exit 1
+          fi
+
+      - name: Fetch the shard tooling from this workflow's own commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .mutation-shards
+          sparse-checkout: .github/scripts/mutation-shards
+          persist-credentials: false
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutation-plan
+          path: mutation-plan
+
+      - name: Run this shard cold
+        env:
+          SHARD: ${{ matrix.shard }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          STRYKER_CONFIG: ${{ inputs.stryker-config }}
+        # The shard config carries its slice, its own incremental and report files, and no break
+        # threshold: a slice scores only itself, so the caller's break is enforced once, on the
+        # merged score. A run that fails here therefore failed for a real reason.
+        run: |
+          set -euo pipefail
+          tools=.mutation-shards/.github/scripts/mutation-shards
+          mkdir -p reports/mutation
+          node "$tools/shard-config.mjs" --config "$STRYKER_CONFIG" --plan mutation-plan/plan.json \
+            --index "$SHARD" --concurrency "$CONCURRENCY" --out ".stryker-shard-$SHARD.json"
+
+          # Memory and disk into the log every 15 s: a lost runner leaves no other trace.
+          sample() {
+            while :; do
+              printf '%s rss_mib=%s avail_mib=%s tmp_mib=%s disk_free_gib=%s\n' \
+                "$(date -u +%H:%M:%S)" \
+                "$(ps -eo rss= | awk '{s += $1} END {printf "%d", s / 1024}')" \
+                "$(awk '/MemAvailable/ {printf "%d", $2 / 1024}' /proc/meminfo)" \
+                "$(du -sm .stryker-tmp 2>/dev/null | cut -f1 || true)" \
+                "$(df -BG --output=avail . | tail -1 | tr -dc 0-9)"
+              sleep 15
+            done
+          }
+          sample > "reports/shard-$SHARD.resources" &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
+
+          TIMEFORMAT='wall=%R user=%U sys=%S'
+          { time pnpm exec stryker run ".stryker-shard-$SHARD.json" 2>&1 | tee "reports/shard-$SHARD.log"; } \
+            2> "reports/shard-$SHARD.timing"
+          cat "reports/shard-$SHARD.timing"
+
+          peak=$(awk -F'rss_mib=' '{split($2, a, " "); if (a[1] + 0 > m) m = a[1] + 0} END {print m + 0}' "reports/shard-$SHARD.resources")
+          dry=$(grep -o 'Initial test run succeeded.*' "reports/shard-$SHARD.log" | head -1 | sed 's/\x1b\[[0-9;]*m//g' || true)
+          {
+            cat "reports/shard-$SHARD.timing"
+            echo "peak_rss_mib=$peak"
+            echo "dry_run=$dry"
+          } > "reports/shard-$SHARD.meta"
+          echo "- shard $SHARD: $(cat "reports/shard-$SHARD.timing"), peak RSS ${peak} MiB. ${dry}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload this shard's report
+        # `always()` so a shard that died still leaves its log and resource curve for diagnosis.
+        # Only the incremental file feeds the aggregate, and that job does not run after a failure.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-shard-${{ matrix.shard }}
+          path: |
+            reports/stryker-shard-${{ matrix.shard }}.json
+            reports/shard-${{ matrix.shard }}.meta
+            reports/shard-${{ matrix.shard }}.resources
+            reports/shard-${{ matrix.shard }}.log
+          if-no-files-found: ignore
+
+  aggregate:
+    name: Aggregate mutation shards
+    needs: [plan, shard]
+    # `needs` already stops this when any shard failed. The condition below only restates that the
+    # run was not skipped, because a skipped dependency must not read as a success here.
+    if: needs.plan.outputs.run == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require this workflow's own commit
+        # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
+        # empty, the checkout below would fall back to the CALLER's default branch and run its
+        # files as tooling, so an empty or malformed value stops the job instead.
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WORKFLOW_REPOSITORY" ] || ! printf '%s' "$WORKFLOW_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error title=Mutation shards::job.workflow_repository='$WORKFLOW_REPOSITORY' job.workflow_sha='$WORKFLOW_SHA' is not a repository and a commit."
+            exit 1
+          fi
+
+      - name: Fetch the shard tooling from this workflow's own commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .mutation-shards
+          sparse-checkout: .github/scripts/mutation-shards
+          persist-credentials: false
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutation-plan
+          path: mutation-plan
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mutation-shard-*
+          path: mutation-shards
+
+      - name: Merge the shard reports
+        id: merge
+        env:
+          STRYKER_CONFIG: ${{ inputs.stryker-config }}
+        run: |
+          set -euo pipefail
+          tools=.mutation-shards/.github/scripts/mutation-shards
+          count=$(node -p 'require("./mutation-plan/plan.json").shards.length')
+          files=()
+          for i in $(seq 1 "$count"); do
+            found=$(find mutation-shards -name "stryker-shard-$i.json" -type f)
+            if [ "$(printf '%s\n' "$found" | grep -c .)" != 1 ]; then
+              echo "::error title=Mutation shards::Expected exactly one report for shard $i, found: ${found:-none}"
+              exit 1
+            fi
+            files+=("$found")
+          done
+          mkdir -p reports/mutation
+          node "$tools/merge.mjs" --plan mutation-plan/plan.json --config "$STRYKER_CONFIG" \
+            --out reports/stryker-incremental.json --shards "${files[@]}"
+          # The same file under the name the next run's plan reads its weights from.
+          cp reports/stryker-incremental.json reports/mutation/mutation.json
+
+      - name: Score the merged report and enforce the break threshold
+        env:
+          STRYKER_CONFIG: ${{ inputs.stryker-config }}
+          BREAK_THRESHOLD: ${{ inputs.break-threshold }}
+        run: |
+          set -euo pipefail
+          echo "### Mutation score" >> "$GITHUB_STEP_SUMMARY"
+          node .mutation-shards/.github/scripts/mutation-shards/score.mjs \
+            --report reports/stryker-incremental.json --config "$STRYKER_CONFIG" --break "$BREAK_THRESHOLD"
+
+      - name: Check the mutation run ran every unit test
+        # On the MERGED report, and before the baseline is saved, for the reason the single job
+        # gives. A spec that ran in any shard counts as run.
+        if: inputs.inventory != 'off'
+        uses: bymaxone/.github/.github/actions/mutation-inventory@v1
+        with:
+          mode: ${{ inputs.inventory }}
+          exempt: ${{ inputs.inventory-exempt }}
+          jest-config: ${{ inputs.inventory-jest-config }}
+
+      - name: Report time and CPU
+        if: always()
+        env:
+          RUN_STARTED: ${{ needs.plan.outputs.started }}
+        run: |
+          set -uo pipefail
+          now=$(date +%s)
+          start="$RUN_STARTED"
+          total_user=0
+          {
+            echo "### Mutation run cost"
+            for meta in $(find mutation-shards -name 'shard-*.meta' | sort); do
+              user=$(sed -n 's/.*user=\([0-9.]*\).*/\1/p' "$meta" | head -1)
+              total_user=$(awk -v a="$total_user" -v b="${user:-0}" 'BEGIN {printf "%.1f", a + b}')
+              echo "- $(basename "$meta" .meta): $(grep -m1 wall= "$meta"); $(grep -m1 peak_rss_mib "$meta"); $(grep -m1 dry_run= "$meta" | cut -c1-160)"
+            done
+            echo "- total: wall $((now - start)) s since the run started, user CPU ${total_user} s across all shards"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the incremental baseline for the week's pushes
+        # Only on success and only on the default branch, for the reasons the single job gives: a
+        # run that did not measure every file must never become the baseline.
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
+
+      - name: Upload the merged mutation report
+        if: always() && steps.merge.conclusion == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-full

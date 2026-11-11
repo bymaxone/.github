@@ -1,0 +1,22 @@
+# Scans the lockfile of this repository's test fixture, through the same reusable workflow the
+# libraries call. Path-filtered: the only lockfile here belongs to the fixture, so a push that
+# touches nothing it depends on has nothing new to scan.
+name: osv
+
+on:
+  pull_request:
+    paths: [pnpm-lock.yaml, package.json, .github/workflows/osv.yml, .github/workflows/osv-scanner.yml]
+  push:
+    branches: [main]
+    paths: [pnpm-lock.yaml, package.json, .github/workflows/osv.yml, .github/workflows/osv-scanner.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: OSV
+    permissions:
+      contents: read
+    uses: ./.github/workflows/osv-scanner.yml

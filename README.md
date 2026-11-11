@@ -285,6 +285,33 @@ jobs:
     uses: bymaxone/.github/.github/workflows/osv-scanner.yml@v1
 ```
 
+### 🧬 `mutation-full` inputs (cold mutation run)
+
+The weekly cold Stryker run that also refreshes the baseline the per-push job restores. It
+runs as one job by default. When a library's mutant count stops fitting one runner (a Stryker
+worker grows to several GiB over a long run, and a lost runner reports no error), set
+`shards` above 1 and the run is split across runners and merged.
+
+| Input             | Default                    | What it does                                                                      |
+| ----------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| `shards`          | `1`                        | `1` is the single job. Above 1: plan, one cold job per shard, one aggregate job   |
+| `concurrency`     | `0`                        | Stryker workers per shard; `0` keeps the caller's config. Size it to one runner   |
+| `stryker-config`  | `stryker.config.json`      | Read for `mutate`, and written back with per-shard overrides (JSON config)        |
+| `break-threshold` | _(config's `thresholds.break`)_ | Enforced once, on the merged score, because a shard scores only its slice    |
+| `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
+
+The split is balanced by the mutants of the previous run and falls back to file size. Each
+shard pays its own dry run, so total CPU rises by about that per extra shard. The scripts the
+sharded jobs run are fetched from this repository at the commit of the workflow file itself,
+so they cannot differ from it.
+
+This repository carries a small root package (`package.json`, `fixture/`, `stryker.config.json`)
+that exists only to be mutated by [`mutation-full-selftest.yml`](.github/workflows/mutation-full-selftest.yml),
+which calls the reusable workflow on the default branch and checks that a sharded run gives what a
+single run gives. Nothing consumes or publishes it. The self-test does not exercise the single
+`full` job (it compares against a plain job running the same command, because two calls would
+upload the same artifact name); that job is proven by every caller's weekly run.
+
 ### 🔄 `agents-sync` inputs (shared review rules)
 
 Keeps the **shared** half of a repository's `AGENTS.md` in step with the canonical copy

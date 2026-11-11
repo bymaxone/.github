@@ -1,0 +1,149 @@
+# Proves the sharded path of `mutation-full.yml` against a real run, before any tag publishes it.
+#
+# Consumers reference the reusable workflow at `@v1`, so a change to it cannot be exercised from a
+# consumer until the tag moves. This workflow calls it by local path from the default branch, which
+# is the commit under test, on the fixture package at this repository's root (see README).
+#
+# What it establishes, on one commit:
+#   1. A cold run through the reusable with `shards: 2` completes: plan, two shards, aggregate,
+#      and the inventory in `enforce` mode on the merged report.
+#   2. That run gives what a single cold run gives: every mutant has the same status, found by
+#      (file, location, mutator, replacement) and not by id, and the score is the same.
+#   3. The merged baseline behaves, on the per-push path, exactly as a single run's own file: the
+#      same no-op incremental run reuses the same number of results from either.
+#
+# The control is a plain job running the same command the single job of the reusable runs
+# (`pnpm mutation:full`), not a second call to the reusable: both calls would upload an artifact
+# named `mutation-full`, and a run cannot hold two.
+name: mutation-full-selftest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/mutation-full.yml
+      - .github/workflows/mutation-full-selftest.yml
+      - .github/scripts/mutation-shards/**
+      - fixture/**
+      - package.json
+      - pnpm-lock.yaml
+      - stryker.config.json
+      - jest.config.js
+      - jest.stryker.config.js
+
+permissions:
+  contents: read
+
+jobs:
+  control:
+    name: Single cold run (control)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+
+      - name: Run the fixture cold, as the single job does
+        run: pnpm mutation:full
+
+      - name: Check the run ran every unit test
+        uses: bymaxone/.github/.github/actions/mutation-inventory@v1
+        with:
+          mode: enforce
+          jest-config: jest.config.js
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: control-report
+          path: reports/stryker-incremental.json
+          if-no-files-found: error
+
+  sharded:
+    name: Sharded cold run
+    permissions:
+      contents: read
+      # The plan job lists the last successful run to weight the split.
+      actions: read
+    uses: ./.github/workflows/mutation-full.yml
+    with:
+      shards: 2
+      concurrency: 2
+      timeout-minutes: 20
+      inventory: enforce
+      inventory-jest-config: jest.config.js
+      # Wider than the default, which names `src/` and `test/`: this fixture lives elsewhere.
+      score-paths: >-
+        fixture/ package.json pnpm-lock.yaml stryker.config.json jest.config.js
+        jest.stryker.config.js .github/scripts .github/workflows/mutation-full.yml
+
+  compare:
+    name: Sharded run equals the single run
+    needs: [control, sharded]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: control-report
+          path: control
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutation-full
+          path: sharded
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mutation-plan
+          path: plan
+
+      - name: The plan really split the run
+        run: |
+          set -euo pipefail
+          node -e '
+            const plan = require("./plan/plan.json");
+            console.log(JSON.stringify(plan.shards.map((s) => ({ index: s.index, files: s.files, weight: s.weight }))));
+            if (plan.shards.length !== 2) throw new Error("expected 2 shards");
+            if (plan.shards.some((s) => s.files.length === 0)) throw new Error("a shard has no file");
+          '
+
+      - name: Same verdict for every mutant, same score
+        run: |
+          node .github/scripts/mutation-shards/compare.mjs \
+            control/stryker-incremental.json sharded/mutation.json 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: The merged baseline is reused exactly as the single run's file
+        run: |
+          set -euo pipefail
+          reuse() {
+            mkdir -p reports
+            cp "$1" reports/stryker-incremental.json
+            pnpm exec stryker run > "reuse-$2.log" 2>&1
+            sed 's/\x1b\[[0-9;]*m//g' "reuse-$2.log" | grep -E 'files changed|result\(s\) are reused' | sed 's/^[[:space:]]*//'
+          }
+          reuse control/stryker-incremental.json control | tee control.reuse
+          reuse sharded/mutation.json sharded | tee sharded.reuse
+          {
+            echo "### No-op incremental run"
+            echo '```'
+            echo "control:"; cat control.reuse
+            echo "sharded:"; cat sharded.reuse
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          diff control.reuse sharded.reuse
+          grep -q '0 files changed' control.reuse
+          grep -q 'result(s) are reused' control.reuse

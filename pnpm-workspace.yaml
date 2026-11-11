@@ -1,0 +1,7 @@
+# Build scripts are denied by default; an unlisted package counts as unreviewed, and pnpm 11 fails
+# the install on one rather than warning.
+allowBuilds:
+  # Reached through jest-haste-map, which arrives with jest. Its install script only compiles from
+  # source when asked to, which no install here does, so `false` and `true` behave the same; `false`
+  # records it as reviewed without granting anything.
+  '@parcel/watcher': false

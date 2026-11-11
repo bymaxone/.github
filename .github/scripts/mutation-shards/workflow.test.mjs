@@ -1,0 +1,33 @@
+// Guards the one block of mutation-full.yml that exists twice. Layer: CI tooling.
+//
+// The step that decides whether anything can have moved the score lives in the single job and,
+// copied, in the plan job: a reusable workflow cannot share a step between two jobs without
+// moving it into a composite action, and that move changes the single job every caller runs
+// today. A copy that drifts is a plan job that skips (or runs) a week the single job would not,
+// so the two texts must be identical. When they are, this passes; when someone edits one, this is
+// the red check that says to edit the other.
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const workflow = readFileSync(new URL('../../workflows/mutation-full.yml', import.meta.url), 'utf8');
+
+/** Every step whose name starts with `name`, as text, up to the next step of the same job. */
+function stepsNamed(name) {
+  const lines = workflow.split('\n');
+  const found = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i] !== `      - name: ${name}`) continue;
+    let end = i + 1;
+    while (end < lines.length && !/^ {6}- /.test(lines[end]) && !/^ {2}\S/.test(lines[end])) end += 1;
+    found.push(lines.slice(i, end).join('\n').trimEnd());
+  }
+  return found;
+}
+
+test('the decide step is identical in the single job and the plan job', () => {
+  const copies = stepsNamed('Decide whether anything can have moved the score');
+  assert.equal(copies.length, 2, 'one copy per job that decides');
+  assert.ok(copies[0].includes('git diff --quiet'), 'the extraction found the whole step');
+  assert.equal(copies[1], copies[0]);
+});
