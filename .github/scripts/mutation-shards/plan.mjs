@@ -11,7 +11,7 @@
 // no report. A file the report does not know takes the median known weight.
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TESTED, loadStrykerConfig, parseArgs, readJson, resolveFromCaller } from './lib.mjs';
 
@@ -20,8 +20,16 @@ async function loadMinimatch() {
   return mod.minimatch ?? mod.default ?? mod;
 }
 
-/** Expands `mutate` the way Stryker reads it: positive globs add, `!` globs remove, in order. */
-export function expandMutate(patterns, trackedFiles, minimatch) {
+/**
+ * Expands `mutate` the way Stryker reads it: positive globs add, `!` globs remove, in order.
+ *
+ * Stryker resolves both the pattern and each file name to an absolute path before matching, and
+ * matches without `dot`, so a hidden file is never selected by a wildcard. Matching the raw pattern
+ * against the repository-relative name instead would drop every `./`-prefixed pattern (selecting
+ * nothing) and ignore a negated one (so excluded files would come back).
+ */
+export function expandMutate(patterns, trackedFiles, minimatch, root = process.cwd()) {
+  const absolute = (name) => resolve(root, name).split(sep).join('/');
   const set = new Set();
   for (const pattern of patterns) {
     if (/:\d+(-\d+)?(:\d+)?$/.test(pattern)) {
@@ -30,9 +38,9 @@ export function expandMutate(patterns, trackedFiles, minimatch) {
       );
     }
     const negated = pattern.startsWith('!');
-    const glob = negated ? pattern.slice(1) : pattern;
+    const glob = absolute(negated ? pattern.slice(1) : pattern);
     for (const file of trackedFiles) {
-      if (!minimatch(file, glob, { dot: true })) continue;
+      if (!minimatch(absolute(file), glob, { dot: false })) continue;
       if (negated) set.delete(file);
       else set.add(file);
     }

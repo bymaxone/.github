@@ -25,6 +25,13 @@ test('expandMutate applies positive and negated globs in order', () => {
   assert.deepEqual(set, ['src/a.ts', 'src/b/c.ts']);
 });
 
+// Stryker resolves pattern and file to absolute paths before matching, and matches without `dot`.
+test('expandMutate reads a ./-prefixed pattern and a ./-prefixed negation as Stryker does', () => {
+  const files = ['src/a.ts', 'src/a.spec.ts', 'src/.hidden.ts'];
+  assert.deepEqual(expandMutate(['./src/**/*.ts'], files, glob), ['src/a.spec.ts', 'src/a.ts']);
+  assert.deepEqual(expandMutate(['src/**/*.ts', '!./src/**/*.spec.ts'], files, glob), ['src/a.ts']);
+});
+
 test('expandMutate refuses a line-range pattern it cannot split', () => {
   assert.throws(() => expandMutate(['src/a.ts:1-10'], ['src/a.ts'], glob), /line range/);
 });
