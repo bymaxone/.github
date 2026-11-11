@@ -497,13 +497,43 @@ jobs:
           } > "reports/shard-$SHARD.meta"
           echo "- shard $SHARD: $(cat "reports/shard-$SHARD.timing"), peak RSS ${peak} MiB. ${dry}" >> "$GITHUB_STEP_SUMMARY"
 
+          # The numbers go into the summary BEFORE the upload below: if the artifact service fails,
+          # the finished shard still leaves its score, its counts and its files in the run page.
+          {
+            echo "- shard $SHARD score and counts (its own slice, no break threshold applied):"
+            node "$tools/score.mjs" --report "reports/stryker-shard-$SHARD.json" --config ".stryker-shard-$SHARD.json" | sed 's/^/  - /'
+            echo "  - files: $(node -p 'require("./mutation-plan/plan.json").shards.find((s) => s.index === Number(process.argv[1])).files.join(", ")' "$SHARD")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload this shard's report
+        id: upload
         # `always()` so a shard that died still leaves its log and resource curve for diagnosis.
         # Only the incremental file feeds the aggregate, and that job does not run after a failure.
+        # `continue-on-error` so a failed first attempt does not end the job before the retry; the
+        # retry carries the failure if it fails too.
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-shard-${{ matrix.shard }}
+          path: |
+            reports/stryker-shard-${{ matrix.shard }}.json
+            reports/shard-${{ matrix.shard }}.meta
+            reports/shard-${{ matrix.shard }}.resources
+            reports/shard-${{ matrix.shard }}.log
+          if-no-files-found: ignore
+
+      - name: Wait before retrying the upload
+        if: always() && steps.upload.outcome == 'failure'
+        run: sleep 60
+
+      - name: Upload this shard's report again
+        # A distinct artifact name, because a failed first attempt can leave a half-created artifact
+        # under its own. The aggregate accepts exactly one of the two names per shard.
+        if: always() && steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-shard-${{ matrix.shard }}-retry
           path: |
             reports/stryker-shard-${{ matrix.shard }}.json
             reports/shard-${{ matrix.shard }}.meta
@@ -568,16 +598,9 @@ jobs:
         run: |
           set -euo pipefail
           tools=.mutation-shards/.github/scripts/mutation-shards
-          count=$(node -p 'require("./mutation-plan/plan.json").shards.length')
-          files=()
-          for i in $(seq 1 "$count"); do
-            found=$(find mutation-shards -name "stryker-shard-$i.json" -type f)
-            if [ "$(printf '%s\n' "$found" | grep -c .)" != 1 ]; then
-              echo "::error title=Mutation shards::Expected exactly one report for shard $i, found: ${found:-none}"
-              exit 1
-            fi
-            files+=("$found")
-          done
+          # Captured first: a failure inside a process substitution would not stop the script.
+          listed=$(node "$tools/collect.mjs" --plan mutation-plan/plan.json --dir mutation-shards)
+          mapfile -t files <<< "$listed"
           mkdir -p reports/mutation
           node "$tools/merge.mjs" --plan mutation-plan/plan.json --config "$STRYKER_CONFIG" \
             --out reports/stryker-incremental.json --shards "${files[@]}"

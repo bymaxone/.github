@@ -7,6 +7,10 @@ import { assertPlan, expandMutate, partition, weightsFromReport } from './plan.m
 import { buildShardConfig } from './shard-config.mjs';
 import { mergeReports } from './merge.mjs';
 import { diff, index } from './compare.mjs';
+import { collect } from './collect.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const glob = (file, pattern) => matchesGlob(file, pattern);
 
@@ -157,4 +161,37 @@ test('compare reports a status change and treats a Killed/Timeout flip apart', (
   assert.equal(d.flips.length, 1);
   assert.equal(d.changed.length, 1);
   assert.equal(d.onlyA.length + d.onlyB.length, 0);
+});
+
+function artifacts(names) {
+  const dir = mkdtempSync(join(tmpdir(), 'shards-'));
+  for (const name of names) {
+    mkdirSync(join(dir, name));
+    const shard = name.match(/mutation-shard-(\d+)/)[1];
+    writeFileSync(join(dir, name, `stryker-shard-${shard}.json`), '{}');
+  }
+  return dir;
+}
+
+test('collect takes the retry artifact when the first upload of a shard failed', () => {
+  const dir = artifacts(['mutation-shard-1', 'mutation-shard-2-retry']);
+  const { paths, problems } = collect(2, dir);
+  rmSync(dir, { recursive: true });
+  assert.deepEqual(problems, []);
+  assert.deepEqual(paths.map((p) => p.split('/').slice(-2).join('/')), [
+    'mutation-shard-1/stryker-shard-1.json',
+    'mutation-shard-2-retry/stryker-shard-2.json',
+  ]);
+});
+
+test('collect names a missing shard and refuses a shard present under both names', () => {
+  const missing = artifacts(['mutation-shard-1']);
+  const a = collect(2, missing);
+  rmSync(missing, { recursive: true });
+  assert.equal(a.problems.length, 1);
+  assert.match(a.problems[0], /shard 2: .*mutation-shard-2 or mutation-shard-2-retry/);
+  const both = artifacts(['mutation-shard-1', 'mutation-shard-1-retry']);
+  const b = collect(1, both);
+  rmSync(both, { recursive: true });
+  assert.match(b.problems[0], /both mutation-shard-1 and mutation-shard-1-retry/);
 });
