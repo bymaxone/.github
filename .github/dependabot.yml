@@ -1,0 +1,16 @@
+# Version and security updates for the one npm manifest in this repository: the test fixture the
+# mutation-full self-test runs on (see README). Its lockfile is what Dependabot reads.
+#
+# The `github-actions` ecosystem is deliberately absent. The actions in these workflows are pinned
+# to commits and moved on purpose, with the allow-list and the pinning guard watching them, and a
+# weekly bot PR per pin is the noise AGENTS.md records for the consuming repositories.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

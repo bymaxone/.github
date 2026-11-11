@@ -1,0 +1,19 @@
+{
+  "name": "bymaxone-dotgithub-mutation-fixture",
+  "private": true,
+  "description": "Test fixture for the reusable mutation-full workflow. Nothing consumes or publishes it.",
+  "license": "MIT",
+  "scripts": {
+    "test": "jest",
+    "mutation:full": "node -e \"require('node:fs').rmSync('reports/stryker-incremental.json',{force:true,recursive:true})\" && stryker run"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "9.6.1",
+    "@stryker-mutator/jest-runner": "9.6.1",
+    "jest": "30.5.2"
+  },
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
