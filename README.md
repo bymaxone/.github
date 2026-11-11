@@ -296,7 +296,7 @@ worker grows to several GiB over a long run, and a lost runner reports no error)
 | ----------------- | -------------------------- | --------------------------------------------------------------------------------- |
 | `shards`          | `1`                        | `1` is the single job. Above 1: plan, one cold job per shard, one aggregate job   |
 | `concurrency`     | `0`                        | Stryker workers per shard; `0` keeps the caller's config. Size it to one runner   |
-| `stryker-config`  | `stryker.config.json`      | Read for `mutate`, and written back with per-shard overrides (JSON config)        |
+| `stryker-config`  | `stryker.config.json`      | Read for `mutate`, and written back with per-shard overrides (a plain object)      |
 | `break-threshold` | _(config's `thresholds.break`)_ | Enforced once, on the merged score, because a shard scores only its slice    |
 | `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
 
