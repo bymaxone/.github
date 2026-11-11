@@ -305,6 +305,13 @@ shard pays its own dry run, so total CPU rises by about that per extra shard. Th
 sharded jobs run are fetched from this repository at the commit of the workflow file itself,
 so they cannot differ from it.
 
+Each shard writes its score, counts by status and files to the job summary before uploading its
+report, and uploads a second time under `mutation-shard-N-retry` if the first upload fails; the
+aggregate takes exactly one of the two per shard and names any that is missing. Known limit: the
+split balances by mutant count, which gave a 5.6% spread in mutants but 73 to 99 minutes of wall
+time on the first real run, so mutant count is a loose proxy for time. The per-shard summaries are
+the input for a time-based weight once a few runs exist.
+
 This repository carries a small root package (`package.json`, `fixture/`, `stryker.config.json`)
 that exists only to be mutated by [`mutation-full-selftest.yml`](.github/workflows/mutation-full-selftest.yml),
 which calls the reusable workflow on the default branch and checks that a sharded run gives what a
