@@ -12,6 +12,20 @@ import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SHARD_OVERRIDES, loadStrykerConfig, parseArgs, readJson } from './lib.mjs';
 
+// Jest's title placeholders. `%#` and `%$` are a row number and `%%` is one percent sign; every
+// other one stands for whatever text the row's value formats to.
+const PRINTF = /%[sdifjoOp#$%]/;
+const PRINTF_ALL = /(%[sdifjoOp#$%])/;
+const PLACEHOLDER_PATTERN = { '%#': '\\d+', '%$': '\\d+', '%%': '%' };
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const titlePattern = (title) =>
+  new RegExp(
+    `^${title
+      .split(PRINTF_ALL)
+      .map((part, at) => (at % 2 === 0 ? escapeRegExp(part) : (PLACEHOLDER_PATTERN[part] ?? '.*')))
+      .join('')}$`,
+    's',
+  );
 const testKey = (t) => `${t.name}\u0000${t.location?.start?.line ?? ''}:${t.location?.start?.column ?? ''}`;
 
 export function mergeReports(shardReports, plan, base) {
@@ -49,11 +63,28 @@ export function mergeReports(shardReports, plan, base) {
     testFiles[spec] = { ...shardReports.find((r) => r.testFiles?.[spec])?.testFiles[spec], tests };
   }
 
-  const remap = (i, ids) => ids?.map((id) => {
+  // Jest formats an `it.each` title per row, yet the runner may record the unformatted title,
+  // placeholders and all, as the id of a test. Such an id stands for every row of that title in
+  // the same shard: coverage becomes a superset of the rows, never a guess at one of them.
+  const rowsOf = (i, title) => {
+    if (!PRINTF.test(title)) return [];
+    const pattern = titlePattern(title);
+    const rows = [];
+    for (const data of Object.values(shardReports[i].testFiles ?? {})) {
+      for (const test of data.tests ?? []) {
+        if (pattern.test(test.name)) rows.push(testIdMap[i].get(test.id));
+      }
+    }
+    return rows;
+  };
+
+  const remap = (i, ids) => ids?.flatMap((id) => {
     const mapped = testIdMap[i].get(id);
-    if (mapped === undefined) throw new Error(`Shard ${i + 1} refers to test ${id}, which its testFiles do not list.`);
-    return mapped;
-  });
+    if (mapped !== undefined) return [mapped];
+    const rows = rowsOf(i, String(id));
+    if (rows.length === 0) throw new Error(`Shard ${i + 1} refers to test ${id}, which its testFiles do not list.`);
+    return rows;
+  }).filter((id, at, all) => all.indexOf(id) === at);
 
   const files = {};
   let nextMutant = 0;

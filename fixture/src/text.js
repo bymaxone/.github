@@ -11,4 +11,13 @@ function isBlank(text) {
   return text.trim().length === 0;
 }
 
-module.exports = { initials, isBlank };
+function shout(text) {
+  return `${text.toUpperCase()}!`;
+}
+
+// Read while the spec is collected, to build its `it.each` table.
+function sampleWords() {
+  return [['hello', 'HELLO!'], ['a b', 'A B!']];
+}
+
+module.exports = { initials, isBlank, sampleWords, shout };

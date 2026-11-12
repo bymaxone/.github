@@ -82,6 +82,28 @@ function strykerInventory(report) {
   return { names, files, pairs };
 }
 
+/**
+ * Picks the directory Jest's absolute spec paths are made relative to: the one under which the
+ * most of them turn into a spec path the report recorded. The report's `projectRoot` is where the
+ * mutation run happened, which can be a package inside the checkout or, for a downloaded or merged
+ * report, a path that does not exist here; the checkout wins a tie, and when neither matches.
+ *
+ * @param results - The parsed `jest --json` output.
+ * @param recorded - The spec files the Stryker report lists.
+ * @param projectRoot - The root the Stryker report recorded, when it recorded one.
+ * @returns The directory to resolve against.
+ */
+function resolveRoot(results, recorded, projectRoot) {
+  const matches = (root) =>
+    (results.testResults ?? []).filter((file) =>
+      recorded.has(path.relative(root, file.name).split(path.sep).join('/')),
+    ).length;
+  const checkout = process.cwd();
+  return projectRoot !== undefined && matches(projectRoot) > matches(checkout)
+    ? projectRoot
+    : checkout;
+}
+
 /** Assertion statuses in which Jest did not run the test, so the mutation run owes it nothing. */
 const NOT_RUN = new Set(['pending', 'skipped', 'todo', 'disabled']);
 
@@ -90,7 +112,7 @@ const NOT_RUN = new Set(['pending', 'skipped', 'todo', 'disabled']);
  * carry it, and how many of the file's tests carry it.
  *
  * @param results - The parsed `jest --json` output.
- * @param root - The directory the Stryker report's paths are relative to.
+ * @param root - The directory the spec paths are made relative to, as `resolveRoot` picks it.
  * @returns The executed full names, each with its test count per file.
  */
 function jestInventory(results, root) {
@@ -169,7 +191,8 @@ function main(argv) {
   if (recorded.names.size === 0) {
     fail(`${strykerPath} records no test, so the mutation run proved nothing`);
   }
-  const executed = jestInventory(readJson(jestPath), report.projectRoot ?? process.cwd());
+  const results = readJson(jestPath);
+  const executed = jestInventory(results, resolveRoot(results, recorded.files, report.projectRoot));
   const exempt = readExemptions(exemptionsPath, executed, recorded);
   // A name is required when a spec that is not exempt carries it, once per test that carries it.
   const required = [...executed]
