@@ -217,6 +217,24 @@ test('the inventory reads spec paths against the checkout, not a stale report pr
   }
 });
 
+// A report whose projectRoot is a package inside the checkout keeps its spec paths relative to
+// that package, and the checkout also holds those specs, so "holds the specs" cannot decide.
+test('the inventory keeps a projectRoot that is a package inside the checkout', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'inventory-')));
+  try {
+    const report = { projectRoot: join(dir, 'pkg'), testFiles: { 'src/a.spec.ts': { tests: [{ id: '0', name: 'a does it' }] } } };
+    const jest = { testResults: [{ name: join(dir, 'pkg/src/a.spec.ts'), assertionResults: [{ ancestorTitles: ['a'], title: 'does it', status: 'passed' }] }] };
+    writeFileSync(join(dir, 'report.json'), JSON.stringify(report));
+    writeFileSync(join(dir, 'jest.json'), JSON.stringify(jest));
+    const script = join(import.meta.dirname, '../../actions/mutation-inventory/check-mutation-inventory.mjs');
+    const run = spawnSync(process.execPath, [script, join(dir, 'report.json'), join(dir, 'jest.json')], { cwd: dir, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /all 1 unit tests ran/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('compare reports a status change and treats a Killed/Timeout flip apart', () => {
   const a = { files: { 'f.ts': { mutants: [mutant('0', 'Killed', 1), mutant('1', 'Killed', 2), mutant('2', 'Survived', 3)] } } };
   const b = { files: { 'f.ts': { mutants: [mutant('9', 'Timeout', 1), mutant('8', 'Survived', 2), mutant('7', 'Survived', 3)] } } };
