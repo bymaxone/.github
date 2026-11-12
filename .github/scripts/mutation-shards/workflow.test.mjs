@@ -64,8 +64,8 @@ test('the self-test expects the merged file to reuse the single run\'s results p
   const selftest = readFileSync(new URL('../../workflows/mutation-full-selftest.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(selftest, /^\s*diff control\.reuse sharded\.reuse$/m);
   assert.doesNotMatch(selftest, / -ge /);
-  assert.match(selftest, /compare\.mjs --unmatched control\/stryker-incremental\.json/);
-  assert.match(selftest, /test "\$\(reused sharded\.reuse\)" -eq "\$\(\( \$\(reused control\.reuse\) \+ extra \)\)"/);
+  assert.match(selftest, /compare\.mjs --unmatched "\$RUNNER_TEMP\/control\/stryker-incremental\.json"/);
+  assert.match(selftest, /test "\$\(reused "\$sreuse"\)" -eq "\$\(\( \$\(reused "\$creuse"\) \+ extra \)\)"/);
 });
 
 // The tooling and the downloaded artifacts must not sit inside the consumer's workspace. The
@@ -113,4 +113,16 @@ test('the fixture workspace spec is related to every mutated source file', () =>
   assert.ok(sources.length >= 2, 'the sources were found');
   const unrelated = sources.filter((f) => !spec.includes(`require('../src/${f.replace(/\.js$/, '')}')`));
   assert.deepEqual(unrelated, []);
+});
+
+// The compare job runs Stryker in its workspace, and that run's dry run includes the fixture's
+// workspace spec, which fails on any entry the repository does not have. What the job downloads and
+// writes therefore lives under the runner temp directory, apart from `reports/`.
+test('the self-test compare job keeps what it downloads and writes out of the workspace', () => {
+  const selftest = readFileSync(new URL('../../workflows/mutation-full-selftest.yml', import.meta.url), 'utf8');
+  const compare = selftest.slice(selftest.indexOf('  compare:'));
+  const downloads = [...compare.matchAll(/path: (.+)/g)].map((m) => m[1]);
+  assert.equal(downloads.length, 3, 'the three artifacts');
+  assert.deepEqual(downloads.filter((p) => !p.startsWith('${{ runner.temp }}/')), []);
+  assert.doesNotMatch(compare, /(?<![\w/"])reuse-\$2\.log|tee (?:control|sharded)\.reuse|\.\/plan\//, 'no log or result file lands in the workspace');
 });
