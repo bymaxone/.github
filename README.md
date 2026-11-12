@@ -317,7 +317,7 @@ that exists only to be mutated by [`mutation-full-selftest.yml`](.github/workflo
 which calls the reusable workflow on the default branch and checks that a sharded run gives what a
 single run gives. Nothing consumes or publishes it. It runs with `ignoreStatic: false` so that a
 mutant of the table an `it.each` is built from runs: when it empties the table, Jest reports one
-test under the unformatted title (`%#`, `%s` still in it), and the shard merge has to map that id
+test under the unformatted title, and the shard merge has to map that id
 back to the rows the unmutated run lists. The self-test does not exercise the single
 `full` job (it compares against a plain job running the same command, because two calls would
 upload the same artifact name); that job is proven by every caller's weekly run.
