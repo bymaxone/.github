@@ -9,8 +9,11 @@
 #      and the inventory in `enforce` mode on the merged report.
 #   2. That run gives what a single cold run gives: every mutant has the same status, found by
 #      (file, location, mutator, replacement) and not by id, and the score is the same.
-#   3. The merged baseline behaves, on the per-push path, exactly as a single run's own file: the
-#      same no-op incremental run reuses the same number of results from either.
+#   3. The merged baseline behaves, on the per-push path, at least as well as a single run's own
+#      file: the same no-op incremental run changes the same files and reuses no fewer results from
+#      it. Not "the same number": a mutant killed by an `it.each` row under its unformatted title
+#      is recorded in a single run's file by that title, which Stryker cannot match to a test, so it
+#      is re-run; the merge maps it to the rows, so the merged file reuses it.
 #
 # The control is a plain job running the same command the single job of the reusable runs
 # (`pnpm mutation:full`), not a second call to the reusable: both calls would upload an artifact
@@ -127,7 +130,7 @@ jobs:
           node .github/scripts/mutation-shards/compare.mjs \
             control/stryker-incremental.json sharded/mutation.json 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: The merged baseline is reused exactly as the single run's file
+      - name: The merged baseline is reused at least as well as the single run's file
         run: |
           set -euo pipefail
           reuse() {
@@ -145,6 +148,10 @@ jobs:
             echo "sharded:"; cat sharded.reuse
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          diff control.reuse sharded.reuse
+          diff <(grep 'files changed' control.reuse) <(grep 'files changed' sharded.reuse)
           grep -q '0 files changed' control.reuse
           grep -q 'result(s) are reused' control.reuse
+          reused() { sed -n 's/^Result:[[:space:]]*\([0-9][0-9]*\) of [0-9][0-9]* mutant.*/\1/p' "$1"; }
+          total() { sed -n 's/^Result:[[:space:]]*[0-9][0-9]* of \([0-9][0-9]*\) mutant.*/\1/p' "$1"; }
+          test "$(total control.reuse)" = "$(total sharded.reuse)"
+          test "$(reused sharded.reuse)" -ge "$(reused control.reuse)"
