@@ -12,9 +12,20 @@ import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SHARD_OVERRIDES, loadStrykerConfig, parseArgs, readJson } from './lib.mjs';
 
-// Jest's title placeholders: %s %d %i %f %j %o %O %p %# %$ and the literal %%.
+// Jest's title placeholders. `%#` and `%$` are a row number and `%%` is one percent sign; every
+// other one stands for whatever text the row's value formats to.
 const PRINTF = /%[sdifjoOp#$%]/;
+const PRINTF_ALL = /(%[sdifjoOp#$%])/;
+const PLACEHOLDER_PATTERN = { '%#': '\\d+', '%$': '\\d+', '%%': '%' };
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const titlePattern = (title) =>
+  new RegExp(
+    `^${title
+      .split(PRINTF_ALL)
+      .map((part, at) => (at % 2 === 0 ? escapeRegExp(part) : (PLACEHOLDER_PATTERN[part] ?? '.*')))
+      .join('')}$`,
+    's',
+  );
 const testKey = (t) => `${t.name}\u0000${t.location?.start?.line ?? ''}:${t.location?.start?.column ?? ''}`;
 
 export function mergeReports(shardReports, plan, base) {
@@ -57,7 +68,7 @@ export function mergeReports(shardReports, plan, base) {
   // the same shard: coverage becomes a superset of the rows, never a guess at one of them.
   const rowsOf = (i, title) => {
     if (!PRINTF.test(title)) return [];
-    const pattern = new RegExp(`^${title.split(PRINTF).map(escapeRegExp).join('.*')}$`, 's');
+    const pattern = titlePattern(title);
     const rows = [];
     for (const data of Object.values(shardReports[i].testFiles ?? {})) {
       for (const test of data.tests ?? []) {

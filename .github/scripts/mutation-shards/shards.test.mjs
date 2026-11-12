@@ -172,6 +172,27 @@ test('mergeReports maps an unformatted it.each title to every formatted row of i
   assert.deepEqual(merged.files['a.ts'].mutants[0].killedBy.map((i) => names.get(i)).sort(), ['suite refuses the header cookie', 'suite refuses the header host']);
 });
 
+// Jest formats `%#` and `%$` as the row index and `%%` as a literal percent sign, so those
+// placeholders stand for digits and for one `%`, not for any text.
+test('mergeReports reads %# as a row number and %% as a percent sign when it matches a title', () => {
+  const { one, two, plan } = shardReports();
+  const spec = (tests) => ({ tests });
+  const t = (id, name, line) => ({ id, name, location: { start: { line, column: 1 } } });
+  one.testFiles['x.spec.ts'] = spec([t('0', 'row 0', 5), t('1', 'row 12', 5), t('2', 'row banana', 5), t('3', 'rate 5%', 7), t('4', 'rate 5 percent', 7)]);
+  const names = (merged, ids) => {
+    const all = new Map();
+    for (const data of Object.values(merged.testFiles)) for (const x of data.tests) all.set(x.id, x.name);
+    return ids.map((i) => all.get(i)).sort();
+  };
+  one.files['a.ts'].mutants[0].killedBy = ['row %#'];
+  one.files['a.ts'].mutants[0].coveredBy = ['0'];
+  let merged = mergeReports([one, two], plan, {});
+  assert.deepEqual(names(merged, merged.files['a.ts'].mutants[0].killedBy), ['row 0', 'row 12']);
+  one.files['a.ts'].mutants[0].killedBy = ['rate 5%%'];
+  merged = mergeReports([one, two], plan, {});
+  assert.deepEqual(names(merged, merged.files['a.ts'].mutants[0].killedBy), ['rate 5%']);
+});
+
 test('mergeReports still refuses an unformatted title that no listed test matches', () => {
   const { one, two, plan } = shardReports();
   one.files['a.ts'].mutants[0].killedBy = ['nothing refuses the header %s'];
