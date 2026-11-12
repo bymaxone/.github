@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { matchesGlob } from 'node:path';
 import test from 'node:test';
-import { assertPlan, expandMutate, partition, weightsFromReport } from './plan.mjs';
+import { assertPlan, expandMutate, partition, planSummary, weightsFromReport } from './plan.mjs';
 import { buildShardConfig } from './shard-config.mjs';
 import { mergeReports } from './merge.mjs';
 import { diff, index, unmatchedTestRefs } from './compare.mjs';
@@ -41,7 +41,9 @@ test('expandMutate refuses a line-range pattern it cannot split', () => {
   assert.throws(() => expandMutate(['src/a.ts:1-10'], ['src/a.ts'], glob), /line range/);
 });
 
-test('weightsFromReport counts only mutants that cost a test run', () => {
+// A report without durations (an older Stryker, or a reporter that leaves them out) is weighed by the
+// number of mutants that cost a test run, as before.
+test('weightsFromReport counts only mutants that cost a test run when the report has no durations', () => {
   const report = {
     files: {
       'a.ts': {
@@ -49,7 +51,65 @@ test('weightsFromReport counts only mutants that cost a test run', () => {
       },
     },
   };
-  assert.equal(weightsFromReport(report).get('a.ts'), 2);
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'count');
+  assert.equal(weights.get('a.ts'), 2);
+});
+
+// The time a mutant took is what the runner paid for it. Killed, Survived, Timeout (capped at the
+// timeout) and RuntimeError ran tests; NoCoverage, CompileError and Ignored did not, so whatever
+// duration they carry is not counted.
+test('weightsFromReport sums the duration of the mutants that ran tests, Timeout included', () => {
+  const timed = (id, status, duration) => ({ ...mutant(id, status, 1), duration });
+  const report = {
+    files: {
+      'a.ts': {
+        mutants: [
+          timed('0', 'Killed', 100),
+          timed('1', 'Survived', 200),
+          timed('2', 'Timeout', 2000),
+          timed('3', 'RuntimeError', 40),
+          timed('4', 'NoCoverage', 9000),
+          timed('5', 'CompileError', 9000),
+          timed('6', 'Ignored', 9000),
+        ],
+      },
+    },
+  };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'duration');
+  assert.equal(weights.get('a.ts'), 2340);
+});
+
+// A reused (incremental) mutant keeps the duration of the run that measured it, or none. The rule is
+// to use what is present, and to leave a file with none out, so the planner gives it the median.
+test('weightsFromReport uses the durations present and leaves out a file that has none', () => {
+  const timed = (id, status, duration) => ({ ...mutant(id, status, 1), duration });
+  const report = {
+    files: {
+      'a.ts': { mutants: [timed('0', 'Killed', 100), mutant('1', 'Killed', 2)] },
+      'b.ts': { mutants: [mutant('0', 'Killed', 1), mutant('1', 'Survived', 2)] },
+      'c.ts': { mutants: [timed('0', 'Ignored', 500)] },
+    },
+  };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'duration');
+  assert.equal(weights.get('a.ts'), 100, 'the duration that is there');
+  assert.equal(weights.has('b.ts'), false, 'no duration: the median rule applies');
+  assert.equal(weights.has('c.ts'), false, 'a duration on a mutant that ran no test is not a weight');
+});
+
+test('planSummary names the weight source and prints the predicted weight of every shard', () => {
+  const slices = [{ index: 1, weight: 6593000, files: ['a'] }, { index: 2, weight: 5536400, files: ['b'] }];
+  const lines = planSummary('duration', 2, slices);
+  assert.deepEqual(lines, [
+    'shard 1: 1 files, weight 6593000',
+    'shard 2: 1 files, weight 5536400',
+    'weight source: duration (ms); 2 files, total weight 12129400',
+    'predicted shard weights (ms): 6593000 / 5536400',
+  ]);
+  assert.match(planSummary('size', 2, slices).join('\n'), /weight source: size \(bytes\)/);
+  assert.match(planSummary('count', 2, slices).join('\n'), /weight source: count \(mutants\)/);
 });
 
 test('partition gives every file to exactly one shard, balanced, and the same answer twice', () => {
