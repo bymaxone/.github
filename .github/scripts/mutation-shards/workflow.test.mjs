@@ -7,7 +7,7 @@
 // so the two texts must be identical. When they are, this passes; when someone edits one, this is
 // the red check that says to edit the other.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const workflow = readFileSync(new URL('../../workflows/mutation-full.yml', import.meta.url), 'utf8');
@@ -101,4 +101,16 @@ test('the tooling fetch is the same, and fails closed, in the plan, shard and ag
 
 test('reports/ stays in the workspace and says why', () => {
   assert.match(workflow, /`reports\/` stays at the\s+#\s+workspace path/);
+});
+
+// The fixture runs Jest with `enableFindRelatedTests`: a spec that imports none of the mutated
+// files is left out of Stryker's dry run, so it never runs in a shard's workspace, and the
+// inventory then finds a unit test the mutation run did not record. The workspace spec must
+// therefore import every source file the fixture mutates.
+test('the fixture workspace spec is related to every mutated source file', () => {
+  const spec = readFileSync(new URL('../../../fixture/test/workspace.spec.js', import.meta.url), 'utf8');
+  const sources = readdirSync(new URL('../../../fixture/src/', import.meta.url)).filter((f) => f.endsWith('.js'));
+  assert.ok(sources.length >= 2, 'the sources were found');
+  const unrelated = sources.filter((f) => !spec.includes(`require('../src/${f.replace(/\.js$/, '')}')`));
+  assert.deepEqual(unrelated, []);
 });

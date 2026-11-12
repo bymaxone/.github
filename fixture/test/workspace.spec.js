@@ -10,6 +10,13 @@
 const { readdirSync } = require('node:fs');
 const path = require('node:path');
 
+// Stryker runs Jest with --findRelatedTests (see stryker.config.json), and a spec that imports no
+// mutated file is left out of its dry run: it would never run in a shard's workspace, and the
+// inventory would find a unit test the mutation run did not record. Importing every source file
+// keeps this spec in both. A test in workflow.test.mjs fails if a source file is missing here.
+require('../src/math');
+require('../src/text');
+
 // Tracked top-level entries.
 const OWN = new Set([
   '.github', '.gitignore', 'AGENTS.md', 'LICENSE', 'README.md', 'agents', 'fixture',

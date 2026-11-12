@@ -329,8 +329,8 @@ jobs:
 
       - name: Require this workflow's own commit
         # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
-        # empty, the checkout below would fall back to the CALLER's default branch and run its
-        # files as tooling, so an empty or malformed value stops the job instead.
+        # empty, the tooling fetch below would read a branch's tarball instead of this commit's
+        # and run its files, so an empty or malformed value stops the job instead.
         if: steps.changed.outputs.run == 'true'
         env:
           WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
@@ -446,8 +446,8 @@ jobs:
 
       - name: Require this workflow's own commit
         # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
-        # empty, the checkout below would fall back to the CALLER's default branch and run its
-        # files as tooling, so an empty or malformed value stops the job instead.
+        # empty, the tooling fetch below would read a branch's tarball instead of this commit's
+        # and run its files, so an empty or malformed value stops the job instead.
         env:
           WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           WORKFLOW_SHA: ${{ job.workflow_sha }}
@@ -614,8 +614,8 @@ jobs:
 
       - name: Require this workflow's own commit
         # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
-        # empty, the checkout below would fall back to the CALLER's default branch and run its
-        # files as tooling, so an empty or malformed value stops the job instead.
+        # empty, the tooling fetch below would read a branch's tarball instead of this commit's
+        # and run its files, so an empty or malformed value stops the job instead.
         env:
           WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           WORKFLOW_SHA: ${{ job.workflow_sha }}
