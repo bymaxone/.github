@@ -300,17 +300,20 @@ worker grows to several GiB over a long run, and a lost runner reports no error)
 | `break-threshold` | _(config's `thresholds.break`)_ | Enforced once, on the merged score, because a shard scores only its slice    |
 | `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
 
-The split is balanced by the mutants of the previous run and falls back to file size. Each
+The split is balanced by the time the previous run measured: per file, the sum of the durations of
+its mutants that ran tests. A mutant's `duration` is in the report of Stryker 10; a report without
+durations is balanced by the number of mutants that cost a test run.
+With no previous report it falls back to file size. The plan prints which weight it used and the
+predicted weight of each shard, so a run's shard times can be compared with it. Each
 shard pays its own dry run, so total CPU rises by about that per extra shard. The scripts the
 sharded jobs run are fetched from this repository at the commit of the workflow file itself,
 so they cannot differ from it.
 
 Each shard writes its score, counts by status and files to the job summary before uploading its
 report, and uploads a second time under `mutation-shard-N-retry` if the first upload fails; the
-aggregate takes exactly one of the two per shard and names any that is missing. Known limit: the
-split balances by mutant count, which gave a 5.6% spread in mutants but 73 to 99 minutes of wall
-time on the first real run, so mutant count is a loose proxy for time. The per-shard summaries are
-the input for a time-based weight once a few runs exist.
+aggregate takes exactly one of the two per shard and names any that is missing. Known limit: a
+file is never split, so a file that costs more than a share of the run (a quarter, with four
+shards) sets the wall time of the slowest shard whatever else is done.
 
 This repository carries a small root package (`package.json`, `fixture/`, `stryker.config.json`)
 that exists only to be mutated by [`mutation-full-selftest.yml`](.github/workflows/mutation-full-selftest.yml),
