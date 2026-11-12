@@ -2,6 +2,7 @@
 // gives what a single run gives.
 //
 //   node compare.mjs <single.json> <sharded.json>
+//   node compare.mjs --unmatched <report.json>
 //
 // A mutant is identified by (file, location, mutator, replacement), never by id: ids are
 // per-run numbering. Exits 1 on any status difference, any mutant present in one run only, or
@@ -22,6 +23,22 @@ export function index(report) {
   return map;
 }
 
+// The mutants a report ties to a test by an id that no `testFiles` entry lists: a mutant killed
+// by an `it.each` row under its unformatted title is recorded that way. Stryker cannot match
+// such an id to a test, so an incremental run re-runs the mutant instead of reusing its result.
+export function unmatchedTestRefs(report) {
+  const listed = new Set();
+  for (const spec of Object.values(report.testFiles ?? {})) for (const t of spec.tests ?? []) listed.add(t.id);
+  const keys = [];
+  for (const [file, data] of Object.entries(report.files)) {
+    for (const m of data.mutants) {
+      const refs = [m.coveredBy, m.killedBy, m.testsCompleted].flatMap((ids) => (Array.isArray(ids) ? ids : []));
+      if (refs.some((id) => !listed.has(id))) keys.push(keyOf(file, m));
+    }
+  }
+  return keys;
+}
+
 export function diff(a, b) {
   const onlyA = [];
   const onlyB = [];
@@ -39,6 +56,10 @@ export function diff(a, b) {
 }
 
 async function main() {
+  if (process.argv[2] === '--unmatched') {
+    console.log(unmatchedTestRefs(readJson(process.argv[3])).length);
+    return;
+  }
   const [pathA, pathB] = process.argv.slice(2);
   const reportA = readJson(pathA);
   const reportB = readJson(pathB);

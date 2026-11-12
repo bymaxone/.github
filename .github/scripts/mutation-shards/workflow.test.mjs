@@ -56,3 +56,14 @@ test('the shard summary is a best-effort step before the upload and writes the s
   assert.match(summary, /env -u GITHUB_STEP_SUMMARY node "\$tools\/score\.mjs"/);
   assert.ok(workflow.indexOf(summary) < workflow.indexOf("      - name: Upload this shard's report\n"));
 });
+
+// A mutant killed by an `it.each` row under its unformatted title is recorded in a single run's
+// file by that title, which Stryker cannot match to a test, so the single run's file reuses fewer
+// results than the merged one. The self-test accepts exactly that difference and nothing else.
+test('the self-test expects the merged file to reuse the single run\'s results plus the unmatched ones, exactly', () => {
+  const selftest = readFileSync(new URL('../../workflows/mutation-full-selftest.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(selftest, /^\s*diff control\.reuse sharded\.reuse$/m);
+  assert.doesNotMatch(selftest, / -ge /);
+  assert.match(selftest, /compare\.mjs --unmatched control\/stryker-incremental\.json/);
+  assert.match(selftest, /test "\$\(reused sharded\.reuse\)" -eq "\$\(\( \$\(reused control\.reuse\) \+ extra \)\)"/);
+});
