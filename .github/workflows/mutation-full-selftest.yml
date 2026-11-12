@@ -16,6 +16,9 @@
 #      records the title, so the mutant is re-run, while the merge maps it to the rows and the
 #      merged file reuses it. Stryker prints counts, not which results it reused; the verdict of
 #      every mutant is compared in step 2.
+#   4. The workspace the reusable runs the caller's suite in holds nothing of the workflow's own:
+#      `fixture/test/workspace.spec.js` fails if the root has an entry the repository does not,
+#      and it runs in every shard's dry run and in the aggregate's inventory.
 #
 # The control is a plain job running the same command the single job of the reusable runs
 # (`pnpm mutation:full`), not a second call to the reusable: both calls would upload an artifact
@@ -105,23 +108,23 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: control-report
-          path: control
+          path: ${{ runner.temp }}/control
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: mutation-full
-          path: sharded
+          path: ${{ runner.temp }}/sharded
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: mutation-plan
-          path: plan
+          path: ${{ runner.temp }}/plan
 
       - name: The plan really split the run
         run: |
           set -euo pipefail
           node -e '
-            const plan = require("./plan/plan.json");
+            const plan = require(process.env.RUNNER_TEMP + "/plan/plan.json");
             console.log(JSON.stringify(plan.shards.map((s) => ({ index: s.index, files: s.files, weight: s.weight }))));
             if (plan.shards.length !== 2) throw new Error("expected 2 shards");
             if (plan.shards.some((s) => s.files.length === 0)) throw new Error("a shard has no file");
@@ -130,32 +133,37 @@ jobs:
       - name: Same verdict for every mutant, same score
         run: |
           node .github/scripts/mutation-shards/compare.mjs \
-            control/stryker-incremental.json sharded/mutation.json 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            "$RUNNER_TEMP/control/stryker-incremental.json" "$RUNNER_TEMP/sharded/mutation.json" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: The merged baseline is reused as the single run's file is, plus the mutants it cannot
         run: |
           set -euo pipefail
+          # Everything this job downloads or writes stays under the runner temp directory except
+          # `reports/`: the no-op runs below are Stryker runs in this workspace, whose dry run
+          # includes fixture/test/workspace.spec.js, and that spec fails on any other new entry.
+          creuse="$RUNNER_TEMP/control.reuse"
+          sreuse="$RUNNER_TEMP/sharded.reuse"
           reuse() {
             mkdir -p reports
             cp "$1" reports/stryker-incremental.json
-            pnpm exec stryker run > "reuse-$2.log" 2>&1
-            sed 's/\x1b\[[0-9;]*m//g' "reuse-$2.log" | grep -E 'files changed|result\(s\) are reused' | sed 's/^[[:space:]]*//'
+            pnpm exec stryker run > "$RUNNER_TEMP/reuse-$2.log" 2>&1
+            sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/reuse-$2.log" | grep -E 'files changed|result\(s\) are reused' | sed 's/^[[:space:]]*//'
           }
-          reuse control/stryker-incremental.json control | tee control.reuse
-          reuse sharded/mutation.json sharded | tee sharded.reuse
+          reuse "$RUNNER_TEMP/control/stryker-incremental.json" control | tee "$creuse"
+          reuse "$RUNNER_TEMP/sharded/mutation.json" sharded | tee "$sreuse"
           {
             echo "### No-op incremental run"
             echo '```'
-            echo "control:"; cat control.reuse
-            echo "sharded:"; cat sharded.reuse
+            echo "control:"; cat "$creuse"
+            echo "sharded:"; cat "$sreuse"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          diff <(grep 'files changed' control.reuse) <(grep 'files changed' sharded.reuse)
-          grep -q '0 files changed' control.reuse
-          grep -q 'result(s) are reused' control.reuse
+          diff <(grep 'files changed' "$creuse") <(grep 'files changed' "$sreuse")
+          grep -q '0 files changed' "$creuse"
+          grep -q 'result(s) are reused' "$creuse"
           reused() { sed -n 's/^Result:[[:space:]]*\([0-9][0-9]*\) of [0-9][0-9]* mutant.*/\1/p' "$1"; }
           total() { sed -n 's/^Result:[[:space:]]*[0-9][0-9]* of \([0-9][0-9]*\) mutant.*/\1/p' "$1"; }
-          test "$(total control.reuse)" = "$(total sharded.reuse)"
-          extra=$(node .github/scripts/mutation-shards/compare.mjs --unmatched control/stryker-incremental.json)
+          test "$(total "$creuse")" = "$(total "$sreuse")"
+          extra=$(node .github/scripts/mutation-shards/compare.mjs --unmatched "$RUNNER_TEMP/control/stryker-incremental.json")
           echo "Results only the merged file can reuse (single run's file records an unmatched test id): $extra"
-          test "$(reused sharded.reuse)" -eq "$(( $(reused control.reuse) + extra ))"
+          test "$(reused "$sreuse")" -eq "$(( $(reused "$creuse") + extra ))"

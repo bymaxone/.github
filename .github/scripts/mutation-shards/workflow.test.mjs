@@ -7,7 +7,7 @@
 // so the two texts must be identical. When they are, this passes; when someone edits one, this is
 // the red check that says to edit the other.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const workflow = readFileSync(new URL('../../workflows/mutation-full.yml', import.meta.url), 'utf8');
@@ -64,6 +64,65 @@ test('the self-test expects the merged file to reuse the single run\'s results p
   const selftest = readFileSync(new URL('../../workflows/mutation-full-selftest.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(selftest, /^\s*diff control\.reuse sharded\.reuse$/m);
   assert.doesNotMatch(selftest, / -ge /);
-  assert.match(selftest, /compare\.mjs --unmatched control\/stryker-incremental\.json/);
-  assert.match(selftest, /test "\$\(reused sharded\.reuse\)" -eq "\$\(\( \$\(reused control\.reuse\) \+ extra \)\)"/);
+  assert.match(selftest, /compare\.mjs --unmatched "\$RUNNER_TEMP\/control\/stryker-incremental\.json"/);
+  assert.match(selftest, /test "\$\(reused "\$sreuse"\)" -eq "\$\(\( \$\(reused "\$creuse"\) \+ extra \)\)"/);
+});
+
+// The tooling and the downloaded artifacts must not sit inside the consumer's workspace. The
+// aggregate runs the consumer's own unit suite there (the inventory) and every shard runs its dry
+// run there, so any file the workflow adds is a file a test that walks the tree can count. Measured
+// on nest-auth: an `actions/checkout` sparse-checkout is cone mode, which also brings every file at
+// the root of this repository, and the consumer's AGENTS.md-size spec read ours on top of its own.
+test('no step puts a file of ours inside the consumer workspace', () => {
+  assert.doesNotMatch(workflow, /path: \.mutation-shards/, 'the tooling is fetched outside the workspace');
+  assert.doesNotMatch(workflow, /sparse-checkout:/, 'cone mode would bring the root files too');
+  assert.doesNotMatch(workflow, /repository: \$\{\{ job\.workflow_repository \}\}/, 'no checkout of this repository into a consumer job');
+  const downloads = [...workflow.matchAll(/uses: actions\/download-artifact@[^\n]*\n {8}with:\n(?: {10}[^\n]*\n)*? {10}path: ([^\n]+)/g)].map((m) => m[1]);
+  assert.ok(downloads.length === 3, 'every download step was found');
+  assert.deepEqual(downloads.filter((p) => !p.startsWith('${{ runner.temp }}/')), []);
+  assert.doesNotMatch(workflow, /--dir mutation-weights|--out mutation-plan\b|--plan mutation-plan\//, 'scripts read and write under the runner temp directory');
+});
+
+test('the tooling fetch is the same, and fails closed, in the plan, shard and aggregate jobs', () => {
+  // The plan job's copy also carries the `if:` that skips it with the rest of that job.
+  const copies = stepsNamed("Fetch the shard tooling from this workflow's own commit").map((c) => c.replace("        if: steps.changed.outputs.run == 'true'\n", ''));
+  assert.equal(copies.length, 3, 'one copy per job that runs the tooling');
+  assert.equal(copies[1], copies[0]);
+  assert.equal(copies[2], copies[0]);
+  const [fetch] = copies;
+  assert.match(fetch, /repos\/\$WORKFLOW_REPOSITORY\/tarball\/\$WORKFLOW_SHA/, 'the exact commit, never a branch');
+  assert.match(fetch, /--strip-components=1/);
+  assert.match(fetch, /%\{http_code\}/);
+  assert.match(fetch, /\[ "\$status" = 200 \]/, 'a non-200 answer stops the job');
+  assert.match(fetch, /-n "\$GH_TOKEN"/, 'an empty token stops the job');
+  assert.match(fetch, /for script in plan shard-config collect merge score; do/, 'every script the jobs run is required to exist after the extraction');
+  assert.match(workflow, /Tooling commit: \$\{\{ job\.workflow_sha \}\}/, 'a run still says which code scored it');
+});
+
+test('reports/ stays in the workspace and says why', () => {
+  assert.match(workflow, /`reports\/` stays at the\s+#\s+workspace path/);
+});
+
+// The fixture runs Jest with `enableFindRelatedTests`: a spec that imports none of the mutated
+// files is left out of Stryker's dry run, so it never runs in a shard's workspace, and the
+// inventory then finds a unit test the mutation run did not record. The workspace spec must
+// therefore import every source file the fixture mutates.
+test('the fixture workspace spec is related to every mutated source file', () => {
+  const spec = readFileSync(new URL('../../../fixture/test/workspace.spec.js', import.meta.url), 'utf8');
+  const sources = readdirSync(new URL('../../../fixture/src/', import.meta.url)).filter((f) => f.endsWith('.js'));
+  assert.ok(sources.length >= 2, 'the sources were found');
+  const unrelated = sources.filter((f) => !spec.includes(`require('../src/${f.replace(/\.js$/, '')}')`));
+  assert.deepEqual(unrelated, []);
+});
+
+// The compare job runs Stryker in its workspace, and that run's dry run includes the fixture's
+// workspace spec, which fails on any entry the repository does not have. What the job downloads and
+// writes therefore lives under the runner temp directory, apart from `reports/`.
+test('the self-test compare job keeps what it downloads and writes out of the workspace', () => {
+  const selftest = readFileSync(new URL('../../workflows/mutation-full-selftest.yml', import.meta.url), 'utf8');
+  const compare = selftest.slice(selftest.indexOf('  compare:'));
+  const downloads = [...compare.matchAll(/path: (.+)/g)].map((m) => m[1]);
+  assert.equal(downloads.length, 3, 'the three artifacts');
+  assert.deepEqual(downloads.filter((p) => !p.startsWith('${{ runner.temp }}/')), []);
+  assert.doesNotMatch(compare, /(?<![\w/"])reuse-\$2\.log|tee (?:control|sharded)\.reuse|\.\/plan\//, 'no log or result file lands in the workspace');
 });

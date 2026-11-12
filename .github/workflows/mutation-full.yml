@@ -329,8 +329,8 @@ jobs:
 
       - name: Require this workflow's own commit
         # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
-        # empty, the checkout below would fall back to the CALLER's default branch and run its
-        # files as tooling, so an empty or malformed value stops the job instead.
+        # empty, the tooling fetch below would read a branch's tarball instead of this commit's
+        # and run its files, so an empty or malformed value stops the job instead.
         if: steps.changed.outputs.run == 'true'
         env:
           WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
@@ -344,13 +344,35 @@ jobs:
 
       - name: Fetch the shard tooling from this workflow's own commit
         if: steps.changed.outputs.run == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .mutation-shards
-          sparse-checkout: .github/scripts/mutation-shards
-          persist-credentials: false
+        # Outside the workspace: this job runs the caller's own suite there, and a file of ours in
+        # the tree is a file its tests can count (an instruction-file budget, a licence check).
+        # `actions/checkout` cannot write outside the workspace, and its sparse mode is cone mode,
+        # which also brings every file at this repository's root. So the tarball of the exact
+        # commit is read, and only the scripts are extracted. Every failure here stops the job.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Mutation shards::$1"; exit 1; }
+          [ -n "$GH_TOKEN" ] || fail "There is no token to read the tooling with."
+          tooling="$RUNNER_TEMP/mutation-tooling"
+          archive="$RUNNER_TEMP/mutation-tooling.tar.gz"
+          rm -rf "$tooling" "$archive"
+          mkdir -p "$tooling"
+          status=$(curl --silent --show-error --location --output "$archive" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$WORKFLOW_REPOSITORY/tarball/$WORKFLOW_SHA")
+          [ "$status" = 200 ] || fail "Reading $WORKFLOW_REPOSITORY at $WORKFLOW_SHA answered HTTP $status."
+          top=$(tar -tzf "$archive" | sed -n 1p)
+          [[ "$top" =~ ^[^/]+-${WORKFLOW_SHA:0:7}/$ ]] || fail "The archive's top directory '$top' does not name commit ${WORKFLOW_SHA:0:7}."
+          tar -xzf "$archive" -C "$tooling" --strip-components=1 "${top}.github/scripts/mutation-shards"
+          for script in plan shard-config collect merge score; do
+            [ -f "$tooling/.github/scripts/mutation-shards/$script.mjs" ] || fail "$script.mjs is not in the tooling at $WORKFLOW_SHA."
+          done
+          echo "MUTATION_TOOLS=$tooling/.github/scripts/mutation-shards" >> "$GITHUB_ENV"
 
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
         if: steps.changed.outputs.run == 'true'
@@ -372,8 +394,8 @@ jobs:
             echo "No previous successful run; the split will use file sizes."
             exit 0
           fi
-          if gh run download "$run_id" --name mutation-full --dir mutation-weights 2>/dev/null \
-            && [ -f mutation-weights/mutation.json ]; then
+          if gh run download "$run_id" --name mutation-full --dir "$RUNNER_TEMP/mutation-weights" 2>/dev/null \
+            && [ -f "$RUNNER_TEMP/mutation-weights/mutation.json" ]; then
             echo "Weighting the split by run $run_id."
           else
             echo "Run $run_id has no mutation report; the split will use file sizes."
@@ -388,11 +410,11 @@ jobs:
         run: |
           set -euo pipefail
           weights=()
-          if [ -f mutation-weights/mutation.json ]; then
-            weights=(--weights mutation-weights/mutation.json)
+          if [ -f "$RUNNER_TEMP/mutation-weights/mutation.json" ]; then
+            weights=(--weights "$RUNNER_TEMP/mutation-weights/mutation.json")
           fi
-          node .mutation-shards/.github/scripts/mutation-shards/plan.mjs \
-            --config "$STRYKER_CONFIG" --shards "$SHARDS" --out mutation-plan \
+          node "$MUTATION_TOOLS/plan.mjs" \
+            --config "$STRYKER_CONFIG" --shards "$SHARDS" --out "$RUNNER_TEMP/mutation-plan" \
             ${weights[@]+"${weights[@]}"} | tee -a "$GITHUB_STEP_SUMMARY"
           echo "Tooling commit: ${{ job.workflow_sha }} from ${{ job.workflow_repository }}" | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -401,7 +423,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-plan
-          path: mutation-plan/plan.json
+          path: ${{ runner.temp }}/mutation-plan/plan.json
           if-no-files-found: error
 
   shard:
@@ -424,8 +446,8 @@ jobs:
 
       - name: Require this workflow's own commit
         # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
-        # empty, the checkout below would fall back to the CALLER's default branch and run its
-        # files as tooling, so an empty or malformed value stops the job instead.
+        # empty, the tooling fetch below would read a branch's tarball instead of this commit's
+        # and run its files, so an empty or malformed value stops the job instead.
         env:
           WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           WORKFLOW_SHA: ${{ job.workflow_sha }}
@@ -437,20 +459,42 @@ jobs:
           fi
 
       - name: Fetch the shard tooling from this workflow's own commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .mutation-shards
-          sparse-checkout: .github/scripts/mutation-shards
-          persist-credentials: false
+        # Outside the workspace: this job runs the caller's own suite there, and a file of ours in
+        # the tree is a file its tests can count (an instruction-file budget, a licence check).
+        # `actions/checkout` cannot write outside the workspace, and its sparse mode is cone mode,
+        # which also brings every file at this repository's root. So the tarball of the exact
+        # commit is read, and only the scripts are extracted. Every failure here stops the job.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Mutation shards::$1"; exit 1; }
+          [ -n "$GH_TOKEN" ] || fail "There is no token to read the tooling with."
+          tooling="$RUNNER_TEMP/mutation-tooling"
+          archive="$RUNNER_TEMP/mutation-tooling.tar.gz"
+          rm -rf "$tooling" "$archive"
+          mkdir -p "$tooling"
+          status=$(curl --silent --show-error --location --output "$archive" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$WORKFLOW_REPOSITORY/tarball/$WORKFLOW_SHA")
+          [ "$status" = 200 ] || fail "Reading $WORKFLOW_REPOSITORY at $WORKFLOW_SHA answered HTTP $status."
+          top=$(tar -tzf "$archive" | sed -n 1p)
+          [[ "$top" =~ ^[^/]+-${WORKFLOW_SHA:0:7}/$ ]] || fail "The archive's top directory '$top' does not name commit ${WORKFLOW_SHA:0:7}."
+          tar -xzf "$archive" -C "$tooling" --strip-components=1 "${top}.github/scripts/mutation-shards"
+          for script in plan shard-config collect merge score; do
+            [ -f "$tooling/.github/scripts/mutation-shards/$script.mjs" ] || fail "$script.mjs is not in the tooling at $WORKFLOW_SHA."
+          done
+          echo "MUTATION_TOOLS=$tooling/.github/scripts/mutation-shards" >> "$GITHUB_ENV"
 
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: mutation-plan
-          path: mutation-plan
+          path: ${{ runner.temp }}/mutation-plan
 
       - name: Run this shard cold
         env:
@@ -462,9 +506,9 @@ jobs:
         # merged score. A run that fails here therefore failed for a real reason.
         run: |
           set -euo pipefail
-          tools=.mutation-shards/.github/scripts/mutation-shards
+          tools="$MUTATION_TOOLS"
           mkdir -p reports/mutation
-          node "$tools/shard-config.mjs" --config "$STRYKER_CONFIG" --plan mutation-plan/plan.json \
+          node "$tools/shard-config.mjs" --config "$STRYKER_CONFIG" --plan "$RUNNER_TEMP/mutation-plan/plan.json" \
             --index "$SHARD" --concurrency "$CONCURRENCY" --out ".stryker-shard-$SHARD.json"
 
           # Memory and disk into the log every 15 s: a lost runner leaves no other trace.
@@ -507,14 +551,14 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          tools=.mutation-shards/.github/scripts/mutation-shards
+          tools="$MUTATION_TOOLS"
           [ -f "reports/stryker-shard-$SHARD.json" ] || { echo "No report for shard $SHARD."; exit 0; }
           {
             echo "- shard $SHARD score and counts (its own slice, no break threshold applied):"
             # score.mjs also appends to the summary itself; unset here so the line appears once,
             # indented under this shard.
             env -u GITHUB_STEP_SUMMARY node "$tools/score.mjs" --report "reports/stryker-shard-$SHARD.json" --config ".stryker-shard-$SHARD.json" | sed 's/^/  - /'
-            echo "  - files: $(node -p 'require("./mutation-plan/plan.json").shards.find((s) => s.index === Number(process.argv[1])).files.join(", ")' "$SHARD")"
+            echo "  - files: $(node -p 'require(process.env.RUNNER_TEMP + "/mutation-plan/plan.json").shards.find((s) => s.index === Number(process.argv[1])).files.join(", ")' "$SHARD")"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload this shard's report
@@ -570,8 +614,8 @@ jobs:
 
       - name: Require this workflow's own commit
         # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
-        # empty, the checkout below would fall back to the CALLER's default branch and run its
-        # files as tooling, so an empty or malformed value stops the job instead.
+        # empty, the tooling fetch below would read a branch's tarball instead of this commit's
+        # and run its files, so an empty or malformed value stops the job instead.
         env:
           WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           WORKFLOW_SHA: ${{ job.workflow_sha }}
@@ -583,38 +627,64 @@ jobs:
           fi
 
       - name: Fetch the shard tooling from this workflow's own commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .mutation-shards
-          sparse-checkout: .github/scripts/mutation-shards
-          persist-credentials: false
+        # Outside the workspace: this job runs the caller's own suite there, and a file of ours in
+        # the tree is a file its tests can count (an instruction-file budget, a licence check).
+        # `actions/checkout` cannot write outside the workspace, and its sparse mode is cone mode,
+        # which also brings every file at this repository's root. So the tarball of the exact
+        # commit is read, and only the scripts are extracted. Every failure here stops the job.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Mutation shards::$1"; exit 1; }
+          [ -n "$GH_TOKEN" ] || fail "There is no token to read the tooling with."
+          tooling="$RUNNER_TEMP/mutation-tooling"
+          archive="$RUNNER_TEMP/mutation-tooling.tar.gz"
+          rm -rf "$tooling" "$archive"
+          mkdir -p "$tooling"
+          status=$(curl --silent --show-error --location --output "$archive" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$WORKFLOW_REPOSITORY/tarball/$WORKFLOW_SHA")
+          [ "$status" = 200 ] || fail "Reading $WORKFLOW_REPOSITORY at $WORKFLOW_SHA answered HTTP $status."
+          top=$(tar -tzf "$archive" | sed -n 1p)
+          [[ "$top" =~ ^[^/]+-${WORKFLOW_SHA:0:7}/$ ]] || fail "The archive's top directory '$top' does not name commit ${WORKFLOW_SHA:0:7}."
+          tar -xzf "$archive" -C "$tooling" --strip-components=1 "${top}.github/scripts/mutation-shards"
+          for script in plan shard-config collect merge score; do
+            [ -f "$tooling/.github/scripts/mutation-shards/$script.mjs" ] || fail "$script.mjs is not in the tooling at $WORKFLOW_SHA."
+          done
+          echo "MUTATION_TOOLS=$tooling/.github/scripts/mutation-shards" >> "$GITHUB_ENV"
 
       - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: mutation-plan
-          path: mutation-plan
+          path: ${{ runner.temp }}/mutation-plan
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: mutation-shard-*
-          path: mutation-shards
+          path: ${{ runner.temp }}/mutation-shards
 
       - name: Merge the shard reports
         id: merge
+        # Everything this job downloads or fetches lives under the runner temp directory, so the
+        # caller's tree holds nothing of ours while its suite runs. `reports/` stays at the
+        # workspace path because the inventory step, the cache save and the artifact upload read it
+        # there; it is a directory the caller's own Stryker config already writes to and ignores.
         env:
           STRYKER_CONFIG: ${{ inputs.stryker-config }}
         run: |
           set -euo pipefail
-          tools=.mutation-shards/.github/scripts/mutation-shards
+          tools="$MUTATION_TOOLS"
           # Captured first: a failure inside a process substitution would not stop the script.
-          listed=$(node "$tools/collect.mjs" --plan mutation-plan/plan.json --dir mutation-shards)
+          listed=$(node "$tools/collect.mjs" --plan "$RUNNER_TEMP/mutation-plan/plan.json" --dir "$RUNNER_TEMP/mutation-shards")
           mapfile -t files <<< "$listed"
           mkdir -p reports/mutation
-          node "$tools/merge.mjs" --plan mutation-plan/plan.json --config "$STRYKER_CONFIG" \
+          node "$tools/merge.mjs" --plan "$RUNNER_TEMP/mutation-plan/plan.json" --config "$STRYKER_CONFIG" \
             --out reports/stryker-incremental.json --shards "${files[@]}"
           # The same file under the name the next run's plan reads its weights from.
           cp reports/stryker-incremental.json reports/mutation/mutation.json
@@ -626,7 +696,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "### Mutation score" >> "$GITHUB_STEP_SUMMARY"
-          node .mutation-shards/.github/scripts/mutation-shards/score.mjs \
+          node "$MUTATION_TOOLS/score.mjs" \
             --report reports/stryker-incremental.json --config "$STRYKER_CONFIG" --break "$BREAK_THRESHOLD"
 
       - name: Check the mutation run ran every unit test
@@ -650,7 +720,7 @@ jobs:
           total_user=0
           {
             echo "### Mutation run cost"
-            for meta in $(find mutation-shards -name 'shard-*.meta' | sort); do
+            for meta in $(find "$RUNNER_TEMP/mutation-shards" -name 'shard-*.meta' | sort); do
               user=$(sed -n 's/.*user=\([0-9.]*\).*/\1/p' "$meta" | head -1)
               total_user=$(awk -v a="$total_user" -v b="${user:-0}" 'BEGIN {printf "%.1f", a + b}')
               echo "- $(basename "$meta" .meta): $(grep -m1 wall= "$meta"); $(grep -m1 peak_rss_mib "$meta"); $(grep -m1 dry_run= "$meta" | cut -c1-160)"
