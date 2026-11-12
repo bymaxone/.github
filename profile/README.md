@@ -80,6 +80,7 @@ Pick one, or compose the whole platform — each is independent and installable 
 | Library | What it does |
 | --- | --- |
 | 📊 [`nest-logger`](https://github.com/bymaxone/nest-logger) | Structured JSON logging (Pino 10) — OpenTelemetry trace correlation, PII/LGPD redaction & pluggable destinations |
+| 🔭 [`nest-telemetry`](https://github.com/bymaxone/nest-telemetry) | OpenTelemetry tracing for NestJS 11 — starts the SDK before your app loads, redacts secrets from spans by default, filters probe paths & flushes on shutdown; optional peers, zero cost when disabled |
 | 💸 [`nest-ai-tokens`](https://github.com/bymaxone/nest-ai-tokens) | AI token & cost ledger — immutable usage ledger + historical pricing across OpenAI, Anthropic, Gemini, Mistral & OpenRouter |
 
 #### 🛠️ Developer Tooling
@@ -100,7 +101,7 @@ Pick one, or compose the whole platform — each is independent and installable 
 Each library is published under the `@bymax-one` scope and installs on its own:
 
 ```bash
-pnpm add @bymax-one/nest-auth        # or nest-cache, nest-logger, nest-queue, …
+pnpm add @bymax-one/nest-auth        # or nest-cache, nest-logger, nest-telemetry, nest-queue, …
 ```
 
 Then explore the matching `*-example` repo for a copy-pasteable, production-shaped setup.
