@@ -1,7 +1,7 @@
 'use strict';
 
-// Evaluated when the module loads, so the mutant it yields is static: `ignoreStatic` leaves it out,
-// and the fixture therefore always has an Ignored mutant to carry through a merge.
+// Ignored by the comment below, so the fixture always has Ignored mutants to carry through a merge.
+// Stryker disable next-line all
 const BOUNDS = Object.freeze({ min: 0, max: 100 });
 
 function clamp(value) {

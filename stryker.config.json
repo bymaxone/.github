@@ -9,7 +9,7 @@
     "configFile": "jest.stryker.config.js",
     "enableFindRelatedTests": true
   },
-  "ignoreStatic": true,
+  "ignoreStatic": false,
   "mutate": ["fixture/src/**/*.js"],
   "thresholds": { "high": 100, "low": 100, "break": 100 },
   "concurrency": 2,

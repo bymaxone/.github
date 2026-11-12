@@ -8,9 +8,10 @@ import { buildShardConfig } from './shard-config.mjs';
 import { mergeReports } from './merge.mjs';
 import { diff, index } from './compare.mjs';
 import { collect } from './collect.mjs';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const glob = (file, pattern) => matchesGlob(file, pattern);
 
@@ -152,6 +153,47 @@ test('mergeReports refuses a file outside the shard slice, a file twice, and a d
   const dangling = structuredClone(one);
   dangling.files['a.ts'].mutants[0].killedBy = ['99'];
   assert.throws(() => mergeReports([dangling, two], plan, {}), /refers to test 99/);
+});
+
+// Jest formats an `it.each` title per row, but Stryker's jest runner may record the unformatted
+// title (`%s` still in it) as the id of the test that killed a mutant. The id then names no
+// listed test, and the merge must attribute it to every row of that title instead of refusing.
+test('mergeReports maps an unformatted it.each title to every formatted row of it', () => {
+  const { one, two, plan } = shardReports();
+  const spec = (tests) => ({ tests });
+  const t = (id, name, line) => ({ id, name, location: { start: { line, column: 1 } } });
+  const title = 'suite refuses the header %s';
+  one.testFiles['x.spec.ts'] = spec([t('0', 'suite refuses the header cookie', 5), t('1', 'suite refuses the header host', 5), t('2', 'suite refuses the header-less case', 9)]);
+  one.files['a.ts'].mutants[0].killedBy = [title];
+  one.files['a.ts'].mutants[0].coveredBy = ['0', '1'];
+  const merged = mergeReports([one, two], plan, { mutate: ['a.ts', 'b.ts'] });
+  const names = new Map();
+  for (const data of Object.values(merged.testFiles)) for (const x of data.tests) names.set(x.id, x.name);
+  assert.deepEqual(merged.files['a.ts'].mutants[0].killedBy.map((i) => names.get(i)).sort(), ['suite refuses the header cookie', 'suite refuses the header host']);
+});
+
+test('mergeReports still refuses an unformatted title that no listed test matches', () => {
+  const { one, two, plan } = shardReports();
+  one.files['a.ts'].mutants[0].killedBy = ['nothing refuses the header %s'];
+  assert.throws(() => mergeReports([one, two], plan, {}), /refers to test nothing refuses the header %s/);
+});
+
+// A merged report keeps the runner's `projectRoot`, which need not be where the unit suite runs
+// now. The inventory resolves Jest's absolute spec paths against the checkout it runs in.
+test('the inventory reads spec paths against the checkout, not a stale report projectRoot', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'inventory-')));
+  try {
+    const report = { projectRoot: '/home/runner/work/lib/lib', testFiles: { 'src/a.spec.ts': { tests: [{ id: '0', name: 'a does it' }] } } };
+    const jest = { testResults: [{ name: join(dir, 'src/a.spec.ts'), assertionResults: [{ ancestorTitles: ['a'], title: 'does it', status: 'passed' }] }] };
+    writeFileSync(join(dir, 'report.json'), JSON.stringify(report));
+    writeFileSync(join(dir, 'jest.json'), JSON.stringify(jest));
+    const script = join(import.meta.dirname, '../../actions/mutation-inventory/check-mutation-inventory.mjs');
+    const run = spawnSync(process.execPath, [script, join(dir, 'report.json'), join(dir, 'jest.json')], { cwd: dir, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /all 1 unit tests ran/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('compare reports a status change and treats a Killed/Timeout flip apart', () => {
