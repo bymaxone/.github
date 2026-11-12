@@ -6,7 +6,7 @@ import test from 'node:test';
 import { assertPlan, expandMutate, partition, weightsFromReport } from './plan.mjs';
 import { buildShardConfig } from './shard-config.mjs';
 import { mergeReports } from './merge.mjs';
-import { diff, index } from './compare.mjs';
+import { diff, index, unmatchedTestRefs } from './compare.mjs';
 import { collect } from './collect.mjs';
 import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -253,6 +253,24 @@ function artifacts(names) {
   }
   return dir;
 }
+
+test('unmatchedTestRefs finds exactly the mutants that name a test no testFiles entry lists', () => {
+  const report = {
+    testFiles: { 'x.spec.js': { tests: [{ id: '0', name: 'a' }, { id: '1', name: 'row 0' }] } },
+    files: {
+      'a.js': {
+        mutants: [
+          mutant('0', 'Killed', 1, { killedBy: ['row %#'], coveredBy: ['0', '1'] }),
+          mutant('1', 'Killed', 2, { killedBy: ['1'], coveredBy: ['0', '1'] }),
+          mutant('2', 'Survived', 3, { coveredBy: ['0'] }),
+          mutant('3', 'Killed', 4, { coveredBy: ['0'], testsCompleted: ['0', 'row %#'] }),
+          mutant('4', 'CompileError', 5),
+        ],
+      },
+    },
+  };
+  assert.deepEqual(unmatchedTestRefs(report).map((k) => k.split('\u0000')[1]), ['1:1-1:5', '4:1-4:5']);
+});
 
 test('collect takes the retry artifact when the first upload of a shard failed', () => {
   const dir = artifacts(['mutation-shard-1', 'mutation-shard-2-retry']);
