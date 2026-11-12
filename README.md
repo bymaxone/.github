@@ -301,8 +301,8 @@ worker grows to several GiB over a long run, and a lost runner reports no error)
 | `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
 
 The split is balanced by the time the previous run measured: per file, the sum of the durations of
-its mutants that ran tests. A mutant's `duration` is in the report of Stryker 10; the report of
-Stryker 9 has none, and then the split is balanced by the number of mutants that cost a test run.
+its mutants that ran tests. A mutant's `duration` is in the report of Stryker 10; a report without
+durations is balanced by the number of mutants that cost a test run.
 With no previous report it falls back to file size. The plan prints which weight it used and the
 predicted weight of each shard, so a run's shard times can be compared with it. Each
 shard pays its own dry run, so total CPU rises by about that per extra shard. The scripts the
@@ -313,11 +313,7 @@ Each shard writes its score, counts by status and files to the job summary befor
 report, and uploads a second time under `mutation-shard-N-retry` if the first upload fails; the
 aggregate takes exactly one of the two per shard and names any that is missing. Known limit: a
 file is never split, so a file that costs more than a share of the run (a quarter, with four
-shards) sets the wall time of the slowest shard whatever else is done. On the first real
-four-shard run (13705 mutants), the split by size gave 42 to 148 minutes per shard; a replay of
-the weight by duration over the same report predicts shards within 1.2 times of each other, the
-slowest at about 110 minutes, which is the floor that one file sets. That is a prediction from
-one run, not a measurement of the new split.
+shards) sets the wall time of the slowest shard whatever else is done.
 
 This repository carries a small root package (`package.json`, `fixture/`, `stryker.config.json`)
 that exists only to be mutated by [`mutation-full-selftest.yml`](.github/workflows/mutation-full-selftest.yml),
