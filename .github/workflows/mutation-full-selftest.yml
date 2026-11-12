@@ -16,6 +16,9 @@
 #      records the title, so the mutant is re-run, while the merge maps it to the rows and the
 #      merged file reuses it. Stryker prints counts, not which results it reused; the verdict of
 #      every mutant is compared in step 2.
+#   4. The workspace the reusable runs the caller's suite in holds nothing of the workflow's own:
+#      `fixture/test/workspace.spec.js` fails if the root has an entry the repository does not,
+#      and it runs in every shard's dry run and in the aggregate's inventory.
 #
 # The control is a plain job running the same command the single job of the reusable runs
 # (`pnpm mutation:full`), not a second call to the reusable: both calls would upload an artifact

@@ -67,3 +67,38 @@ test('the self-test expects the merged file to reuse the single run\'s results p
   assert.match(selftest, /compare\.mjs --unmatched control\/stryker-incremental\.json/);
   assert.match(selftest, /test "\$\(reused sharded\.reuse\)" -eq "\$\(\( \$\(reused control\.reuse\) \+ extra \)\)"/);
 });
+
+// The tooling and the downloaded artifacts must not sit inside the consumer's workspace. The
+// aggregate runs the consumer's own unit suite there (the inventory) and every shard runs its dry
+// run there, so any file the workflow adds is a file a test that walks the tree can count. Measured
+// on nest-auth: an `actions/checkout` sparse-checkout is cone mode, which also brings every file at
+// the root of this repository, and the consumer's AGENTS.md-size spec read ours on top of its own.
+test('no step puts a file of ours inside the consumer workspace', () => {
+  assert.doesNotMatch(workflow, /path: \.mutation-shards/, 'the tooling is fetched outside the workspace');
+  assert.doesNotMatch(workflow, /sparse-checkout:/, 'cone mode would bring the root files too');
+  assert.doesNotMatch(workflow, /repository: \$\{\{ job\.workflow_repository \}\}/, 'no checkout of this repository into a consumer job');
+  const downloads = [...workflow.matchAll(/uses: actions\/download-artifact@[^\n]*\n {8}with:\n(?: {10}[^\n]*\n)*? {10}path: ([^\n]+)/g)].map((m) => m[1]);
+  assert.ok(downloads.length === 3, 'every download step was found');
+  assert.deepEqual(downloads.filter((p) => !p.startsWith('${{ runner.temp }}/')), []);
+  assert.doesNotMatch(workflow, /--dir mutation-weights|--out mutation-plan\b|--plan mutation-plan\//, 'scripts read and write under the runner temp directory');
+});
+
+test('the tooling fetch is the same, and fails closed, in the plan, shard and aggregate jobs', () => {
+  // The plan job's copy also carries the `if:` that skips it with the rest of that job.
+  const copies = stepsNamed("Fetch the shard tooling from this workflow's own commit").map((c) => c.replace("        if: steps.changed.outputs.run == 'true'\n", ''));
+  assert.equal(copies.length, 3, 'one copy per job that runs the tooling');
+  assert.equal(copies[1], copies[0]);
+  assert.equal(copies[2], copies[0]);
+  const [fetch] = copies;
+  assert.match(fetch, /repos\/\$WORKFLOW_REPOSITORY\/tarball\/\$WORKFLOW_SHA/, 'the exact commit, never a branch');
+  assert.match(fetch, /--strip-components=1/);
+  assert.match(fetch, /%\{http_code\}/);
+  assert.match(fetch, /\[ "\$status" = 200 \]/, 'a non-200 answer stops the job');
+  assert.match(fetch, /-n "\$GH_TOKEN"/, 'an empty token stops the job');
+  assert.match(fetch, /for script in plan shard-config collect merge score; do/, 'every script the jobs run is required to exist after the extraction');
+  assert.match(workflow, /Tooling commit: \$\{\{ job\.workflow_sha \}\}/, 'a run still says which code scored it');
+});
+
+test('reports/ stays in the workspace and says why', () => {
+  assert.match(workflow, /`reports\/` stays at the\s+#\s+workspace path/);
+});
