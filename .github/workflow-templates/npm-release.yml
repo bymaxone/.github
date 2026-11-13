@@ -10,9 +10,8 @@
 #   hands that file to `npm publish`.
 #
 # The rules this file exists to keep
-#   1. Pack ONCE, in `build`. Every gate that looks at the package (the runtime check, the smoke test,
-#      the exports and size checks) runs against that tarball, never against `dist/`: what the gates
-#      saw is what gets published, byte for byte.
+#   1. Pack ONCE, in `build`. Every gate that looks at the package runs against that tarball, never
+#      against `dist/`: what the gates saw is what gets published, byte for byte.
 #   2. `build` records the tarball's sha256 as a job output. `publish` downloads the artifact, checks
 #      the digest, and publishes that exact file: `npm publish ./<file>.tgz`, never `npm publish`
 #      from a directory, which would pack again.
@@ -26,7 +25,7 @@
 # npm trusted publishing (configured on npmjs.com, per package; nothing here is a secret)
 #   - Repository, workflow file name `release.yml` (the file name only, with the extension) and the
 #     environment name below must match what the package's trusted publisher says, character for
-#     character. Up to 10 trusted publishers per package.
+#     character.
 #   - npm CLI 11.5.1 or newer and Node 22.14 or newer; GitHub-hosted runners only.
 #   - The repository must be public, and `repository.url` in package.json must be that repository,
 #     or no provenance is generated.
@@ -39,8 +38,7 @@
 #     `v*.*.*` only.
 #   - A tag ruleset on `v*.*.*` limiting who can create them.
 #
-# What is NOT measured here: provenance on a publish from a tarball (the first repository to adopt
-# this publishes a patch release and checks the attestation).
+# What is NOT measured here: provenance on a publish from a tarball.
 name: Release
 
 on:
@@ -136,9 +134,8 @@ jobs:
           tar -tzf "$out/$file" | sed 's/^/  /'
 
       - name: Gates on the tarball
-        # Adapt: every gate that looks at the package takes the tarball, not dist/. The smoke test
-        # installs it into a throwaway consumer with the frozen lockfile's versions; the exports and
-        # size checks read it. A gate that cannot take a tarball does not belong in this list.
+        # Adapt: every gate that looks at the package takes the tarball, not dist/. A gate that cannot
+        # take a tarball does not belong in this list.
         env:
           PACKAGE_TARBALL: ${{ runner.temp }}/package/${{ steps.pack.outputs.tarball }}
         run: |
