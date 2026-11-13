@@ -27,7 +27,8 @@ on:
       full-command:
         description: >-
           Command that runs the suite cold. It must delete the incremental file first, or the
-          run inherits verdicts from the very chain it exists to check.
+          run inherits verdicts from the very chain it exists to check. It runs as a shell command:
+          pass a literal, never text taken from an event (a PR title, a branch name).
         type: string
         default: pnpm mutation:full
       score-paths:

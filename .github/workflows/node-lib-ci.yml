@@ -22,11 +22,11 @@ on:
         type: boolean
         default: true
       unit-command:
-        description: Command that runs the gated unit tests + coverage.
+        description: Command that runs the gated unit tests + coverage. It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: pnpm test:cov
       build-command:
-        description: Command that builds the library.
+        description: Command that builds the library. It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: pnpm build
       run-build:
@@ -38,7 +38,7 @@ on:
         type: string
         default: ''
       post-install:
-        description: Command run right after install in every job (e.g. prisma generate).
+        description: Command run right after install in every job (e.g. prisma generate). It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: ''
       run-mutation:

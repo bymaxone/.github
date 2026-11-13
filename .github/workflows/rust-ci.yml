@@ -40,7 +40,7 @@ on:
         type: boolean
         default: false
       mutation-command:
-        description: The cargo-mutants command to run when mutation is triggered.
+        description: The cargo-mutants command to run when mutation is triggered. It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: cargo mutants --all-features --in-place
       mutation-source-globs:
@@ -308,9 +308,22 @@ jobs:
         with:
           persist-credentials: false
       - name: Install the MSRV toolchain
-        run: rustup toolchain install ${{ inputs.msrv-version }} --profile minimal --no-self-update
+        # The version reaches a shell, so it is read as data and must look like a toolchain name:
+        # `1.90`, `1.90.1`, or a channel (`stable`, `beta`, `nightly`).
+        env:
+          MSRV_VERSION: ${{ inputs.msrv-version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$MSRV_VERSION" =~ ^([0-9]+\.[0-9]+(\.[0-9]+)?|stable|beta|nightly)$ ]]; then
+            echo "::error title=rust-ci::msrv-version '$MSRV_VERSION' is not a toolchain version like 1.90 or a channel."
+            exit 1
+          fi
+          rustup toolchain install "$MSRV_VERSION" --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - run: cargo +${{ inputs.msrv-version }} build --workspace --locked
+      - name: Build on the MSRV toolchain
+        env:
+          MSRV_VERSION: ${{ inputs.msrv-version }}
+        run: cargo "+$MSRV_VERSION" build --workspace --locked
 
   mutation:
     name: mutation (cargo-mutants)

@@ -40,11 +40,11 @@ on:
         type: boolean
         default: true
       unit-command:
-        description: Command that runs the gated unit tests + coverage.
+        description: Command that runs the gated unit tests + coverage. It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: pnpm test:cov
       e2e-api-command:
-        description: Command that runs the API e2e suite.
+        description: Command that runs the API e2e suite. It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: pnpm test:e2e:api
       database-url:
@@ -55,7 +55,7 @@ on:
         type: string
         default: ""
       post-install:
-        description: Command run right after install in every job (e.g. prisma generate).
+        description: Command run right after install in every job (e.g. prisma generate). It runs as a shell command, so pass a literal and never text taken from an event (a PR title, a branch name).
         type: string
         default: ""
       run-e2e-web:
@@ -454,13 +454,23 @@ jobs:
       # Boot both servers and run the smoke in ONE step: backgrounded processes are
       # torn down when a step's shell exits, so they must outlive the wait + test.
       - name: Boot the stack and run the web smoke
+        # The ports reach a shell, so they are read as data and must be port numbers.
+        env:
+          API_PORT: ${{ inputs.api-port }}
+          WEB_PORT: ${{ inputs.web-port }}
         run: |
           set -euo pipefail
+          for port in "$API_PORT" "$WEB_PORT"; do
+            if ! [[ "$port" =~ ^[0-9]{1,5}$ ]]; then
+              echo "::error title=node-ci::'$port' is not a port number (api-port and web-port)."
+              exit 1
+            fi
+          done
           pnpm --filter api run start > /tmp/api.log 2>&1 &
           pnpm --filter web run start > /tmp/web.log 2>&1 &
           npx --yes wait-on -t 90000 \
-            http-get://localhost:${{ inputs.api-port }}/health \
-            http-get://localhost:${{ inputs.web-port }}
+            "http-get://localhost:${API_PORT}/health" \
+            "http-get://localhost:${WEB_PORT}"
           pnpm --filter web run test:e2e
       - name: Dump server logs on failure
         if: failure()
