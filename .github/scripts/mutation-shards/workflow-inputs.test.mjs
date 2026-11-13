@@ -6,6 +6,7 @@
 // through `env:`, except the inputs that ARE commands, which are documented as such. This runs in
 // the same `node --test` glob as the shard tests.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
@@ -126,4 +127,63 @@ test('the signatures job is opt-in, checks its mode before installing, and holds
   assert.ok(job.indexOf('Check the mode') < job.indexOf('setup-node-pnpm'), 'the mode is checked before the install');
   assert.match(job, /warn\|enforce\) ;;/);
   assert.match(job, /npm audit signatures/);
+});
+
+// The values that come from outside the job (a caller's input, a path or a value read from the
+// repository being synchronised) reach a workflow command through `clean`, which removes control
+// characters and cuts the length. The two files below are where such values are named in messages.
+const CLEANED_FILES = ['workflows/agents-sync.yml', 'actions/mutation-inventory/action.yml'];
+const OUTSIDE_VALUES = ['AGENTS_PATH', 'BRANCH', 'CANONICAL_REF', 'MODE', 'EXEMPT', 'JEST_CONFIG', 'raw', 'override', 'nested', 'worst_chain', 'out'];
+
+/** The text of every `run:` body, one string per step. */
+function runBlocks(file) {
+  const lines = readFileSync(new URL(file, root), 'utf8').split('\n');
+  const blocks = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = /^(\s*)(- )?run:\s*\|\s*$/.exec(lines[i]);
+    if (!m) continue;
+    const indent = m[1].length + (m[2] ? 2 : 0);
+    let j = i + 1;
+    while (j < lines.length && (lines[j].trim() === '' || lines[j].length - lines[j].trimStart().length > indent)) j += 1;
+    blocks.push(lines.slice(i + 1, j).join('\n'));
+    i = j - 1;
+  }
+  return blocks;
+}
+
+test('an outside value in a workflow-command line is cleaned first', () => {
+  const offenders = [];
+  for (const file of CLEANED_FILES) {
+    for (const block of runBlocks(file)) {
+      for (const line of block.split('\n')) {
+        if (!/::(error|warning|notice)/.test(line) || line.trim().startsWith('#')) continue;
+        const rest = line.replace(/\$\(clean "(?:\$\w+|\$\((?:head -n 1 "\$out"|dirname "\$\w+")\))"\)/g, '');
+        for (const name of OUTSIDE_VALUES) {
+          if (new RegExp(`\\$\\{?${name}\\b`).test(rest)) offenders.push(`${file}: ${name} in ${line.trim().slice(0, 70)}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('every step that cleans a value defines the function it calls', () => {
+  const missing = [];
+  for (const file of CLEANED_FILES) {
+    for (const block of runBlocks(file)) {
+      if (block.includes('$(clean ') && !/^\s*clean\(\) \{ /m.test(block)) missing.push(file);
+    }
+  }
+  assert.deepEqual(missing, []);
+  assert.ok(CLEANED_FILES.every((f) => runBlocks(f).some((b) => /^\s*clean\(\) \{ /m.test(b))), 'each file defines it somewhere');
+});
+
+test('clean removes control characters and cuts the length', () => {
+  const block = runBlocks('workflows/agents-sync.yml').find((b) => /^\s*clean\(\) \{ /m.test(b));
+  const definition = block.split('\n').find((l) => /^\s*clean\(\) \{ /.test(l)).trim();
+  const run = (value) => spawnSync('bash', ['-c', `${definition}\nclean "$VALUE"`], { env: { PATH: process.env.PATH, VALUE: value }, encoding: 'utf8' }).stdout.replace(/\n$/, ''); // `$(...)` drops the trailing newline too
+  assert.equal(run('docs/AGENTS.md'), 'docs/AGENTS.md');
+  assert.equal(run('a\n::error::injected'), 'a::error::injected', 'a newline cannot start a second command');
+  assert.equal(run('a\r\tb\u007fc'), 'abc');
+  assert.equal(run('x'.repeat(500)).length, 200);
 });

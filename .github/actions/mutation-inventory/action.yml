@@ -42,11 +42,14 @@ runs:
         REPORT: ${{ inputs.report }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
+        # A value from outside the job reaches a workflow command only through this: a control
+        # character (a newline) in it could start a second command line.
+        clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
         set -euo pipefail
 
         case "$MODE" in
           warn | enforce) ;;
-          *) echo "::error::inventory mode must be 'warn' or 'enforce', got '$MODE'."; exit 1 ;;
+          *) echo "::error::inventory mode must be 'warn' or 'enforce', got '$(clean "$MODE")'."; exit 1 ;;
         esac
 
         # Written under RUNNER_TEMP, never the workspace: the next step may upload the workspace's
@@ -60,7 +63,7 @@ runs:
         if [ -f "$EXEMPT" ]; then
           exempt_arg=("$EXEMPT")
         elif [ "$EXEMPT" != "scripts/mutation-inventory.exempt.json" ]; then
-          echo "::error::The exempt file '$EXEMPT' does not exist."
+          echo "::error::The exempt file '$(clean "$EXEMPT")' does not exist."
           exit 1
         fi
 
@@ -72,10 +75,10 @@ runs:
           # is not green on its own: the weekly run would lose its baseline over a check that is
           # not yet enforced.
           if [ "$MODE" = "warn" ]; then
-            echo "::warning title=Mutation inventory::The unit suite failed under '$JEST_CONFIG', so there is no inventory to compare (warn mode)."
+            echo "::warning title=Mutation inventory::The unit suite failed under '$(clean "$JEST_CONFIG")', so there is no inventory to compare (warn mode)."
             exit 0
           fi
-          echo "::error title=Mutation inventory::The unit suite failed under '$JEST_CONFIG', so there is no inventory to compare."
+          echo "::error title=Mutation inventory::The unit suite failed under '$(clean "$JEST_CONFIG")', so there is no inventory to compare."
           exit 1
         fi
 
@@ -95,8 +98,8 @@ runs:
         if [ "$MODE" = "warn" ]; then
           # One annotation line per output line would flood the page; the first line names the
           # failure and the summary carries the list.
-          echo "::warning title=Mutation inventory::$(head -n 1 "$out") (warn mode; the list is in the job summary)"
+          echo "::warning title=Mutation inventory::$(clean "$(head -n 1 "$out")") (warn mode; the list is in the job summary)"
           exit 0
         fi
-        echo "::error title=Mutation inventory::$(head -n 1 "$out")"
+        echo "::error title=Mutation inventory::$(clean "$(head -n 1 "$out")")"
         exit 1
