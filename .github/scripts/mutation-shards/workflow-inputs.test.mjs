@@ -21,8 +21,17 @@ const COMMAND_INPUTS = new Set([
   'unit-command', 'e2e-api-command', 'build-command', 'full-command', 'mutation-command', 'post-install',
   'coverage-fail-under',
 ]);
-// Expressions whose value is fixed by GitHub or by this workflow, not by an event's author.
-const SAFE = /runner\.temp|github\.workspace|github\.action_path|github\.sha|job\.workflow_sha|job\.workflow_repository|github\.run_id|matrix\.shard|steps\.[\w-]+\.outputs/;
+// Expressions whose value is fixed by GitHub or by this workflow, not by an event's author. The
+// whole expression must be one of these: a safe name next to an input (`inputs.x || github.sha`)
+// still carries the input.
+const SAFE = /^(runner\.temp|github\.workspace|github\.action_path|github\.sha|job\.workflow_sha|job\.workflow_repository|github\.run_id|matrix\.shard|steps\.[\w-]+\.outputs\.[\w-]+)$/;
+
+/** Whether a run body may interpolate this expression. */
+export function allowed(expr) {
+  if (SAFE.test(expr)) return true;
+  const input = /^inputs\.([\w-]+)$/.exec(expr);
+  return input !== null && COMMAND_INPUTS.has(input[1]);
+}
 
 /** Every expression inside a `run:` body, as `{ file, line, expr }`. */
 function expressionsInRunBodies(file) {
@@ -50,10 +59,24 @@ function expressionsInRunBodies(file) {
 test('no run body interpolates an input that is not a documented command', () => {
   const offenders = files
     .flatMap(expressionsInRunBodies)
-    .filter(({ expr }) => !SAFE.test(expr))
-    .filter(({ expr }) => !(/^inputs\.([\w-]+)$/.exec(expr) && COMMAND_INPUTS.has(/^inputs\.([\w-]+)$/.exec(expr)[1])))
+    .filter(({ expr }) => !allowed(expr))
     .map(({ file, line, expr }) => `${file}:${line}: ${expr}`);
   assert.deepEqual(offenders, []);
+});
+
+// The classifier decides the test above, so it is held to the cases that a substring match got wrong.
+test('an input next to a safe name is still an input', () => {
+  assert.equal(allowed('github.sha'), true);
+  assert.equal(allowed('steps.merge.outputs.files'), true);
+  assert.equal(allowed('inputs.unit-command'), true);
+  for (const expr of [
+    'inputs.api-port || github.sha',
+    'github.sha && inputs.msrv-version',
+    'inputs.msrv-version',
+    'format(\'{0}\', inputs.msrv-version, runner.temp)',
+    'github.event.pull_request.title',
+    'inputs.unit-command || inputs.msrv-version',
+  ]) assert.equal(allowed(expr), false, expr);
 });
 
 test('the inputs that are commands say so, and the ones that are values are checked before they are used', () => {
