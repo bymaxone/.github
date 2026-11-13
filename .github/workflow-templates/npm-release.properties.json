@@ -1,0 +1,7 @@
+{
+  "name": "Bymax npm release",
+  "description": "Tag-driven npm release with trusted publishing: a build job without a credential packs once and runs every gate on that tarball; a publish job checks the digest and publishes that exact file.",
+  "iconName": "octicon-package",
+  "categories": ["Node", "TypeScript", "Deployment"],
+  "filePatterns": ["package\\.json$"]
+}
