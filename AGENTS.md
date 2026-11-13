@@ -96,6 +96,11 @@ references to a commit was reverted, because:
   compromised. This repository is first-party, its default branch is protected,
   and its version tags are immutable.
 
+**One exception: `agents-sync.yml`, pinned to a commit.** Callers map the sync App's
+private key into it. Whatever `v1` resolves to would run with that key, so a caller pins this one
+workflow to the full SHA of a release, with the version in a trailing comment, and Dependabot moves
+it (see the README, under `agents-sync`). The other reusables stay on `@v1`.
+
 **The opposite rule applies to third-party actions.** Inside the workflows here,
 and in every consuming repository, actions from outside the organization are
 pinned to a full commit SHA with the version in a trailing comment:
