@@ -29,7 +29,8 @@ inputs:
     description: >-
       Command to run after the workspace is set up (e.g. a Prisma client generate).
       It runs whether or not `install` is true, so with `install: "false"` it runs
-      without a fresh install. Empty to skip.
+      without a fresh install. Empty to skip. It runs as a shell command: pass a literal, never
+      text taken from an event (a PR title, a branch name).
     required: false
     default: ""
 

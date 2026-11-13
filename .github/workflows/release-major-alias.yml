@@ -74,11 +74,12 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          git fetch --quiet origin "${{ github.event.repository.default_branch }}"
-          if ! git merge-base --is-ancestor "$SHA" "origin/${{ github.event.repository.default_branch }}"; then
-            echo "::error::$TAG points at $SHA, which is not on ${{ github.event.repository.default_branch }}. Refusing to move the alias."
+          git fetch --quiet origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::$TAG points at $SHA, which is not on $DEFAULT_BRANCH. Refusing to move the alias."
             exit 1
           fi
           echo "$TAG is on the default branch."
