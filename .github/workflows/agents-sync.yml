@@ -165,6 +165,9 @@ jobs:
           FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
           GH_TOKEN: ${{ steps.app-token.outputs.token || steps.app-token-legacy.outputs.token || secrets.sync-token || github.token }}
         run: |
+          # A value from outside the job reaches a workflow command only through this: a control
+          # character (a newline) in it could start a second command line.
+          clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
           set -euo pipefail
 
           canonical=.agents-canonical/agents/code-review-rules.md
@@ -174,7 +177,7 @@ jobs:
           # A repository that has not adopted the shared block yet is not a
           # failure: it opted out, or it has not been wired. Say so and stop.
           if [ ! -f "$AGENTS_PATH" ]; then
-            echo "::notice title=agents-sync::$AGENTS_PATH does not exist; nothing to synchronise."
+            echo "::notice title=agents-sync::$(clean "$AGENTS_PATH") does not exist; nothing to synchronise."
             exit 0
           fi
           # Count markers with the same predicate the splice uses -- at the start
@@ -183,7 +186,7 @@ jobs:
           end_count=$(awk -v m="$end" 'index($0, m) == 1' "$AGENTS_PATH" | wc -l | tr -d ' ')
 
           if [ "$begin_count" -eq 0 ] && [ "$end_count" -eq 0 ]; then
-            echo "::notice title=agents-sync::$AGENTS_PATH carries no shared block; nothing to synchronise."
+            echo "::notice title=agents-sync::$(clean "$AGENTS_PATH") carries no shared block; nothing to synchronise."
             exit 0
           fi
 
@@ -196,7 +199,7 @@ jobs:
           begin_at=$(awk -v m="$begin" 'index($0, m) == 1 { print NR; exit }' "$AGENTS_PATH")
           end_at=$(awk -v m="$end" 'index($0, m) == 1 { print NR; exit }' "$AGENTS_PATH")
           if [ "$begin_count" -ne 1 ] || [ "$end_count" -ne 1 ] || [ "$begin_at" -ge "$end_at" ]; then
-            echo "::error title=agents-sync::$AGENTS_PATH has an ambiguous shared block (begin x$begin_count, end x$end_count); expected exactly one of each, begin first. Refusing to splice."
+            echo "::error title=agents-sync::$(clean "$AGENTS_PATH") has an ambiguous shared block (begin x$begin_count, end x$end_count); expected exactly one of each, begin first. Refusing to splice."
             exit 1
           fi
 
@@ -214,7 +217,7 @@ jobs:
           # deletion offered as a pull request. Checked here rather than earlier
           # so a repository that opted out still exits quietly above.
           if [ ! -s "$canonical" ]; then
-            echo "::error title=agents-sync::bymaxone/.github@$CANONICAL_REF carries no agents/code-review-rules.md; refusing to splice an empty block."
+            echo "::error title=agents-sync::bymaxone/.github@$(clean "$CANONICAL_REF") carries no agents/code-review-rules.md; refusing to splice an empty block."
             exit 1
           fi
 
@@ -273,7 +276,7 @@ jobs:
             # push. It does not prove the branch is ours to move, so check that
             # its tip is a commit this workflow wrote before replacing it.
             if [ "$(git log -1 --format=%s FETCH_HEAD)" != "$subject" ]; then
-              echo "::error title=agents-sync::$BRANCH exists and its tip is not an agents-sync commit; refusing to force-push over it."
+              echo "::error title=agents-sync::$(clean "$BRANCH") exists and its tip is not an agents-sync commit; refusing to force-push over it."
               exit 1
             fi
           fi
@@ -295,7 +298,7 @@ jobs:
           # open pull request.
           if [ -n "$remote_sha" ] \
             && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "$remote_sha^{tree}")" ]; then
-            echo "::notice title=agents-sync::$BRANCH already carries this tree; leaving it where it is."
+            echo "::notice title=agents-sync::$(clean "$BRANCH") already carries this tree; leaving it where it is."
           else
             # An empty expected value means the branch must not already exist, so
             # a concurrent run still loses the race rather than overwriting it.
@@ -372,6 +375,9 @@ jobs:
         env:
           AGENTS_PATH: ${{ inputs.agents-path }}
         run: |
+          # A value from outside the job reaches a workflow command only through this: a control
+          # character (a newline) in it could start a second command line.
+          clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
           set -euo pipefail
 
           # The cap is a Codex setting, so read the repository's own value where it
@@ -393,7 +399,7 @@ jobs:
               0[xX]*) cap=$((value)) ;;
               0[oO]*) cap=$((8#${value#0[oO]})) ;;
               0[bB]*) cap=$((2#${value#0[bB]})) ;;
-              *[!0-9]*) echo "::warning title=agents-sync::could not read project_doc_max_bytes ($raw) from .codex/config.toml; using the $cap default." ;;
+              *[!0-9]*) echo "::warning title=agents-sync::could not read project_doc_max_bytes ($(clean "$raw")) from .codex/config.toml; using the $cap default." ;;
               *) cap=$((value)) ;;
             esac
           fi
@@ -457,7 +463,7 @@ jobs:
           # failed: a repository may have done it deliberately.
           override="$(dirname "$AGENTS_PATH")/AGENTS.override.md"
           if [ "$override" != "$AGENTS_PATH" ] && [ -f "$override" ]; then
-            echo "::warning title=agents-sync::$override shadows $AGENTS_PATH, so Codex reads the override and never the shared block this workflow keeps current. Merge the two, or move the block into $override."
+            echo "::warning title=agents-sync::$(clean "$override") shadows $(clean "$AGENTS_PATH"), so Codex reads the override and never the shared block this workflow keeps current. Merge the two, or move the block into $(clean "$override")."
           fi
 
           # A nested doc carrying `{{` is a template: a change under its directory
@@ -480,7 +486,7 @@ jobs:
             [ -n "$nested" ] || continue
             if awk '/^[[:space:]]*```/ { fenced = !fenced; next } !fenced' "$nested" \
               | sed 's/`[^`]*`//g' | grep -q '{{'; then
-              echo "::error title=agents-sync::$nested is a template, but under that name Codex reads it as guidance for changes in $(dirname "$nested"). Rename it (for example AGENTS.starter.md)."
+              echo "::error title=agents-sync::$(clean "$nested") is a template, but under that name Codex reads it as guidance for changes in $(clean "$(dirname "$nested")"). Rename it (for example AGENTS.starter.md)."
               status=1
             fi
           done <<EOF
@@ -490,7 +496,7 @@ jobs:
           free=$((cap - worst))
           echo "AGENTS.md budget: $worst of $cap ($free free) on the longest chain Codex can read -- $worst_chain" >> "$GITHUB_STEP_SUMMARY"
           if [ "$free" -lt 0 ]; then
-            echo "::error title=agents-sync::the chain from $worst_chain is $worst bytes against a $cap cap. Codex stops adding files at the cap, so the tail is dropped with no error and no failed check. Remove or relocate content, and keep the shared block above the material that can be lost."
+            echo "::error title=agents-sync::the chain from $(clean "$worst_chain") is $worst bytes against a $cap cap. Codex stops adding files at the cap, so the tail is dropped with no error and no failed check. Remove or relocate content, and keep the shared block above the material that can be lost."
             status=1
           fi
           exit "$status"
