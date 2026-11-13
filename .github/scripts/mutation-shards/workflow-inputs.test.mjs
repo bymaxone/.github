@@ -98,3 +98,32 @@ test('the inputs that are commands say so, and the ones that are values are chec
   assert.match(read('workflows/rust-ci.yml'), /MSRV_VERSION[\s\S]{0,400}\[\[ "\$MSRV_VERSION" =~ /, 'msrv-version is validated');
   assert.match(read('workflows/node-ci.yml'), /\[\[ "\$port" =~ \^\[0-9\]\{1,5\}\$ \]\]/, 'the ports are validated');
 });
+
+// A line that starts a workflow command is read by the runner, so text from outside must not be
+// echoed into one: a value with a newline can start a second command. The inputs that are checked
+// before use are named in the message, never printed.
+const CHECKED_VALUES = ['MSRV_VERSION', 'API_PORT', 'WEB_PORT', 'SIGNATURES', 'port'];
+
+test('a workflow-command line never prints a checked input value', () => {
+  const offenders = [];
+  for (const file of files) {
+    readFileSync(new URL(file, root), 'utf8').split('\n').forEach((text, i) => {
+      if (!/::(error|warning|notice)/.test(text) || text.trim().startsWith('#')) return;
+      for (const name of CHECKED_VALUES) {
+        if (new RegExp(`\\$\\{?${name}\\b`).test(text)) offenders.push(`${file}:${i + 1}: ${name}`);
+      }
+    });
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('the signatures job is opt-in, checks its mode before installing, and holds a read token', () => {
+  const security = readFileSync(new URL('workflows/security.yml', root), 'utf8');
+  assert.match(security, /signatures:\n(?: {8}[^\n]*\n)+? {8}default: "off"/, 'off by default');
+  const job = security.slice(security.indexOf('  audit-signatures:'));
+  assert.match(job, /if: inputs\.signatures != 'off'/);
+  assert.match(job, /permissions:\n {6}contents: read/);
+  assert.ok(job.indexOf('Check the mode') < job.indexOf('setup-node-pnpm'), 'the mode is checked before the install');
+  assert.match(job, /warn\|enforce\) ;;/);
+  assert.match(job, /npm audit signatures/);
+});

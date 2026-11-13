@@ -471,6 +471,21 @@ security:
   uses: bymaxone/.github/.github/workflows/security.yml@v1
 ```
 
+### Registry signatures (opt-in)
+
+`security.yml` can also check what the lockfile installs: `signatures: warn` (or `enforce`) installs
+the repository and runs `npm audit signatures`, which verifies the registry signature of every
+installed package and the provenance of those that publish one. It is off by default. `warn` writes the
+failure to the job summary and stays green; `enforce` fails the check, so move to it once a repository
+runs clean. Unlike the dependency review it needs no dependency graph, so it works on a private repository.
+
+```yaml
+security:
+  uses: bymaxone/.github/.github/workflows/security.yml@v1
+  with:
+    signatures: warn
+```
+
 ### Publishing a change — never move `@v1` by hand
 
 Merging to `main` publishes **nothing**. Callers run `@v1`, and `v1` only moves when a

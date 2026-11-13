@@ -315,7 +315,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! [[ "$MSRV_VERSION" =~ ^([0-9]+\.[0-9]+(\.[0-9]+)?|stable|beta|nightly)$ ]]; then
-            echo "::error title=rust-ci::msrv-version '$MSRV_VERSION' is not a toolchain version like 1.90 or a channel."
+            echo "::error title=rust-ci::msrv-version is not a toolchain version like 1.90 or a channel."
             exit 1
           fi
           rustup toolchain install "$MSRV_VERSION" --profile minimal --no-self-update
