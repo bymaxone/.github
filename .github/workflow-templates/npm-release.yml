@@ -137,7 +137,8 @@ jobs:
           file=$(basename "$1")
           sha256=$(sha256sum "$out/$file" | cut -d ' ' -f 1)
           printf '%s  %s\n' "$sha256" "$file" > "$out/SHA256SUMS"
-          # Nothing after this step can rewrite the tarball whose digest was just recorded.
+          # This stops an accidental write, not a deliberate one: the same user can undo it. What
+          # catches a tarball that changed after this step is the publish job's digest check.
           chmod -R a-w "$out"
           {
             echo "tarball=$file"
