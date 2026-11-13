@@ -370,10 +370,24 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: bymaxone/.github/.github/workflows/agents-sync.yml@v1
-    # secrets:
-    #   sync-token: ${{ secrets.AGENTS_SYNC_TOKEN }}
+    # Pinned to a commit, unlike the other reusables: this is the one that receives the sync App's
+    # private key. Dependabot moves the SHA (see the note below).
+    uses: bymaxone/.github/.github/workflows/agents-sync.yml@72b72000861c62666355a2ec3e2931e295c66ded # v1.10.4
+    secrets:
+      app-id: ${{ secrets.AGENTS_SYNC_APP_ID }}
+      app-private-key: ${{ secrets.AGENTS_SYNC_PRIVATE_KEY }}
 ```
+
+**Why this one is pinned.** The other reusables get a read-scoped `GITHUB_TOKEN`, so a bad `@v1`
+can only do what that token allows, and a fix landing everywhere at once is the point of the alias.
+`agents-sync` is handed the App's private key, and that App can write to every repository it is
+installed on: whatever `v1` resolves to would run with it. Pinning only this reference costs one
+Dependabot pull request per repository per release of the workflow, instead of the ~58 that
+pinning every reusable costs. Take the SHA from the release tag (`git rev-parse vX.Y.Z^{commit}`),
+write the tag in the trailing comment, and copy the Dependabot group from
+[`.github/workflow-templates/dependabot.yml`](.github/workflow-templates/dependabot.yml) so the bump
+arrives as its own pull request. Leave `canonical-ref` at `v1`: it only chooses which text is
+offered as a pull request, and a person reviews that.
 
 ### 🏷️ Versioning
 
@@ -381,7 +395,8 @@ Point callers at **`@v1`** (a moving major alias): a deliberate `v1.x` release p
 to every repo, while a breaking change lands as `v2` behind an explicit bump. Never point
 a caller at `@main`.
 
-**Do not pin these references to a commit SHA.** It was tried and reverted — see
+**Do not pin these references to a commit SHA** (the one exception is `agents-sync`, which is handed
+a private key: see its section above). It was tried and reverted — see
 [AGENTS.md](AGENTS.md#how-consuming-repositories-should-reference-this). Propagating one
 change becomes ~58 Dependabot pull requests across the libraries, which removes the only
 reason this repository exists. The opposite rule holds for **third-party** actions: those
