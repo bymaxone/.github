@@ -4,8 +4,9 @@
 # touch" job is handled by Dependabot (GitHub-native, runs on GitHub infra, ~zero
 # Action minutes) — see the `dependabot.yml` template. This workflow is the
 # event-driven PR gate that blocks a pull request from INTRODUCING a vulnerable or
-# disallowed dependency. It uses only GitHub-owned actions, so it is unaffected by
-# the org's third-party-action allow-list.
+# disallowed dependency. The dependency-review job uses only GitHub-owned actions; the
+# optional signatures job installs through the org's setup-node-pnpm action, which uses
+# pnpm/action-setup, so it needs that action on the org's third-party-action allow-list.
 name: security
 
 on:
@@ -19,6 +20,14 @@ on:
         description: Comma-separated SPDX licenses to reject (empty to allow all).
         type: string
         default: ""
+      signatures:
+        description: >-
+          `off`, `warn` or `enforce`. Installs the lockfile and runs `npm audit signatures`, which
+          checks the registry signature, and the provenance where a package publishes one, of every
+          installed package. `warn` annotates a failure and stays green; `enforce` fails the check.
+          It runs on whatever event the caller triggers it on.
+        type: string
+        default: "off"
 
 # Read-only: requesting no write scope keeps this callable from repos whose
 # default GITHUB_TOKEN is restricted (no per-repo permission grant needed). The
@@ -42,3 +51,52 @@ jobs:
         with:
           fail-on-severity: ${{ inputs.fail-on-severity }}
           deny-licenses: ${{ inputs.deny-licenses }}
+
+  audit-signatures:
+    name: Audit registry signatures
+    if: inputs.signatures != 'off'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check the mode
+        env:
+          SIGNATURES: ${{ inputs.signatures }}
+        run: |
+          set -euo pipefail
+          case "$SIGNATURES" in
+            warn|enforce) ;;
+            *) echo "::error title=security::signatures must be off, warn or enforce."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: bymaxone/.github/.github/actions/setup-node-pnpm@v1
+
+      - name: Verify the signatures and provenance of the installed packages
+        env:
+          SIGNATURES: ${{ inputs.signatures }}
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/audit-signatures.out"
+          if npm audit signatures >"$out" 2>&1; then
+            cat "$out"
+            exit 0
+          fi
+          cat "$out"
+          {
+            echo "### npm audit signatures"
+            echo
+            echo '```'
+            cat "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIGNATURES" = "warn" ]; then
+            echo "::warning title=audit signatures::A package has an invalid or missing registry signature or attestation (warn mode; the list is in the job summary)."
+            exit 0
+          fi
+          echo "::error title=audit signatures::A package has an invalid or missing registry signature or attestation."
+          exit 1

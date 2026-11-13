@@ -462,7 +462,7 @@ jobs:
           set -euo pipefail
           for port in "$API_PORT" "$WEB_PORT"; do
             if ! [[ "$port" =~ ^[0-9]{1,5}$ ]]; then
-              echo "::error title=node-ci::'$port' is not a port number (api-port and web-port)."
+              echo "::error title=node-ci::api-port and web-port must each be a port number."
               exit 1
             fi
           done
