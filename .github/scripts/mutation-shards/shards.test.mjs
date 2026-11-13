@@ -4,11 +4,12 @@ import assert from 'node:assert/strict';
 import { matchesGlob } from 'node:path';
 import test from 'node:test';
 import { assertPlan, expandMutate, partition, planSummary, weightsFromReport } from './plan.mjs';
+import { chooseRun } from './weights-run.mjs';
 import { buildShardConfig } from './shard-config.mjs';
 import { mergeReports } from './merge.mjs';
 import { diff, index, unmatchedTestRefs } from './compare.mjs';
 import { collect } from './collect.mjs';
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -353,4 +354,80 @@ test('collect names a missing shard and refuses a shard present under both names
   const b = collect(1, both);
   rmSync(both, { recursive: true });
   assert.match(b.problems[0], /both mutation-shard-1 and mutation-shard-1-retry/);
+});
+
+// The report that weights the split is the newest one a completed run left, whatever the run's
+// conclusion: a run that failed after the merge (inventory, break threshold) leaves a complete one.
+test('chooseRun takes the newest of the first ten runs that has a report, whatever its conclusion', () => {
+  const runs = Array.from({ length: 12 }, (_, i) => ({ id: 100 - i, conclusion: i === 2 ? 'success' : 'failure' }));
+  const asked = [];
+  const has = (ids) => (run) => { asked.push(run.id); return ids.includes(run.id); };
+  assert.equal(chooseRun(runs, has([98, 97])).id, 98, 'a successful run is not preferred over a newer failed one');
+  assert.deepEqual(asked, [100, 99, 98], 'it stops at the first answer yes');
+  assert.equal(chooseRun(runs, has([100])).id, 100);
+  assert.equal(chooseRun(runs, has([])), null);
+  assert.equal(chooseRun(runs, has([90])), null, 'the eleventh run is out of reach');
+  assert.equal(chooseRun(runs, has([91])).id, 91, 'the tenth is in');
+  assert.equal(chooseRun([], has([1])), null);
+});
+
+/** Runs weights-run.mjs with a `gh` that answers from `runs` (id, conclusion, artifact: bool). */
+function runWeightsRun(runs, { downloadWritesReport = true, ghFails = false } = {}) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'weights-run-')));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  const out = join(dir, 'weights');
+  writeFileSync(join(bin, 'gh'), `#!/bin/sh
+${ghFails ? 'exit 1' : ''}
+echo "$@" >> "${join(dir, 'calls')}"
+case "$1 $2" in
+  "run list") cat <<'JSON'
+${JSON.stringify(runs.map((r) => ({ databaseId: r.id, conclusion: r.conclusion })))}
+JSON
+  ;;
+esac
+case "$1" in
+  api) case "$2" in
+${runs.map((r) => `    */runs/${r.id}/artifacts) echo ${r.artifact ? 1 : 0} ;;`).join('\n')}
+  esac ;;
+  run) if [ "$2" = "download" ]; then ${downloadWritesReport ? `mkdir -p "$9" && echo '{}' > "$9/mutation.json"` : 'mkdir -p "$9"'}; fi ;;
+esac
+`);
+  chmodSync(join(bin, 'gh'), 0o755);
+  const result = spawnSync('node', [new URL('./weights-run.mjs', import.meta.url).pathname, '--workflow', 'mutation-full.yml', '--branch', 'main', '--out', out], {
+    env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_REPOSITORY: 'bymaxone/demo', GITHUB_STEP_SUMMARY: join(dir, 'summary') },
+    encoding: 'utf8',
+  });
+  let calls = '';
+  try { calls = readFileSync(join(dir, 'calls'), 'utf8'); } catch { /* gh was never reached */ }
+  let summary = '';
+  try { summary = readFileSync(join(dir, 'summary'), 'utf8'); } catch { /* nothing printed */ }
+  return { status: result.status, stdout: result.stdout, calls, summary };
+}
+
+test('weights-run downloads the report of the newest run that has one, and says which run and how it ended', () => {
+  const r = runWeightsRun([
+    { id: 30, conclusion: 'cancelled', artifact: false },
+    { id: 20, conclusion: 'failure', artifact: true },
+    { id: 10, conclusion: 'success', artifact: true },
+  ]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /Weighting the split by run 20 \(conclusion: failure\)\./);
+  assert.match(r.calls, /run download 20 --repo bymaxone\/demo --name mutation-full --dir /);
+  assert.match(r.calls, /run list --repo bymaxone\/demo --workflow mutation-full\.yml/, 'the repository is named, not inferred from a directory');
+  assert.doesNotMatch(r.calls, /run download 10/);
+  assert.match(r.summary, /run 20/, 'the job summary says it too');
+});
+
+test('weights-run falls back to file sizes, and exits 0, when nothing usable exists', () => {
+  const none = runWeightsRun([{ id: 30, conclusion: 'failure', artifact: false }]);
+  assert.equal(none.status, 0);
+  assert.match(none.stdout, /file sizes/);
+  assert.doesNotMatch(none.calls, /run download/);
+  const empty = runWeightsRun([{ id: 30, conclusion: 'success', artifact: true }], { downloadWritesReport: false });
+  assert.equal(empty.status, 0, 'a download with no mutation.json is not an error');
+  assert.match(empty.stdout, /file sizes/);
+  const broken = runWeightsRun([{ id: 30, conclusion: 'success', artifact: true }], { ghFails: true });
+  assert.equal(broken.status, 0, 'gh failing is not fatal');
+  assert.match(broken.stdout, /file sizes/);
 });

@@ -126,3 +126,14 @@ test('the self-test compare job keeps what it downloads and writes out of the wo
   assert.deepEqual(downloads.filter((p) => !p.startsWith('${{ runner.temp }}/')), []);
   assert.doesNotMatch(compare, /(?<![\w/"])reuse-\$2\.log|tee (?:control|sharded)\.reuse|\.\/plan\//, 'no log or result file lands in the workspace');
 });
+
+// The weights come from the newest completed run that left a report, not from the last green run:
+// the first sharded runs of a library are red while it is still being fixed, and they are the only
+// ones that have a report. Found on a real consumer, whose plan fell back to file sizes twice.
+test('the plan fetches its weights through weights-run, not from the last successful run', () => {
+  const [fetch] = stepsNamed("Fetch the last run's report, to weight the split");
+  assert.ok(fetch, 'the step exists');
+  assert.match(fetch, /node "\$MUTATION_TOOLS\/weights-run\.mjs"/);
+  assert.doesNotMatch(fetch, /--status success/);
+  assert.doesNotMatch(fetch, /gh run list/, 'the selection is the script\'s, which is tested');
+});
