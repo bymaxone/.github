@@ -301,7 +301,7 @@ worker grows to several GiB over a long run, and a lost runner reports no error)
 | `break-threshold` | _(config's `thresholds.break`)_ | Enforced once, on the merged score, because a shard scores only its slice    |
 | `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
 
-The split is balanced by the time the previous run measured: per file, the sum of the durations of
+The split is balanced by the time the last run that left a report measured (the newest recent completed run on the default branch that left one, whatever its conclusion): per file, the sum of the durations of
 its mutants that ran tests. A mutant's `duration` is in the report of Stryker 10; a report without
 durations is balanced by the number of mutants that cost a test run.
 With no previous report it falls back to file size. The plan prints which weight it used and the

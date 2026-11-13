@@ -384,23 +384,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        # Best effort and never fatal: with no report the plan falls back to file size.
+        # Best effort and never fatal: with no report the plan falls back to file size. The report is
+        # the newest one a COMPLETED run left, whatever that run's conclusion: a run that failed after
+        # the merge (the inventory, the break threshold) left a complete one, and a "last successful
+        # run" would skip every report a library's first runs produced while they were still red.
         run: |
           set -uo pipefail
           workflow_file="${WORKFLOW_REF%@*}"
           workflow_file="${workflow_file##*/}"
-          run_id="$(gh run list --workflow "$workflow_file" --status success \
-            --branch "$DEFAULT_BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
-          if [ -z "$run_id" ]; then
-            echo "No previous successful run; the split will use file sizes."
-            exit 0
-          fi
-          if gh run download "$run_id" --name mutation-full --dir "$RUNNER_TEMP/mutation-weights" 2>/dev/null \
-            && [ -f "$RUNNER_TEMP/mutation-weights/mutation.json" ]; then
-            echo "Weighting the split by run $run_id."
-          else
-            echo "Run $run_id has no mutation report; the split will use file sizes."
-          fi
+          node "$MUTATION_TOOLS/weights-run.mjs" --workflow "$workflow_file" \
+            --branch "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/mutation-weights"
 
       - name: Split the files into shards
         id: plan
