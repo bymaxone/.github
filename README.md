@@ -378,12 +378,10 @@ jobs:
       app-private-key: ${{ secrets.AGENTS_SYNC_PRIVATE_KEY }}
 ```
 
-**Why this one is pinned.** The other reusables get a read-scoped `GITHUB_TOKEN`, so a bad `@v1`
-can only do what that token allows, and a fix landing everywhere at once is the point of the alias.
-`agents-sync` is handed the App's private key, and that App can write to every repository it is
-installed on: whatever `v1` resolves to would run with it. Pinning only this reference costs one
-Dependabot pull request per repository per release of the workflow, instead of the ~58 that
-pinning every reusable costs. Take the SHA from the release tag (`git rev-parse vX.Y.Z^{commit}`),
+**Why this one is pinned.** A fix landing everywhere at once is the point of the `@v1` alias.
+`agents-sync` is handed the App's private key, which can write to the repositories the App is
+installed on: whatever `v1` resolves to would run with it. Pinning only this reference keeps the
+Dependabot cost to this one workflow. Take the SHA from the release tag (`git rev-parse vX.Y.Z^{commit}`),
 write the tag in the trailing comment, and copy the Dependabot group from
 [`.github/workflow-templates/dependabot.yml`](.github/workflow-templates/dependabot.yml) so the bump
 arrives as its own pull request. Leave `canonical-ref` at `v1`: it only chooses which text is
