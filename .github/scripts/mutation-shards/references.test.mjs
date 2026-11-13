@@ -4,7 +4,10 @@
 // sync App's private key and is therefore pinned to a release commit. The README example, the
 // Dependabot template that moves that pin and the AGENTS.md rule must keep saying the same thing.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
@@ -45,7 +48,12 @@ test('the npm release template builds without a credential and packs once', () =
   assert.match(build, /permissions:\n {6}contents: read\n/);
   assert.doesNotMatch(build, /id-token|contents: write/);
   assert.match(build, /npm pack --pack-destination/);
-  assert.match(build, /PACKAGE_TARBALL: /, 'the gates are given the tarball');
+  assert.match(build, /export PACKAGE_TARBALL="\$RUNNER_TEMP\/gate\/\$TARBALL"/, 'the gates are given a copy of the tarball');
+  assert.match(build, /cp "\$RUNNER_TEMP\/package\/\$TARBALL" "\$RUNNER_TEMP\/gate\/\$TARBALL"/);
+  assert.ok(build.indexOf('SHA256SUMS') < build.indexOf('chmod -R a-w "$out"'), 'the pack directory is read-only once hashed');
+  assert.ok(build.indexOf('Extract the release notes') < build.indexOf('chmod -R a-w'), 'the notes are written before the directory is locked');
+  const notes = build.slice(build.indexOf('Extract the release notes'), build.indexOf('Pack once'));
+  assert.match(notes, /mkdir -p "\$RUNNER_TEMP\/package"\n[^\n]*\n[^\n]*release-notes\.md/, 'the directory exists before the notes are written into it');
   assert.match(build, /SHA256SUMS/);
   assert.match(build, /sha256=\$sha256/, 'the digest is a job output');
 });
@@ -67,4 +75,62 @@ test('no message of the npm release template prints a value from outside the job
   const echoes = template().split('\n').filter((l) => /::(error|warning|notice)/.test(l) && !l.trim().startsWith('#'));
   assert.ok(echoes.length >= 4, 'the messages were found');
   assert.deepEqual(echoes.filter((l) => l.includes('$')), []);
+});
+
+// `gh` infers the repository from a git directory, and the publish job has none: without GH_REPO the
+// release step fails after the package is already on npm. The step is run here from a directory that
+// is not a git repository, with a `gh` that behaves like the real one there.
+function releaseStep() {
+  const text = template();
+  const start = text.indexOf('      - name: Create the GitHub Release when it is missing');
+  assert.ok(start > 0, 'the release step exists');
+  const step = text.slice(start);
+  const env = {};
+  for (const m of step.slice(0, step.indexOf('run: |')).matchAll(/^ {10}(\w+): (.+)$/gm)) {
+    env[m[1]] = { '${{ github.token }}': 'token', '${{ github.repository }}': 'bymaxone/demo' }[m[2].trim()] ?? m[2].trim();
+  }
+  const script = step.slice(step.indexOf('run: |\n') + 'run: |\n'.length).split('\n').map((l) => l.slice(10)).join('\n');
+  return { env, script };
+}
+
+function runReleaseStep({ env, script }, { releaseExists }) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'release-step-')));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  mkdirSync(join(dir, 'package'));
+  writeFileSync(join(dir, 'package', 'release-notes.md'), 'notes\n');
+  writeFileSync(join(bin, 'gh'), `#!/bin/sh
+if [ -z "$GH_REPO" ]; then echo "failed to run git: fatal: not a git repository" >&2; exit 1; fi
+case "$1 $2" in
+  "release view") exit ${releaseExists ? 0 : 1} ;;
+  "release create") echo "$@" >> "${join(dir, 'calls')}"; exit 0 ;;
+esac
+exit 1
+`);
+  chmodSync(join(bin, 'gh'), 0o755);
+  const result = spawnSync('bash', ['-c', script], {
+    cwd: dir,
+    env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_REF_NAME: 'v1.0.0', RUNNER_TEMP: dir, ...env },
+    encoding: 'utf8',
+  });
+  let calls = '';
+  try { calls = readFileSync(join(dir, 'calls'), 'utf8'); } catch { /* no release was created */ }
+  return { status: result.status, calls };
+}
+
+test('the release step works outside a git directory: it creates a missing release and leaves an existing one', () => {
+  const step = releaseStep();
+  assert.equal(step.env.GH_REPO, 'bymaxone/demo');
+  const missing = runReleaseStep(step, { releaseExists: false });
+  assert.equal(missing.status, 0);
+  assert.match(missing.calls, /release create v1\.0\.0 .*--notes-file .*release-notes\.md/);
+  const exists = runReleaseStep(step, { releaseExists: true });
+  assert.equal(exists.status, 0);
+  assert.equal(exists.calls, '');
+});
+
+test('without GH_REPO the same step fails outside a git directory', () => {
+  const step = releaseStep();
+  delete step.env.GH_REPO;
+  assert.notEqual(runReleaseStep(step, { releaseExists: false }).status, 0);
 });

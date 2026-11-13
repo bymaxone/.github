@@ -15,6 +15,9 @@
 #   2. `build` records the tarball's sha256 as a job output. `publish` downloads the artifact, checks
 #      the digest, and publishes that exact file: `npm publish ./<file>.tgz`, never `npm publish`
 #      from a directory, which would pack again.
+#      The digest is the pack step's job output, fixed when that step ends, and not the SHA256SUMS
+#      file: that file travels in the artifact, where a later step could rewrite it along with the
+#      tarball. It is in the artifact for the person who downloads it.
 #   3. `publish` refuses a commit that is not on the default branch. A tag can be created on any commit,
 #      and the environment reviewer approves a run, not a diff.
 #   4. A version that is already on npm is not published again, and the GitHub Release is created only
@@ -109,6 +112,14 @@ jobs:
         # Adapt: the script that runs the repository's own gates on the source tree.
         run: pnpm verify
 
+      - name: Extract the release notes
+        # Before the pack step, which makes the directory read-only.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/package"
+          # Adapt: the notes of this version, written to a file, never interpolated into a shell.
+          node scripts/extract-release-notes.mjs "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/package/release-notes.md"
+
       - name: Pack once
         id: pack
         run: |
@@ -126,6 +137,8 @@ jobs:
           file=$(basename "$1")
           sha256=$(sha256sum "$out/$file" | cut -d ' ' -f 1)
           printf '%s  %s\n' "$sha256" "$file" > "$out/SHA256SUMS"
+          # Nothing after this step can rewrite the tarball whose digest was just recorded.
+          chmod -R a-w "$out"
           {
             echo "tarball=$file"
             echo "sha256=$sha256"
@@ -137,19 +150,18 @@ jobs:
         # Adapt: every gate that looks at the package takes the tarball, not dist/. A gate that cannot
         # take a tarball does not belong in this list.
         env:
-          PACKAGE_TARBALL: ${{ runner.temp }}/package/${{ steps.pack.outputs.tarball }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
         run: |
           set -euo pipefail
+          # The gates get a copy: one that installs dependencies freshly (a smoke test) never has
+          # the file that is published within reach.
+          mkdir -p "$RUNNER_TEMP/gate"
+          cp "$RUNNER_TEMP/package/$TARBALL" "$RUNNER_TEMP/gate/$TARBALL"
+          export PACKAGE_TARBALL="$RUNNER_TEMP/gate/$TARBALL"
           pnpm check:exports
           pnpm check:runtime
           node scripts/dogfood-smoke-test.mjs
           pnpm size
-
-      - name: Extract the release notes
-        run: |
-          set -euo pipefail
-          # Adapt: the notes of this version, written to a file, never interpolated into a shell.
-          node scripts/extract-release-notes.mjs "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/package/release-notes.md"
 
       - name: Upload the package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -237,6 +249,8 @@ jobs:
       - name: Create the GitHub Release when it is missing
         env:
           GH_TOKEN: ${{ github.token }}
+          # There is no checkout in this job, so gh cannot infer the repository from a git directory.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
