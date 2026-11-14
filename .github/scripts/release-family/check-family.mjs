@@ -10,7 +10,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from '../mutation-shards/lib.mjs';
-import { checkRelease, parseWorkflow, parseWorkflowResult, pinnedSha } from './check-release.mjs';
+import { checkRelease, forwardRule, parseWorkflow, parseWorkflowResult, pinnedSha } from './check-release.mjs';
 
 const REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -49,14 +49,14 @@ export function readRelease(repo, fetch = gh) {
 }
 
 /** One result per repository: `{ repo, sha, problems }`. */
-export function checkFamily(repos, expectedSha, fetch = gh) {
+export function checkFamily(repos, expectedSha, fetch = gh, forward = null) {
   return repos.map((repo) => {
     const got = readRelease(repo, fetch);
     if (got.error) return { repo, sha: got.sha ?? '-', problems: [{ job: '-', code: got.error }] };
     const parsed = parseWorkflowResult(got.text);
     // What Ruby printed comes from the adopter's file: one line, control characters removed.
     if (parsed.error !== undefined) return { repo, sha: got.sha, problems: [{ job: '-', code: 'unparseable', detail: parsed.error.replace(/[\u0000-\u001f\u007f]/g, '') }] };
-    return { repo, sha: got.sha, problems: checkRelease(parsed.workflow, expectedSha) };
+    return { repo, sha: got.sha, problems: checkRelease(parsed.workflow, expectedSha, forward) };
   });
 }
 
@@ -79,14 +79,16 @@ export function main(argv, env = process.env) {
   }
   const expected = pinnedSha(parseWorkflow(readFileSync(args.template, 'utf8')));
   if (!expected) throw new Error('The template carries no pinned harden-runner step.');
-  const results = checkFamily(readList(readFileSync(args.list, 'utf8')), expected);
+  const forward = forwardRule(parseWorkflow(readFileSync(args.template, 'utf8')));
+  if (!forward) throw new Error('The template carries no forward-only step in its publish job.');
+  const results = checkFamily(readList(readFileSync(args.list, 'utf8')), expected, gh, forward);
   const text = report(results, expected);
   console.log(text);
   const out = args.summary ?? env.GITHUB_STEP_SUMMARY;
   if (out) appendFileSync(out, `### Release template family\n\n${text}\n`);
   const bad = results.filter((r) => r.problems.length > 0);
   if (bad.length > 0) {
-    console.log(`::error title=release-family::${bad.length} adopter(s) break the harden-runner rule: ${bad.map((r) => r.repo).join(', ')}`);
+    console.log(`::error title=release-family::${bad.length} adopter(s) break the release template rule: ${bad.map((r) => r.repo).join(', ')}`);
     return 1;
   }
   return 0;
