@@ -1,108 +1,142 @@
-// The family check's rule for the forward-only step: a copy must carry the template's script ahead of the
-// publish, unconditionally, with the template's env and a real package name. Fixtures are cut from the
-// template, so the template and the rule cannot disagree. Needs `ruby` (the workflow is read by Psych).
+// The family check's rule for the forward-only step. Every job whose effective permissions hold the OIDC
+// token must carry the template's step, as the same parsed object (name, env, run and nothing else), live
+// (no `if`, no `continue-on-error`), ahead of the first step that downloads the build's artifact: the
+// publish job has no checkout and no install, so nothing it publishes exists before that download.
+// Workflows are built from the template as parsed objects, so the template and the rule cannot disagree.
+// Needs `ruby` (the template is read by Psych).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { checkRelease, FORWARD_STEP, forwardStep, parseWorkflow, pinnedSha } from './check-release.mjs';
 
 const template = readFileSync(new URL('../../../.github/workflow-templates/npm-release.yml', import.meta.url), 'utf8');
-const SHA = pinnedSha(parseWorkflow(template));
-const FORWARD = forwardStep(parseWorkflow(template));
-const filled = template.replaceAll('@bymax-one/CHANGE-ME', '@bymax-one/example');
+const TEMPLATE = parseWorkflow(template);
+const SHA = pinnedSha(TEMPLATE);
+const FORWARD = forwardStep(TEMPLATE);
 
-/** The codes the rule reports for `text`, as `job:code`. */
-const codes = (text) => checkRelease(parseWorkflow(text), SHA, FORWARD).map((p) => `${p.job}:${p.code}`);
-
-/** The forward-only step of `text`, as `{ text, start, end }` over the whole step block. */
-const stepBlock = (text) => {
-  const start = text.indexOf(`      - name: ${FORWARD_STEP}\n`);
-  const end = text.indexOf('\n      - name: ', start + 1) + 1;
-  return { start, end, block: text.slice(start, end) };
+/** A copy of the template as an adopter would hold it: the package name filled in, then edited by `fn`. */
+function copy(fn = () => {}) {
+  const workflow = structuredClone(TEMPLATE);
+  workflow.jobs.publish.env.PACKAGE_NAME = '@bymax-one/example';
+  fn(workflow);
+  return workflow;
+}
+const codes = (workflow) => checkRelease(workflow, SHA, FORWARD).map((p) => `${p.job}:${p.code}`);
+const stepsOf = (workflow, job = 'publish') => workflow.jobs[job].steps;
+const indexOfForward = (steps) => steps.findIndex((s) => s.name === FORWARD_STEP);
+const isDownload = (s) => typeof s.uses === 'string' && s.uses.startsWith('actions/download-artifact@');
+/** Moves the forward step to `to`, a function of the steps without it. */
+const moveForward = (workflow, to) => {
+  const steps = stepsOf(workflow);
+  const [step] = steps.splice(indexOfForward(steps), 1);
+  steps.splice(to(steps), 0, step);
 };
-const edit = (text, fn) => {
-  const { start, end, block } = stepBlock(text);
-  return text.slice(0, start) + fn(block) + text.slice(end);
-};
+const editForward = (fn) => copy((w) => fn(stepsOf(w)[indexOfForward(stepsOf(w))]));
 
-test('the template yields the step the rule looks for, and a filled copy satisfies the rule', () => {
-  assert.ok(FORWARD, 'the template has the step in its publish job');
-  assert.match(FORWARD.script, /vMAJOR\.MINOR\.PATCH/);
-  assert.deepEqual(codes(filled), []);
+test('the template yields its forward-only step as an object, and a filled copy satisfies the rule', () => {
+  assert.equal(FORWARD.name, FORWARD_STEP);
+  assert.match(FORWARD.run, /vMAJOR\.MINOR\.PATCH/);
+  assert.deepEqual(codes(copy()), []);
 });
 
 test('without the forward argument the rule stays what it was, so the placeholder name is not read', () => {
-  assert.deepEqual(checkRelease(parseWorkflow(template), SHA), []);
+  assert.deepEqual(checkRelease(TEMPLATE, SHA), []);
+  assert.deepEqual(codes(TEMPLATE), ['publish:no-package-name'], 'the placeholder is not a package');
 });
 
-test('a copy without the step fails, and so does one that keeps the name and changes the script', () => {
-  assert.deepEqual(codes(edit(filled, () => '')), ['publish:no-forward-step']);
-  assert.deepEqual(codes(edit(filled, (b) => b.replace('!= "$VERSION" ]; }; then', '= "$VERSION" ]; }; then'))), ['publish:no-forward-step']);
-  assert.deepEqual(codes(edit(filled, (b) => b.replace('"ahead"', '"behind"'))), ['publish:no-forward-step']);
-  assert.deepEqual(codes(edit(filled, (b) => b.replace('exit 1', 'exit 0'))), ['publish:no-forward-step']);
+test('a copy without the step fails', () => {
+  assert.deepEqual(codes(copy((w) => stepsOf(w).splice(indexOfForward(stepsOf(w)), 1))), ['publish:no-forward-step']);
 });
 
-test('a copy that renames the step but keeps the script passes: the script is the rule, not the name', () => {
-  assert.deepEqual(codes(edit(filled, (b) => b.replace(FORWARD_STEP, 'Forward only'))), []);
+test('a step that is not the template step as an object fails: a hollowed run under the right name, an edited line, a renamed step', () => {
+  assert.deepEqual(codes(editForward((s) => { s.run = ''; })), ['publish:forward-step-differs'], 'emptied run');
+  assert.deepEqual(codes(editForward((s) => { s.run = 'true'; })), ['publish:forward-step-differs'], 'run replaced');
+  assert.deepEqual(codes(editForward((s) => { s.run = s.run.replace('"ahead"', '"behind"'); })), ['publish:forward-step-differs'], 'status compared with another word');
+  assert.deepEqual(codes(editForward((s) => { s.run = s.run.replace('exit 1', 'exit 0'); })), ['publish:forward-step-differs'], 'a failure that exits 0');
+  assert.deepEqual(codes(editForward((s) => { s.run = s.run.replace('# ', '#  '); })), ['publish:forward-step-differs'], 'the script is compared as written, comments included');
+  assert.deepEqual(codes(editForward((s) => { s.shell = 'python'; })), ['publish:forward-step-differs'], 'a key the template does not have');
+  assert.deepEqual(codes(editForward((s) => { s['working-directory'] = '/tmp'; })), ['publish:forward-step-differs']);
+  assert.deepEqual(codes(editForward((s) => { s.name = 'Forward only'; })), ['publish:no-forward-step'], 'the name is part of the step');
 });
 
-test('comment lines and blank lines of the script are not compared', () => {
-  const bare = edit(filled, (b) =>
-    b
-      .split('\n')
-      .filter((l) => !l.trim().startsWith('#'))
-      .join('\n'),
-  );
-  assert.notEqual(bare, filled);
-  assert.deepEqual(codes(bare), []);
+test('the step must be live: an if or a continue-on-error fails, even when the script is the template script', () => {
+  assert.deepEqual(codes(editForward((s) => { s.if = false; })), ['publish:forward-step-conditional'], 'if: false');
+  assert.deepEqual(codes(editForward((s) => { s.if = "github.ref_name != 'v0.0.0'"; })), ['publish:forward-step-conditional']);
+  assert.deepEqual(codes(editForward((s) => { s['continue-on-error'] = true; })), ['publish:forward-step-conditional'], 'continue-on-error: true');
 });
 
-test('the step after the one that publishes fails: it would run when it can no longer refuse', () => {
-  const { block } = stepBlock(filled);
-  const without = edit(filled, () => '');
-  const at = without.indexOf('\n      - name: Create the GitHub Release');
-  const late = without.slice(0, at + 1) + block + without.slice(at + 1);
-  assert.deepEqual(codes(late), ['publish:forward-step-late']);
+test("an env that is not the template's fails: a VERSION from elsewhere, a missing token, a package name inside the step", () => {
+  assert.deepEqual(codes(editForward((s) => { s.env.VERSION = '0.0.0'; })), ['publish:forward-step-differs']);
+  assert.deepEqual(codes(editForward((s) => { delete s.env.GH_TOKEN; })), ['publish:forward-step-differs']);
+  assert.deepEqual(codes(editForward((s) => { s.env.PACKAGE_NAME = '@bymax-one/example'; })), ['publish:forward-step-differs'], 'nothing per-adopter sits in the step');
 });
 
-test('the publish step is found by its command, not by one spelling of it', () => {
-  const { block } = stepBlock(filled);
-  const without = edit(filled, () => '');
-  const at = without.indexOf('\n      - name: Create the GitHub Release');
-  const late = without.slice(0, at + 1) + block + without.slice(at + 1);
-  for (const spelling of ['npm --access public publish', 'npm  publish', 'pnpm publish', 'yarn npm publish', 'npm run publish', 'npx npm@11 publish', 'NODE_OPTIONS=x npm publish', 'cd d && npm publish', 'if npm publish']) {
-    const text = late.replace('npm publish "$RUNNER_TEMP', `${spelling} "$RUNNER_TEMP`);
-    assert.notEqual(text, late, spelling);
-    assert.deepEqual(codes(text), ['publish:forward-step-late'], spelling);
+test('the package name lives in the job env: absent or the placeholder fails, a real one passes', () => {
+  assert.deepEqual(codes(copy((w) => { delete w.jobs.publish.env.PACKAGE_NAME; })), ['publish:no-package-name']);
+  assert.deepEqual(codes(copy((w) => { w.jobs.publish.env.PACKAGE_NAME = ''; })), ['publish:no-package-name']);
+  assert.deepEqual(codes(copy((w) => { w.jobs.publish.env.PACKAGE_NAME = '@bymax-one/CHANGE-ME'; })), ['publish:no-package-name']);
+});
+
+test('the step stands ahead of the first step that downloads the artifact, and anywhere later is late', () => {
+  const download = (steps) => steps.findIndex(isDownload);
+  assert.deepEqual(codes(copy()), [], 'the template order');
+  assert.deepEqual(codes(copy((w) => moveForward(w, (s) => download(s) + 1))), ['publish:forward-step-late'], 'right after the download');
+  assert.deepEqual(codes(copy((w) => moveForward(w, (s) => s.length - 1))), ['publish:forward-step-late'], 'second to last');
+  assert.deepEqual(codes(copy((w) => moveForward(w, (s) => s.length))), ['publish:forward-step-late'], 'last');
+  assert.deepEqual(codes(copy((w) => moveForward(w, () => 1))), [], 'right after the harden-runner step, which stays first, it is still ahead of the download');
+});
+
+test('every spelling of the publish command is beside the point: the anchor is the download, not the command', () => {
+  for (const publish of ['npm --access public publish', 'npm \\\n  publish --access public', 'command npm publish', 'pnpm publish', './publish.sh']) {
+    const workflow = copy((w) => {
+      const steps = stepsOf(w);
+      steps.find((s) => typeof s.run === 'string' && s.run.includes('npm publish')).run = publish;
+      moveForward(w, () => steps.length);
+    });
+    assert.deepEqual(codes(workflow), ['publish:forward-step-late'], publish);
   }
 });
 
-test('words that only look like a publish do not make the step late', () => {
-  // A message that says "npm ... publish" inside quotes, ahead of the forward step, is not a publish command.
-  assert.deepEqual(codes(filled), []);
-  const text = filled.replace('npm 11.5.1 or newer is required for trusted publishing.', 'npm 11.5.1 or newer is required to publish.');
-  assert.notEqual(text, filled);
-  assert.deepEqual(codes(text), []);
-  const trailing = filled.replace('have=$(npm --version)', 'have=$(npm --version) # npm publish');
-  assert.notEqual(trailing, filled);
-  assert.deepEqual(codes(trailing), []);
+test('the download step is found as a parsed step: any ref, the first of several, none at all is a failure', () => {
+  assert.deepEqual(codes(copy((w) => { stepsOf(w).find(isDownload).uses = 'actions/download-artifact@v4'; })), []);
+  const twice = copy((w) => {
+    const steps = stepsOf(w);
+    steps.splice(steps.findIndex(isDownload) + 1, 0, structuredClone(steps.find(isDownload)));
+  });
+  assert.deepEqual(codes(twice), [], 'two downloads, the step is ahead of both');
+  moveForward(twice, (s) => s.findIndex(isDownload) + 1);
+  assert.deepEqual(codes(twice), ['publish:forward-step-late'], 'between the two it is behind the first');
+  assert.deepEqual(codes(copy((w) => { w.jobs.publish.steps = stepsOf(w).filter((s) => !isDownload(s)); })), ['publish:no-download-step']);
 });
 
-test('an if or a continue-on-error on the step fails', () => {
-  assert.deepEqual(codes(edit(filled, (b) => b.replace(`      - name: ${FORWARD_STEP}\n`, `      - name: ${FORWARD_STEP}\n        if: github.ref_name != 'v0.0.0'\n`))), ['publish:forward-step-conditional']);
-  assert.deepEqual(codes(edit(filled, (b) => b.replace(`      - name: ${FORWARD_STEP}\n`, `      - name: ${FORWARD_STEP}\n        continue-on-error: true\n`))), ['publish:forward-step-conditional']);
-});
-
-test("an env that is not the template's fails: a VERSION from elsewhere defeats the version rule", () => {
-  assert.deepEqual(codes(edit(filled, (b) => b.replace('${{ needs.build.outputs.version }}', '0.0.0'))), ['publish:forward-step-env']);
-  assert.deepEqual(codes(edit(filled, (b) => b.replace('          GH_TOKEN: ${{ github.token }}\n', ''))), ['publish:forward-step-env']);
-});
-
-test('the package name is read from the job env or from the step env, and the placeholder or none fails', () => {
-  assert.deepEqual(codes(template), ['publish:no-package-name'], 'the placeholder is not a package');
-  const noJobName = filled.replace(/ {6}# The one place[^\n]*\n[^\n]*\n {6}PACKAGE_NAME: '[^']*'\n/, '');
-  assert.notEqual(noJobName, filled);
-  assert.deepEqual(codes(noJobName), ['publish:no-package-name']);
-  const inStep = edit(noJobName, (b) => b.replace('          VERSION:', "          PACKAGE_NAME: '@bymax-one/example'\n          VERSION:"));
-  assert.deepEqual(codes(inStep), []);
+test('every job whose effective permissions hold the token is asked, the inherited ones included', () => {
+  const second = (w, own) => {
+    w.permissions = { contents: 'read', 'id-token': 'write' };
+    delete w.jobs.build.permissions;
+    delete w.jobs.publish.permissions;
+    w.jobs.other = { 'runs-on': 'ubuntu-latest', steps: structuredClone(stepsOf(w)) };
+    if (own) w.jobs.other.permissions = own;
+  };
+  // A workflow-level grant reaches every job without its own block: build, publish and the second job.
+  const inherited = copy((w) => {
+    second(w);
+    w.jobs.other.steps.splice(indexOfForward(w.jobs.other.steps), 1);
+    w.jobs.other.env = { PACKAGE_NAME: '@bymax-one/example' };
+  });
+  assert.ok(codes(inherited).includes('other:no-forward-step'), 'the second job inherits the token and lacks the step');
+  assert.ok(codes(inherited).includes('build:no-forward-step'), 'so does a build job with no permissions of its own');
+  // A job with its own block replaces the workflow's, so one that does not list id-token is not asked.
+  const replaced = copy((w) => {
+    second(w, { contents: 'read' });
+    w.jobs.other.steps.splice(indexOfForward(w.jobs.other.steps), 1);
+  });
+  assert.ok(!codes(replaced).some((c) => c.startsWith('other:')), 'a job whose own permissions omit the token is not asked');
+  // Two jobs that hold the token, one with the step.
+  const two = copy((w) => {
+    second(w, { 'id-token': 'write' });
+    w.jobs.other.env = { PACKAGE_NAME: '@bymax-one/example' };
+  });
+  assert.deepEqual(codes(two).filter((c) => c.startsWith('other:')), [], 'the second job carries the step and passes');
+  two.jobs.other.steps.find((s) => s.name === FORWARD_STEP).run = '';
+  assert.deepEqual(codes(two).filter((c) => c.startsWith('other:')), ['other:forward-step-differs']);
 });

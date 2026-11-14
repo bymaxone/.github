@@ -69,56 +69,50 @@ export function releaseJobs(workflow) {
     .map(([id, job]) => ({ id, job }));
 }
 
+const stepUses = (step) => (isObject(step) && typeof step.uses === 'string' ? step.uses : '');
+
 export const FORWARD_STEP = 'Require a release that moves forward';
 
-/** A script without comment lines, blank lines and trailing spaces: what a copy may shorten is not compared. */
-const normalizeScript = (run) =>
-  String(run)
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim() !== '' && !line.trim().startsWith('#'))
-    .join('\n');
-
-/** The template's forward-only step as `{ script, env }`, or null when its publish job has none. */
+/** The template's forward-only step, as the parsed object, or null when its publish job has none. */
 export function forwardStep(workflow) {
   const steps = isObject(workflow?.jobs?.publish) && Array.isArray(workflow.jobs.publish.steps) ? workflow.jobs.publish.steps : [];
-  const step = steps.find((s) => isObject(s) && s.name === FORWARD_STEP && typeof s.run === 'string');
-  return step ? { script: normalizeScript(step.run), env: isObject(step.env) ? step.env : {} } : null;
+  return steps.find((s) => isObject(s) && s.name === FORWARD_STEP && typeof s.run === 'string') ?? null;
 }
 
-// A step publishes when a command line of its script is npm, pnpm or yarn (optionally behind npx) with a
-// `publish` word among its arguments, so `npm --access public publish` counts and a message that merely
-// says "npm ... publish" inside quotes does not. This judges the spelling of the command: a step that
-// publishes some other way (a script, another tool) is not recognised, and its placement is not checked.
-const PUBLISH_COMMAND = /(?:^|[;&|(]|\b(?:if|elif|then|else|do|while|until)\b|!)\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:npx\s+)?(?:npm|pnpm|yarn)(?:@\S+)?(?:\s+[^\s"'#;&|]+)*?\s+publish\b/;
-const runsPublish = (step) => isObject(step) && typeof step.run === 'string' && normalizeScript(step.run).split('\n').some((line) => PUBLISH_COMMAND.test(line));
-const sameEnv = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+const isDownload = (step) => stepUses(step).startsWith('actions/download-artifact@');
+
+/** Deep equality of two parsed YAML values (objects, arrays, strings, numbers, booleans, null). */
+const sameValue = (a, b) => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : isObject(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
 
 /**
- * What is wrong with the forward-only step of one job that holds the token, as codes: `no-forward-step`
- * (no step carries the template's script), `forward-step-late` (it comes after the step that publishes),
- * `forward-step-conditional` (an `if` or `continue-on-error`), `forward-step-env` (its env is not the
- * template's, apart from the package name), `no-package-name` (no `PACKAGE_NAME`, or the template's
- * placeholder, in the job's or the step's env).
+ * What is wrong with the forward-only step of one job that holds the token, as codes. The step is found
+ * by its name and then must be the template's step as a parsed object, key for key.
+ *   `no-forward-step`          no step of that name;
+ *   `forward-step-conditional` it carries `if` or `continue-on-error`, so it may not run or may fail unnoticed;
+ *   `forward-step-differs`     it is not the template's step (run, env or any other key);
+ *   `no-download-step`         the job never downloads the build's artifact, so it is not the template's shape;
+ *   `forward-step-late`        it comes after the first step that does;
+ *   `no-package-name`          `PACKAGE_NAME` is absent, empty or the template's placeholder in the job's env.
+ * Placement is anchored on the download rather than on the publish command: the publish job has no checkout
+ * and no install, so nothing it publishes exists before the download, whatever the command is spelled like.
  */
 function checkForwardStep(job, forward) {
   const steps = Array.isArray(job.steps) ? job.steps : [];
-  const at = steps.findIndex((s) => isObject(s) && typeof s.run === 'string' && normalizeScript(s.run) === forward.script);
+  const at = steps.findIndex((s) => isObject(s) && s.name === FORWARD_STEP);
   if (at === -1) return ['no-forward-step'];
   const step = steps[at];
   const codes = [];
-  const publishAt = steps.findIndex((s, i) => i !== at && runsPublish(s));
-  if (publishAt !== -1 && at > publishAt) codes.push('forward-step-late');
   if ('if' in step || 'continue-on-error' in step) codes.push('forward-step-conditional');
-  const { PACKAGE_NAME: ownName, ...ownEnv } = isObject(step.env) ? step.env : {};
-  if (!sameEnv(ownEnv, forward.env)) codes.push('forward-step-env');
-  const jobEnv = isObject(job.env) ? job.env : {};
-  const name = ownName ?? jobEnv.PACKAGE_NAME;
+  else if (!sameValue(step, forward)) codes.push('forward-step-differs');
+  const downloadAt = steps.findIndex(isDownload);
+  if (downloadAt === -1) codes.push('no-download-step');
+  else if (at > downloadAt) codes.push('forward-step-late');
+  const name = isObject(job.env) ? job.env.PACKAGE_NAME : undefined;
   if (typeof name !== 'string' || name === '' || name.includes('CHANGE-ME')) codes.push('no-package-name');
   return codes;
 }
 
-const stepUses = (step) => (isObject(step) && typeof step.uses === 'string' ? step.uses : '');
 const isHardenRunner = (step) => stepUses(step).startsWith(`${ACTION}@`);
 
 /** The commit the template pins `harden-runner` to: the first such step of its first job, or null. */
