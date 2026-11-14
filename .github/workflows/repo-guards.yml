@@ -319,6 +319,7 @@ jobs:
 
       # Built-ins only, so no install. It also holds the check that the two copies of the
       # "decide whether anything moved the score" step in mutation-full.yml are identical, and the
-      # fixtures of the release-template family check.
+      # fixtures of the release-template family check, and the link-gate probe, whose isolation test runs
+      # `unshare` and `setpriv` through the runner's passwordless sudo.
       - name: Run the tests
-        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs'
+        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs' '.github/scripts/link-gate/*.test.mjs'
