@@ -17,18 +17,28 @@ export const ACTION = 'step-security/harden-runner';
 const NAMED_RELEASE_JOBS = new Set(['build', 'publish']);
 
 // The file arrives on stdin, never on the command line, so nothing in it can reach a shell.
-const RUBY = "require 'yaml'; require 'json'; puts JSON.generate(YAML.safe_load($stdin.read, permitted_classes: [Date, Time], aliases: true))";
+// `date` is required explicitly: after `require 'yaml'` Ruby 3.2 (the Ubuntu 24.04 image) has no `Date`, and naming
+// it in `permitted_classes` raised NameError, which read as every file being unparseable.
+const RUBY = "require 'yaml'; require 'json'; require 'date'; puts JSON.generate(YAML.safe_load($stdin.read, permitted_classes: [Date, Time], aliases: true))";
 
-/** The parsed workflow, or `null` when the text is not YAML Psych accepts (or Ruby is missing). */
-export function parseWorkflow(text) {
+/**
+ * The parsed workflow as `{ workflow }`, or `{ error }` with the first line Ruby printed when the text is
+ * not YAML Psych accepts or Ruby failed: a Ruby problem must not read as a problem of the adopter's file.
+ */
+export function parseWorkflowResult(text) {
   try {
     const out = execFileSync('ruby', ['-e', RUBY], { input: text, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1 << 26 });
     const parsed = JSON.parse(out);
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) return { workflow: parsed };
+    return { error: 'the file is not a mapping' };
+  } catch (error) {
+    const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
+    return { error: (stderr.split('\n').find((line) => line.trim() !== '') ?? String(error?.message ?? error)).slice(0, 160) };
   }
 }
+
+/** The parsed workflow, or `null` when it could not be parsed (see `parseWorkflowResult`). */
+export const parseWorkflow = (text) => parseWorkflowResult(text).workflow ?? null;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 

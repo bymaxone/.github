@@ -164,6 +164,30 @@ test('named jobs are checked even when no job holds id-token, and the missing id
   assert.deepEqual(check(wf(job('lint', OTHER_STEP))), [{ job: '-', code: 'no-release-jobs' }]);
 });
 
+test('a file Ruby cannot parse is reported with the first line Ruby printed, one line and without control characters', () => {
+  const fetch = (args) => {
+    const url = args[1];
+    if (url === 'repos/o/broken') return 'main\n';
+    if (url === 'repos/o/broken/commits/main') return `${'d'.repeat(40)}\n`;
+    if (url.startsWith('repos/o/broken/contents/')) return 'jobs: [unclosed\n  - : :\n';
+    throw new Error('404');
+  };
+  const [result] = checkFamily(['o/broken'], SHA, fetch);
+  assert.equal(result.problems[0].code, 'unparseable');
+  assert.ok(result.problems[0].detail.length > 0 && !/[\n\r]/.test(result.problems[0].detail));
+  assert.match(report([result], SHA), /o\/broken @ d{40}: -:unparseable \(.+\)/);
+});
+
+// The workflow files are read by the Ruby of the runner image, and 3.2 has no `Date` after `require 'yaml'`
+// (that broke the first CI run): the image is named, so a newer default does not change the parser unseen.
+test('the check and the tests that run the parser both name the Ubuntu image, and the Ruby snippet requires date', () => {
+  assert.match(read('.github/workflows/release-family-check.yml'), /\n {4}runs-on: ubuntu-24\.04\n/);
+  const guards = read('.github/workflows/repo-guards.yml');
+  const job = guards.slice(guards.indexOf('  mutation-shard-scripts:'));
+  assert.match(job.slice(0, job.indexOf('\n    steps:')), /runs-on: ubuntu-24\.04/);
+  assert.match(read('.github/scripts/release-family/check-release.mjs'), /require 'date'/);
+});
+
 test('the adopter list parses, rejects anything that is not owner/name, and names real repositories only', () => {
   assert.deepEqual(readList('# c\n\nbymaxone/nest-auth # x\nbymaxone/nest-core\n'), ['bymaxone/nest-auth', 'bymaxone/nest-core']);
   assert.throws(() => readList('bymaxone/nest-auth\nnot a repo\n'));

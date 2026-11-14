@@ -26,7 +26,9 @@ permissions:
 jobs:
   family:
     name: Release template family
-    runs-on: ubuntu-latest
+    # Pinned, not `-latest`: the workflow files are read by the Ruby this image ships (3.2.3, Psych 5.0.1), and
+    # the rule was tested on that version.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

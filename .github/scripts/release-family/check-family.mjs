@@ -10,7 +10,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from '../mutation-shards/lib.mjs';
-import { checkRelease, parseWorkflow, pinnedSha } from './check-release.mjs';
+import { checkRelease, parseWorkflow, parseWorkflowResult, pinnedSha } from './check-release.mjs';
 
 const REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -53,14 +53,17 @@ export function checkFamily(repos, expectedSha, fetch = gh) {
   return repos.map((repo) => {
     const got = readRelease(repo, fetch);
     if (got.error) return { repo, sha: got.sha ?? '-', problems: [{ job: '-', code: got.error }] };
-    return { repo, sha: got.sha, problems: checkRelease(parseWorkflow(got.text), expectedSha) };
+    const parsed = parseWorkflowResult(got.text);
+    // What Ruby printed comes from the adopter's file: one line, control characters removed.
+    if (parsed.error !== undefined) return { repo, sha: got.sha, problems: [{ job: '-', code: 'unparseable', detail: parsed.error.replace(/[\u0000-\u001f\u007f]/g, '') }] };
+    return { repo, sha: got.sha, problems: checkRelease(parsed.workflow, expectedSha) };
   });
 }
 
 export function report(results, expectedSha) {
   const lines = [`Template harden-runner pin: ${expectedSha}`, ''];
   for (const { repo, sha, problems } of results) {
-    const state = problems.length === 0 ? 'ok' : problems.map((p) => `${p.job}:${p.code}`).join(', ');
+    const state = problems.length === 0 ? 'ok' : problems.map((p) => `${p.job}:${p.code}${p.detail ? ` (${p.detail})` : ''}`).join(', ');
     lines.push(`- ${repo} @ ${sha}: ${state}`);
   }
   return lines.join('\n');
