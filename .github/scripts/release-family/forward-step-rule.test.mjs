@@ -65,6 +65,29 @@ test('the step after the one that publishes fails: it would run when it can no l
   assert.deepEqual(codes(late), ['publish:forward-step-late']);
 });
 
+test('the publish step is found by its command, not by one spelling of it', () => {
+  const { block } = stepBlock(filled);
+  const without = edit(filled, () => '');
+  const at = without.indexOf('\n      - name: Create the GitHub Release');
+  const late = without.slice(0, at + 1) + block + without.slice(at + 1);
+  for (const spelling of ['npm --access public publish', 'npm  publish', 'pnpm publish', 'yarn npm publish', 'npm run publish', 'npx npm@11 publish', 'NODE_OPTIONS=x npm publish', 'cd d && npm publish', 'if npm publish']) {
+    const text = late.replace('npm publish "$RUNNER_TEMP', `${spelling} "$RUNNER_TEMP`);
+    assert.notEqual(text, late, spelling);
+    assert.deepEqual(codes(text), ['publish:forward-step-late'], spelling);
+  }
+});
+
+test('words that only look like a publish do not make the step late', () => {
+  // A message that says "npm ... publish" inside quotes, ahead of the forward step, is not a publish command.
+  assert.deepEqual(codes(filled), []);
+  const text = filled.replace('npm 11.5.1 or newer is required for trusted publishing.', 'npm 11.5.1 or newer is required to publish.');
+  assert.notEqual(text, filled);
+  assert.deepEqual(codes(text), []);
+  const trailing = filled.replace('have=$(npm --version)', 'have=$(npm --version) # npm publish');
+  assert.notEqual(trailing, filled);
+  assert.deepEqual(codes(trailing), []);
+});
+
 test('an if or a continue-on-error on the step fails', () => {
   assert.deepEqual(codes(edit(filled, (b) => b.replace(`      - name: ${FORWARD_STEP}\n`, `      - name: ${FORWARD_STEP}\n        if: github.ref_name != 'v0.0.0'\n`))), ['publish:forward-step-conditional']);
   assert.deepEqual(codes(edit(filled, (b) => b.replace(`      - name: ${FORWARD_STEP}\n`, `      - name: ${FORWARD_STEP}\n        continue-on-error: true\n`))), ['publish:forward-step-conditional']);

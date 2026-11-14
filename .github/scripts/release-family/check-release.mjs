@@ -86,7 +86,12 @@ export function forwardStep(workflow) {
   return step ? { script: normalizeScript(step.run), env: isObject(step.env) ? step.env : {} } : null;
 }
 
-const runsPublish = (step) => isObject(step) && typeof step.run === 'string' && /\bnpm publish\b/.test(step.run);
+// A step publishes when a command line of its script is npm, pnpm or yarn (optionally behind npx) with a
+// `publish` word among its arguments, so `npm --access public publish` counts and a message that merely
+// says "npm ... publish" inside quotes does not. This judges the spelling of the command: a step that
+// publishes some other way (a script, another tool) is not recognised, and its placement is not checked.
+const PUBLISH_COMMAND = /(?:^|[;&|(]|\b(?:if|elif|then|else|do|while|until)\b|!)\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:npx\s+)?(?:npm|pnpm|yarn)(?:@\S+)?(?:\s+[^\s"'#;&|]+)*?\s+publish\b/;
+const runsPublish = (step) => isObject(step) && typeof step.run === 'string' && normalizeScript(step.run).split('\n').some((line) => PUBLISH_COMMAND.test(line));
 const sameEnv = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
 /**
@@ -102,7 +107,7 @@ function checkForwardStep(job, forward) {
   if (at === -1) return ['no-forward-step'];
   const step = steps[at];
   const codes = [];
-  const publishAt = steps.findIndex(runsPublish);
+  const publishAt = steps.findIndex((s, i) => i !== at && runsPublish(s));
   if (publishAt !== -1 && at > publishAt) codes.push('forward-step-late');
   if ('if' in step || 'continue-on-error' in step) codes.push('forward-step-conditional');
   const { PACKAGE_NAME: ownName, ...ownEnv } = isObject(step.env) ? step.env : {};
