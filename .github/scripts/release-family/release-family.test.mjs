@@ -1,15 +1,20 @@
 // Tests the rule of the release-template family check against fixtures cut from the template itself,
-// so the template and the check cannot disagree, and the cases an adopter copy can drift into.
+// so the template and the check cannot disagree, and against the shapes an adopter copy can drift into.
+// The workflow is parsed by Ruby's Psych (see check-release.mjs), so these tests need `ruby`, which the
+// GitHub-hosted Ubuntu images ship.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { checkRelease, jobBlocks, pinnedSha, releaseJobs, stepBlocks } from './check-release.mjs';
+import { checkRelease, parseWorkflow, pinnedSha, releaseJobs } from './check-release.mjs';
 import { checkFamily, readList, report } from './check-family.mjs';
 
 const read = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const template = read('.github/workflow-templates/npm-release.yml');
-const SHA = pinnedSha(template);
+const SHA = pinnedSha(parseWorkflow(template));
 const STEP = /^ {6}- name: Harden runner\n(?: {8}[^\n]*\n)+\n?/m;
+
+/** `checkRelease` on text, with the template's own pin. */
+const check = (text, sha = SHA) => checkRelease(parseWorkflow(text), sha);
 
 /** The text of one job of `text`, for surgery on a single job. */
 const jobText = (text, id) => {
@@ -23,139 +28,140 @@ const editJob = (text, id, fn) => {
   return text.slice(0, start) + fn(text.slice(start, end)) + text.slice(end);
 };
 
-test('the template itself satisfies the rule it publishes', () => {
+// Small hand-written workflows for the shapes the template does not have.
+const GOOD_STEP = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA} # v2.22.4\n        with:\n          egress-policy: audit\n`;
+const OTHER_STEP = '      - name: Checkout\n        run: echo hi\n';
+const ID_TOKEN = '    permissions:\n      id-token: write\n';
+const job = (id, steps, extra = '') => `  ${id}:\n    runs-on: ubuntu-latest\n${extra}    steps:\n${steps}`;
+const wf = (...jobs) => `name: x\njobs:\n${jobs.join('\n')}`;
+const BAD_PUBLISH = (key = 'publish') => job(key, OTHER_STEP, ID_TOKEN);
+
+test('the template itself satisfies the rule it publishes, and its jobs are the ones the rule selects', () => {
   assert.match(SHA, /^[0-9a-f]{40}$/);
-  assert.deepEqual(checkRelease(template, SHA), []);
-  assert.deepEqual(releaseJobs(template).map((j) => j.id), ['build', 'publish']);
-});
-
-// Adopters keep or trim the step's comment (a repository's own comments rule can ask for it), so the
-// rule may not read comment text: the same template without a single comment line passes, and so does
-// one whose step comment is replaced by a different one.
-test('the rule does not depend on the text of any comment', () => {
-  const bare = template.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  assert.deepEqual(checkRelease(bare, SHA), []);
-  const reworded = template.replace(/(\n {8}# Egress is audited[^\n]*\n(?: {8}#[^\n]*\n)*)/g, '\n        # Some other wording entirely.\n');
-  assert.notEqual(reworded, template);
-  assert.deepEqual(checkRelease(reworded, SHA), []);
-});
-
-test('the parser sees the template as two jobs whose first step is the harden-runner', () => {
-  const jobs = jobBlocks(template);
-  assert.deepEqual(jobs.map((j) => j.id), ['build', 'publish']);
-  for (const job of jobs) assert.match(stepBlocks(job)[0].text, /- name: Harden runner\n[\s\S]*uses: step-security\/harden-runner@/);
+  assert.deepEqual(check(template), []);
+  assert.deepEqual(releaseJobs(parseWorkflow(template)).map((j) => j.id), ['build', 'publish']);
 });
 
 test('a job without the step is reported as missing', () => {
-  const text = editJob(template, 'publish', (job) => job.replace(STEP, ''));
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'publish', code: 'missing' }]);
+  const text = editJob(template, 'publish', (j) => j.replace(STEP, ''));
+  assert.deepEqual(check(text), [{ job: 'publish', code: 'missing' }]);
 });
 
 // nest-queue's release.yml had it second in `build`, after "Require a version tag".
 test('the step after another step is reported as not first', () => {
-  const text = editJob(template, 'build', (job) => {
-    const step = STEP.exec(job)[0];
-    const without = job.replace(STEP, '');
+  const text = editJob(template, 'build', (j) => {
+    const step = STEP.exec(j)[0];
+    const without = j.replace(STEP, '');
     const at = without.indexOf('      - name: Checkout\n');
     return without.slice(0, at) + step + without.slice(at);
   });
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'build', code: 'not-first' }]);
+  assert.deepEqual(check(text), [{ job: 'build', code: 'not-first' }]);
 });
 
 test('a publish job renamed but still holding id-token: write is caught through the id-token clause', () => {
-  const renamed = template.replace('\n  publish:\n', '\n  release:\n').replace('needs: build', 'needs: build');
-  assert.deepEqual(checkRelease(renamed, SHA), [], 'renamed with the step in place: fine');
-  const stripped = editJob(renamed, 'release', (job) => job.replace(STEP, ''));
-  assert.deepEqual(checkRelease(stripped, SHA), [{ job: 'release', code: 'missing' }]);
+  const renamed = template.replace('\n  publish:\n', '\n  release:\n');
+  assert.deepEqual(check(renamed), [], 'renamed with the step in place: fine');
+  const stripped = editJob(renamed, 'release', (j) => j.replace(STEP, ''));
+  assert.deepEqual(check(stripped), [{ job: 'release', code: 'missing' }]);
 });
 
 test('a job that is neither build, publish nor holding id-token is not a release job', () => {
   const extra = `${template.trimEnd()}\n\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Lint\n        run: echo lint\n`;
-  assert.deepEqual(checkRelease(extra, SHA), []);
-  assert.deepEqual(releaseJobs(extra).map((j) => j.id), ['build', 'publish']);
+  assert.deepEqual(check(extra), []);
+  assert.deepEqual(releaseJobs(parseWorkflow(extra)).map((j) => j.id), ['build', 'publish']);
 });
 
 test('a tag instead of a commit, a stale commit and a wrong policy each have their own code', () => {
   const tag = template.replace(new RegExp(`@${SHA} # v2\\.22\\.4`, 'g'), '@v2.22.4');
-  assert.deepEqual(checkRelease(tag, SHA).map((p) => p.code), ['not-pinned', 'not-pinned']);
-  assert.deepEqual(checkRelease(template, 'f'.repeat(40)).map((p) => p.code), ['stale-sha', 'stale-sha']);
+  assert.deepEqual(check(tag).map((p) => p.code), ['not-pinned', 'not-pinned']);
+  assert.deepEqual(check(template, 'f'.repeat(40)).map((p) => p.code), ['stale-sha', 'stale-sha']);
   const block = template.replace(/egress-policy: audit/g, 'egress-policy: block');
-  assert.deepEqual(checkRelease(block, SHA).map((p) => p.code), ['wrong-policy', 'wrong-policy']);
+  assert.deepEqual(check(block).map((p) => p.code), ['wrong-policy', 'wrong-policy']);
 });
 
-test('a version comment is required next to the commit', () => {
-  const bare = template.replace(new RegExp(`@${SHA} # v2\\.22\\.4`, 'g'), `@${SHA}`);
-  assert.deepEqual(checkRelease(bare, SHA).map((p) => p.code), ['not-pinned', 'not-pinned']);
+test('the rule does not depend on any comment, not even the version comment (a parsed file has none)', () => {
+  const bare = template.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n').replace(new RegExp(` # v2\\.22\\.4`, 'g'), '');
+  assert.deepEqual(check(bare), []);
+  const words = template.replace(new RegExp(` # v2\\.22\\.4`, 'g'), ' # the audit step, version two, patch four');
+  assert.deepEqual(check(words), []);
 });
 
-test('a file with no job holding id-token has no release jobs, and a release job without steps is reported', () => {
-  assert.deepEqual(checkRelease('name: x\njobs:\n  lint:\n    steps:\n      - run: echo\n', SHA), [{ job: '-', code: 'no-release-jobs' }]);
-  const empty = 'name: x\njobs:\n  publish:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n';
-  assert.deepEqual(checkRelease(empty, SHA), [{ job: 'publish', code: 'no-steps' }]);
+// The shapes below made the first, line-based parser skip a job or select the wrong one.
+test('a comment at column 0 between two jobs does not hide the job after it', () => {
+  assert.deepEqual(check(wf(job('build', GOOD_STEP), '# a note about the next job', BAD_PUBLISH())), [{ job: 'publish', code: 'missing' }]);
 });
 
-// Shapes of a real release.yml that the first parser read wrongly: some made it skip a job (a missed
-// adopter, the failure this check exists to prevent), some made a valid file fail.
-const bareJob = (id, steps, extra = '') =>
-  `  ${id}:\n    runs-on: ubuntu-latest\n${extra}    steps:\n${steps}`;
-const GOOD_STEP = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA} # v2.22.4\n        with:\n          egress-policy: audit\n`;
-const OTHER_STEP = '      - name: Checkout\n        run: echo hi\n';
-const ID_TOKEN = '    permissions:\n      id-token: write\n';
-const BAD_PUBLISH = (key = 'publish') => bareJob(key, OTHER_STEP, ID_TOKEN);
-
-test('a comment at column 0 between two jobs does not end the jobs section', () => {
-  const text = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n# a note about the next job\n${BAD_PUBLISH()}`;
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'publish', code: 'missing' }]);
+test('quoted job keys, in double or single quotes, are jobs like any other', () => {
+  assert.deepEqual(check(wf(job('build', GOOD_STEP), BAD_PUBLISH('"publish"'))), [{ job: 'publish', code: 'missing' }]);
+  assert.deepEqual(check(wf(job('build', GOOD_STEP), BAD_PUBLISH("'publish'"))), [{ job: 'publish', code: 'missing' }]);
 });
 
-test('a quoted job key is read as its own job, not merged into the previous one', () => {
-  const text = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n${BAD_PUBLISH('"publish"')}`;
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'publish', code: 'missing' }]);
-  const single = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n${BAD_PUBLISH("'publish'")}`;
-  assert.deepEqual(checkRelease(single, SHA), [{ job: 'publish', code: 'missing' }]);
-});
-
-test('an id-token written in flow style still marks a job as holding the release', () => {
-  const text = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, '    permissions: { id-token: write, contents: write }\n')}`;
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'deploy', code: 'missing' }]);
-});
-
-test('a line at the job level that is not a job key is reported, not ignored', () => {
-  const text = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n  *anchored:\n    runs-on: ubuntu-latest\n`;
-  assert.ok(checkRelease(text, SHA).some((p) => p.code === 'unparsed'));
-});
-
-test('valid spellings of the step are accepted: a policy with a comment or quotes, uses on the dash line, steps at the key indent', () => {
-  const trailing = GOOD_STEP.replace('egress-policy: audit', 'egress-policy: audit # keep');
-  const quoted = GOOD_STEP.replace('egress-policy: audit', "egress-policy: 'audit'");
-  const dash = `      - uses: step-security/harden-runner@${SHA} # v2.22.4\n        with:\n          egress-policy: audit\n`;
-  const flush = '    - name: Harden runner\n      uses: step-security/harden-runner@' + SHA + ' # v2.22.4\n      with:\n        egress-policy: audit\n';
-  for (const step of [trailing, quoted, dash]) {
-    assert.deepEqual(checkRelease(`name: x\njobs:\n${bareJob('publish', step, ID_TOKEN)}`, SHA), []);
+test('permissions in flow style, with quoted keys or values, or write-all, hold the release', () => {
+  for (const extra of [
+    '    permissions: { id-token: write, contents: write }\n',
+    '    permissions:\n      "id-token": write\n',
+    "    permissions:\n      'id-token': 'write'\n",
+    '    permissions: write-all\n',
+  ]) {
+    assert.deepEqual(check(wf(job('deploy', OTHER_STEP, extra))), [{ job: 'deploy', code: 'missing' }], extra);
   }
-  assert.deepEqual(checkRelease(`name: x\njobs:\n  publish:\n    permissions:\n      id-token: write\n    steps:\n${flush}`, SHA), []);
+});
+
+test('id-token: none or read, and the same words inside a step, do not make a release job', () => {
+  const none = wf(job('publish', GOOD_STEP, ID_TOKEN), job('docs', OTHER_STEP, '    permissions:\n      id-token: none\n      contents: write\n'));
+  assert.deepEqual(check(none), []);
+  const echoed = wf(job('publish', GOOD_STEP, ID_TOKEN), job('lint', `      - run: 'echo "id-token: write"'\n`));
+  assert.deepEqual(check(echoed), []);
+  assert.deepEqual(releaseJobs(parseWorkflow(echoed)).map((j) => j.id), ['publish']);
+});
+
+// The adversarial shapes that a hand parser could not follow and a real parse gets for free.
+test('permissions reached through a YAML alias are read', () => {
+  const text = `name: x\njobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions: &p\n      id-token: write\n    steps:\n${GOOD_STEP}  release:\n    runs-on: ubuntu-latest\n    permissions: *p\n    steps:\n${OTHER_STEP}`;
+  assert.deepEqual(check(text), [{ job: 'release', code: 'missing' }]);
+});
+
+test('a job without permissions inherits the workflow level, and one that sets its own replaces it', () => {
+  const inherits = `name: x\npermissions:\n  id-token: write\njobs:\n${job('deploy', OTHER_STEP)}`;
+  assert.deepEqual(check(inherits), [{ job: 'deploy', code: 'missing' }]);
+  const replaced = `name: x\npermissions:\n  id-token: write\njobs:\n${job('deploy', OTHER_STEP, '    permissions:\n      contents: read\n')}`;
+  assert.deepEqual(check(replaced), [{ job: '-', code: 'no-release-jobs' }]);
+});
+
+test('a quoted uses value, or a first step written on the dash line, is the same step', () => {
+  const quoted = GOOD_STEP.replace(`uses: step-security/harden-runner@${SHA}`, `uses: "step-security/harden-runner@${SHA}"`);
+  const dash = `      - uses: step-security/harden-runner@${SHA}\n        with:\n          egress-policy: audit\n`;
+  for (const step of [quoted, dash]) assert.deepEqual(check(wf(job('publish', step, ID_TOKEN))), []);
+  const flush = `    - name: Harden runner\n      uses: step-security/harden-runner@${SHA}\n      with:\n        egress-policy: audit\n`;
+  assert.deepEqual(check(`name: x\njobs:\n  publish:\n    permissions:\n      id-token: write\n    steps:\n${flush}`), []);
+});
+
+test('only the step\'s own `with` decides the policy: a decoy under env or a quoted audit', () => {
+  const decoy = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA}\n        env:\n          egress-policy: audit\n        with:\n          egress-policy: block\n`;
+  assert.deepEqual(check(wf(job('publish', decoy, ID_TOKEN))), [{ job: 'publish', code: 'wrong-policy' }]);
+  const noWith = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA}\n`;
+  assert.deepEqual(check(wf(job('publish', noWith, ID_TOKEN))), [{ job: 'publish', code: 'wrong-policy' }]);
+  const quoted = GOOD_STEP.replace('egress-policy: audit', "egress-policy: 'audit' # kept");
+  assert.deepEqual(check(wf(job('publish', quoted, ID_TOKEN))), []);
+});
+
+test('a step that may not run, or may fail unnoticed, is reported', () => {
+  for (const line of ['        if: false\n', "        if: ${{ false }}\n", '        continue-on-error: true\n']) {
+    const step = GOOD_STEP.replace('        with:\n', `${line}        with:\n`);
+    assert.deepEqual(check(wf(job('publish', step, ID_TOKEN))), [{ job: 'publish', code: 'conditional' }], line);
+  }
+});
+
+test('CRLF line endings, an empty step list and a file that is not YAML are handled', () => {
+  assert.deepEqual(check(template.replace(/\n/g, '\r\n')), []);
+  assert.deepEqual(check(wf('  publish:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n')), [{ job: 'publish', code: 'no-steps' }]);
+  assert.deepEqual(check('jobs: [unclosed\n  - : :'), [{ job: '-', code: 'unparseable' }]);
+  assert.deepEqual(check('- just\n- a list\n'), [{ job: '-', code: 'unparseable' }]);
 });
 
 test('named jobs are checked even when no job holds id-token, and the missing id-token is reported too', () => {
-  const text = `name: x\njobs:\n${bareJob('build', OTHER_STEP)}`;
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'build', code: 'missing' }, { job: '-', code: 'no-release-jobs' }]);
-});
-
-test('only the job\'s own permissions decide whether it holds the release: a quoted key counts, text inside a step does not', () => {
-  const quoted = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, '    permissions:\n      "id-token": write\n')}`;
-  assert.deepEqual(checkRelease(quoted, SHA), [{ job: 'deploy', code: 'missing' }]);
-  const singleQuoted = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, "    permissions:\n      'id-token': 'write'\n")}`;
-  assert.deepEqual(checkRelease(singleQuoted, SHA), [{ job: 'deploy', code: 'missing' }]);
-  const echoed = `name: x\njobs:\n${bareJob('publish', GOOD_STEP, ID_TOKEN)}\n${bareJob('lint', '      - run: echo "id-token: write"\n')}`;
-  assert.deepEqual(checkRelease(echoed, SHA), []);
-  assert.deepEqual(releaseJobs(echoed).map((j) => j.id), ['publish']);
-  const readOnly = `name: x\njobs:\n${bareJob('publish', GOOD_STEP, ID_TOKEN)}\n${bareJob('docs', OTHER_STEP, '    permissions:\n      id-token: none\n      contents: write\n')}`;
-  assert.deepEqual(checkRelease(readOnly, SHA), [], 'id-token: none is not the release');
-});
-
-test('write-all permissions hold the release too', () => {
-  const text = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, '    permissions: write-all\n')}`;
-  assert.deepEqual(checkRelease(text, SHA), [{ job: 'deploy', code: 'missing' }]);
+  assert.deepEqual(check(wf(job('build', OTHER_STEP))), [{ job: 'build', code: 'missing' }, { job: '-', code: 'no-release-jobs' }]);
+  assert.deepEqual(check(wf(job('lint', OTHER_STEP))), [{ job: '-', code: 'no-release-jobs' }]);
 });
 
 test('the adopter list parses, rejects anything that is not owner/name, and names real repositories only', () => {

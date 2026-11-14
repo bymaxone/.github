@@ -6,7 +6,10 @@
 # commit, reads .github/workflows/release.yml at that commit, and applies the rule of
 # .github/scripts/release-family/check-release.mjs: the jobs named build or publish, and any job that
 # holds `id-token: write`, start with `step-security/harden-runner` pinned to the commit the template
-# carries, with `egress-policy: audit`. The summary names the commit read for each repository.
+# carries, with `egress-policy: audit` and no `if`. The file is read by Ruby's YAML parser, which the
+# GitHub-hosted Ubuntu images ship, so quoting, flow style and aliases are the parser's job; the version
+# comment next to the pin is not part of a parsed file and is not checked. The step is checked, not
+# proven to run. The summary names the commit read for each repository.
 #
 # Not a gate on pull requests: it reads other repositories, so a red run is the signal that an adopter
 # needs a pull request, most often after the template's pin moved.

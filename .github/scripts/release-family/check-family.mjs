@@ -10,7 +10,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from '../mutation-shards/lib.mjs';
-import { checkRelease, pinnedSha } from './check-release.mjs';
+import { checkRelease, parseWorkflow, pinnedSha } from './check-release.mjs';
 
 const REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -53,7 +53,7 @@ export function checkFamily(repos, expectedSha, fetch = gh) {
   return repos.map((repo) => {
     const got = readRelease(repo, fetch);
     if (got.error) return { repo, sha: got.sha ?? '-', problems: [{ job: '-', code: got.error }] };
-    return { repo, sha: got.sha, problems: checkRelease(got.text, expectedSha) };
+    return { repo, sha: got.sha, problems: checkRelease(parseWorkflow(got.text), expectedSha) };
   });
 }
 
@@ -68,7 +68,13 @@ export function report(results, expectedSha) {
 
 export function main(argv, env = process.env) {
   const args = parseArgs(argv);
-  const expected = pinnedSha(readFileSync(args.template, 'utf8'));
+  // The workflows are read by Ruby's YAML parser; without it every repository would read as unparseable.
+  try {
+    execFileSync('ruby', ['-v'], { stdio: 'ignore' });
+  } catch {
+    throw new Error('ruby is required to read the workflows and was not found.');
+  }
+  const expected = pinnedSha(parseWorkflow(readFileSync(args.template, 'utf8')));
   if (!expected) throw new Error('The template carries no pinned harden-runner step.');
   const results = checkFamily(readList(readFileSync(args.list, 'utf8')), expected);
   const text = report(results, expected);

@@ -4,152 +4,101 @@
 // template starts every job that holds the release with an audit-mode `step-security/harden-runner`
 // pinned to a commit (DEC-164). A copy cannot be updated from here, so the rule is checked on the
 // copies: which jobs must carry the step, that it is the FIRST step, that it is pinned to the commit
-// the template carries, and that it audits.
+// the template carries, that it audits, and that it is not made conditional.
 //
-// Pure functions on text, node built-ins only, so the rule is tested against fixtures before it
-// reads any repository.
+// The workflow is read by a real YAML parser (Ruby's Psych, which the GitHub-hosted Ubuntu images
+// ship), not by line rules: quoted keys, flow style, comments, anchors and aliases are then the
+// parser's problem, and the rule is plain checks on the resulting object. A comment is not part of
+// the parsed object, so the version comment next to the pin is not checked; the pin itself is.
+import { execFileSync } from 'node:child_process';
 
 export const ACTION = 'step-security/harden-runner';
 
-/** The jobs that must start with the step: `build`, `publish`, and any job that holds `id-token: write`. */
 const NAMED_RELEASE_JOBS = new Set(['build', 'publish']);
 
-const COMMENT_OR_BLANK = /^\s*(#.*)?$/;
-const JOB_KEY = /^ {2}(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+)):\s*(?:#.*)?$/;
+// The file arrives on stdin, never on the command line, so nothing in it can reach a shell.
+const RUBY = "require 'yaml'; require 'json'; puts JSON.generate(YAML.safe_load($stdin.read, permitted_classes: [Date, Time], aliases: true))";
 
-/**
- * The `jobs:` section as `{ id, lines }` blocks, split by the two-space job keys (a key may be quoted),
- * and the two-space lines that are not a job key. A comment or a blank line never ends the section or
- * starts a job; only a non-comment line at column 0 ends it.
- */
-export function jobSection(text) {
-  const lines = text.split('\n');
-  const start = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
-  if (start === -1) return { jobs: [], unparsed: [] };
-  const jobs = [];
-  const unparsed = [];
-  let current = null;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (COMMENT_OR_BLANK.test(line)) {
-      if (current) current.lines.push(line);
-      continue;
-    }
-    if (/^\S/.test(line)) break; // the next top-level key ends the section
-    const key = JOB_KEY.exec(line);
-    if (key) {
-      current = { id: key[1] ?? key[2] ?? key[3], lines: [] };
-      jobs.push(current);
-    } else if (/^ {2}\S/.test(line)) {
-      unparsed.push(line.trim().slice(0, 40));
-      current = null;
-    } else if (current) {
-      current.lines.push(line);
-    }
+/** The parsed workflow, or `null` when the text is not YAML Psych accepts (or Ruby is missing). */
+export function parseWorkflow(text) {
+  try {
+    const out = execFileSync('ruby', ['-e', RUBY], { input: text, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1 << 26 });
+    const parsed = JSON.parse(out);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
   }
-  return { jobs, unparsed };
 }
 
-export const jobBlocks = (text) => jobSection(text).jobs;
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/**
- * The step blocks of a job. The list starts after `steps:` at whatever indent its first `- ` has (at
- * least the key's own, YAML allows both), and each `- ` at that indent starts a step.
- */
-export function stepBlocks(job) {
-  const at = job.lines.findIndex((l) => /^ {4}steps:\s*(#.*)?$/.test(l));
-  if (at === -1) return [];
-  const rest = job.lines.slice(at + 1);
-  const first = rest.find((l) => !COMMENT_OR_BLANK.test(l));
-  if (first === undefined || !/^\s*- /.test(first)) return [];
-  const indent = first.length - first.trimStart().length;
-  if (indent < 4) return [];
-  const steps = [];
-  let current = null;
-  for (const line of rest) {
-    if (COMMENT_OR_BLANK.test(line)) {
-      if (current) current.push(line);
-      continue;
-    }
-    const lineIndent = line.length - line.trimStart().length;
-    if (lineIndent < indent || (lineIndent === indent && !line.trimStart().startsWith('- '))) break;
-    if (lineIndent === indent) {
-      current = [line];
-      steps.push(current);
-    } else if (current) {
-      current.push(line);
-    }
-  }
-  return steps.map((s) => ({ text: s.join('\n'), indent }));
-}
-
-const ID_TOKEN_WRITE = /["']?id-token["']?\s*:\s*["']?write["']?/;
-
-/**
- * Whether the job's OWN `permissions:` holds `id-token: write`, in block or flow style, with the key and
- * the value optionally quoted, or `write-all`. Only that block is read: the same words in a step's
- * script, or `id-token: none`, do not make a release job. Aliases and permissions inherited from the
- * workflow level are not read.
- */
-const holdsIdToken = (job) => {
-  const at = job.lines.findIndex((l) => /^ {4}permissions:/.test(l));
-  if (at === -1) return false;
-  const inline = job.lines[at].replace(/^ {4}permissions:/, '').replace(/#.*$/, '').trim();
-  if (inline !== '') return inline === 'write-all' || ID_TOKEN_WRITE.test(inline);
-  for (const line of job.lines.slice(at + 1)) {
-    if (COMMENT_OR_BLANK.test(line)) continue;
-    if (!/^ {5,}\S/.test(line)) break; // back at the job's own level
-    if (ID_TOKEN_WRITE.test(line.replace(/#.*$/, ''))) return true;
-  }
-  return false;
-};
-
-/** The jobs the rule applies to. */
-export function releaseJobs(text) {
-  return jobBlocks(text).filter((job) => NAMED_RELEASE_JOBS.has(job.id) || holdsIdToken(job));
-}
-
-/** The commit the template pins `harden-runner` to: the first such `uses:` in the text, or null. */
-export function pinnedSha(text) {
-  const m = new RegExp(`uses: ${ACTION}@([0-9a-f]{40}) # v\\d+\\.\\d+\\.\\d+`).exec(text);
-  return m ? m[1] : null;
+/** Whether a `permissions` value holds the OIDC token: `write-all`, or a map with `id-token: write`. */
+function grantsIdToken(permissions) {
+  if (permissions === 'write-all') return true;
+  return isObject(permissions) && permissions['id-token'] === 'write';
 }
 
 /**
- * What is wrong with one `release.yml`, as `{ job, code }` entries; empty when it satisfies the rule.
- * Codes: `unparsed` (a line at the job level that is not a job key, so a job may have been skipped),
- * `no-release-jobs` (no job holds `id-token: write`), `no-steps`, `missing` (no harden-runner step in
- * the job), `not-first` (the step is there but another step precedes it), `not-pinned` (not a 40-hex
- * commit with a version comment), `stale-sha` (a commit other than the template's), `wrong-policy`
- * (not `egress-policy: audit`).
+ * Whether a job holds the release: its own `permissions`, or the workflow's when it declares none (a job
+ * that sets `permissions` replaces the workflow's, it does not add to it).
  */
-export function checkRelease(text, expectedSha) {
-  const problems = [];
-  const { jobs: all, unparsed } = jobSection(text);
-  for (const line of unparsed) problems.push({ job: line, code: 'unparsed' });
-  const jobs = all.filter((job) => NAMED_RELEASE_JOBS.has(job.id) || holdsIdToken(job));
+function holdsIdToken(workflow, job) {
+  return grantsIdToken(isObject(job) && 'permissions' in job ? job.permissions : workflow.permissions);
+}
+
+/** The jobs the rule applies to: those named `build` or `publish`, and any that holds `id-token: write`. */
+export function releaseJobs(workflow) {
+  const jobs = isObject(workflow?.jobs) ? workflow.jobs : {};
+  return Object.entries(jobs)
+    .filter(([id, job]) => NAMED_RELEASE_JOBS.has(id) || holdsIdToken(workflow, job))
+    .map(([id, job]) => ({ id, job }));
+}
+
+const stepUses = (step) => (isObject(step) && typeof step.uses === 'string' ? step.uses : '');
+const isHardenRunner = (step) => stepUses(step).startsWith(`${ACTION}@`);
+
+/** The commit the template pins `harden-runner` to: the first such step of its first job, or null. */
+export function pinnedSha(workflow) {
+  const jobs = isObject(workflow?.jobs) ? Object.values(workflow.jobs) : [];
   for (const job of jobs) {
-    const steps = stepBlocks(job);
-    if (steps.length === 0) {
-      problems.push({ job: job.id, code: 'no-steps' });
-      continue;
-    }
-    const { text: first, indent } = steps[0];
-    const uses = new RegExp(`^(?: {${indent}}- | {${indent + 2}})uses:\\s*${ACTION}@(\\S+)(?:\\s+#\\s*(\\S+))?\\s*$`, 'm').exec(first);
-    if (!uses) {
-      const elsewhere = steps.slice(1).some((s) => new RegExp(`uses:\\s*${ACTION}@`).test(s.text));
-      problems.push({ job: job.id, code: elsewhere ? 'not-first' : 'missing' });
-      continue;
-    }
-    if (!/^[0-9a-f]{40}$/.test(uses[1]) || !/^v\d+\.\d+\.\d+$/.test(uses[2] ?? '')) {
-      problems.push({ job: job.id, code: 'not-pinned' });
-    } else if (uses[1] !== expectedSha) {
-      problems.push({ job: job.id, code: 'stale-sha' });
-    }
-    if (!/^\s+egress-policy:\s*['"]?audit['"]?\s*(?:#.*)?$/m.test(first)) {
-      problems.push({ job: job.id, code: 'wrong-policy' });
+    const first = Array.isArray(job?.steps) ? job.steps[0] : undefined;
+    if (isHardenRunner(first)) {
+      const sha = stepUses(first).slice(ACTION.length + 1);
+      return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
     }
   }
-  if (!all.some(holdsIdToken)) problems.push({ job: '-', code: 'no-release-jobs' });
+  return null;
+}
+
+/**
+ * What is wrong with one release workflow, as `{ job, code }` entries; empty when it satisfies the rule.
+ * Codes: `unparseable` (not YAML Psych accepts), `no-release-jobs` (no job holds `id-token: write`),
+ * `no-steps`, `missing` (no harden-runner step in the job), `not-first` (the step is there but another
+ * precedes it), `not-pinned` (not a 40-hex commit), `stale-sha` (a commit other than the template's),
+ * `wrong-policy` (not `egress-policy: audit`), `conditional` (the step carries an `if` or
+ * `continue-on-error`, so it may not run or may fail unnoticed).
+ */
+export function checkRelease(workflow, expectedSha) {
+  if (!isObject(workflow)) return [{ job: '-', code: 'unparseable' }];
+  const problems = [];
+  const jobs = isObject(workflow.jobs) ? workflow.jobs : {};
+  for (const { id, job } of releaseJobs(workflow)) {
+    const steps = isObject(job) && Array.isArray(job.steps) ? job.steps : [];
+    if (steps.length === 0) {
+      problems.push({ job: id, code: 'no-steps' });
+      continue;
+    }
+    const first = steps[0];
+    if (!isHardenRunner(first)) {
+      problems.push({ job: id, code: steps.slice(1).some(isHardenRunner) ? 'not-first' : 'missing' });
+      continue;
+    }
+    const sha = stepUses(first).slice(ACTION.length + 1);
+    if (!/^[0-9a-f]{40}$/.test(sha)) problems.push({ job: id, code: 'not-pinned' });
+    else if (sha !== expectedSha) problems.push({ job: id, code: 'stale-sha' });
+    if (!isObject(first.with) || first.with['egress-policy'] !== 'audit') problems.push({ job: id, code: 'wrong-policy' });
+    if ('if' in first || 'continue-on-error' in first) problems.push({ job: id, code: 'conditional' });
+  }
+  if (!Object.entries(jobs).some(([, job]) => holdsIdToken(workflow, job))) problems.push({ job: '-', code: 'no-release-jobs' });
   return problems;
 }
