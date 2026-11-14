@@ -14,46 +14,76 @@ export const ACTION = 'step-security/harden-runner';
 /** The jobs that must start with the step: `build`, `publish`, and any job that holds `id-token: write`. */
 const NAMED_RELEASE_JOBS = new Set(['build', 'publish']);
 
-/** The `jobs:` section as `{ id, lines }` blocks, split by the two-space job keys. */
-export function jobBlocks(text) {
+const COMMENT_OR_BLANK = /^\s*(#.*)?$/;
+const JOB_KEY = /^ {2}(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+)):\s*(?:#.*)?$/;
+
+/**
+ * The `jobs:` section as `{ id, lines }` blocks, split by the two-space job keys (a key may be quoted),
+ * and the two-space lines that are not a job key. A comment or a blank line never ends the section or
+ * starts a job; only a non-comment line at column 0 ends it.
+ */
+export function jobSection(text) {
   const lines = text.split('\n');
   const start = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
-  if (start === -1) return [];
+  if (start === -1) return { jobs: [], unparsed: [] };
   const jobs = [];
+  const unparsed = [];
   let current = null;
   for (let i = start + 1; i < lines.length; i += 1) {
     const line = lines[i];
+    if (COMMENT_OR_BLANK.test(line)) {
+      if (current) current.lines.push(line);
+      continue;
+    }
     if (/^\S/.test(line)) break; // the next top-level key ends the section
-    const key = /^ {2}([A-Za-z0-9_-]+):\s*(#.*)?$/.exec(line);
+    const key = JOB_KEY.exec(line);
     if (key) {
-      current = { id: key[1], lines: [] };
+      current = { id: key[1] ?? key[2] ?? key[3], lines: [] };
       jobs.push(current);
+    } else if (/^ {2}\S/.test(line)) {
+      unparsed.push(line.trim().slice(0, 40));
+      current = null;
     } else if (current) {
       current.lines.push(line);
     }
   }
-  return jobs;
+  return { jobs, unparsed };
 }
 
-/** The step blocks of a job: each starts at a six-space `- ` and runs to the next one. */
+export const jobBlocks = (text) => jobSection(text).jobs;
+
+/**
+ * The step blocks of a job. The list starts after `steps:` at whatever indent its first `- ` has (at
+ * least the key's own, YAML allows both), and each `- ` at that indent starts a step.
+ */
 export function stepBlocks(job) {
   const at = job.lines.findIndex((l) => /^ {4}steps:\s*(#.*)?$/.test(l));
   if (at === -1) return [];
+  const rest = job.lines.slice(at + 1);
+  const first = rest.find((l) => !COMMENT_OR_BLANK.test(l));
+  if (first === undefined || !/^\s*- /.test(first)) return [];
+  const indent = first.length - first.trimStart().length;
+  if (indent < 4) return [];
   const steps = [];
   let current = null;
-  for (const line of job.lines.slice(at + 1)) {
-    if (/^ {0,5}\S/.test(line) && !/^ {6}-/.test(line)) break; // left the steps list
-    if (/^ {6}- /.test(line)) {
+  for (const line of rest) {
+    if (COMMENT_OR_BLANK.test(line)) {
+      if (current) current.push(line);
+      continue;
+    }
+    const lineIndent = line.length - line.trimStart().length;
+    if (lineIndent < indent || (lineIndent === indent && !line.trimStart().startsWith('- '))) break;
+    if (lineIndent === indent) {
       current = [line];
       steps.push(current);
     } else if (current) {
       current.push(line);
     }
   }
-  return steps.map((s) => s.join('\n'));
+  return steps.map((s) => ({ text: s.join('\n'), indent }));
 }
 
-const holdsIdToken = (job) => job.lines.some((l) => /^\s+id-token:\s*write\b/.test(l));
+const holdsIdToken = (job) => job.lines.some((l) => /(?:^|[\s{,])id-token:\s*['"]?write\b/.test(l.replace(/#.*$/, '')));
 
 /** The jobs the rule applies to. */
 export function releaseJobs(text) {
@@ -68,24 +98,27 @@ export function pinnedSha(text) {
 
 /**
  * What is wrong with one `release.yml`, as `{ job, code }` entries; empty when it satisfies the rule.
- * Codes: `no-release-jobs`, `no-steps`, `missing` (no harden-runner step in the job), `not-first` (the
- * step is there but another step precedes it), `not-pinned` (not a 40-hex commit with a version comment),
- * `stale-sha` (a commit other than the template's), `wrong-policy` (not `egress-policy: audit`).
+ * Codes: `unparsed` (a line at the job level that is not a job key, so a job may have been skipped),
+ * `no-release-jobs` (no job holds `id-token: write`), `no-steps`, `missing` (no harden-runner step in
+ * the job), `not-first` (the step is there but another step precedes it), `not-pinned` (not a 40-hex
+ * commit with a version comment), `stale-sha` (a commit other than the template's), `wrong-policy`
+ * (not `egress-policy: audit`).
  */
 export function checkRelease(text, expectedSha) {
   const problems = [];
-  const jobs = releaseJobs(text);
-  if (!jobs.some(holdsIdToken)) return [{ job: '-', code: 'no-release-jobs' }];
+  const { jobs: all, unparsed } = jobSection(text);
+  for (const line of unparsed) problems.push({ job: line, code: 'unparsed' });
+  const jobs = all.filter((job) => NAMED_RELEASE_JOBS.has(job.id) || holdsIdToken(job));
   for (const job of jobs) {
     const steps = stepBlocks(job);
     if (steps.length === 0) {
       problems.push({ job: job.id, code: 'no-steps' });
       continue;
     }
-    const first = steps[0];
-    const uses = new RegExp(`^ {8}uses: ${ACTION}@(\\S+)(?: # (\\S+))?\\s*$`, 'm').exec(first);
+    const { text: first, indent } = steps[0];
+    const uses = new RegExp(`^(?: {${indent}}- | {${indent + 2}})uses:\\s*${ACTION}@(\\S+)(?:\\s+#\\s*(\\S+))?\\s*$`, 'm').exec(first);
     if (!uses) {
-      const elsewhere = steps.slice(1).some((s) => new RegExp(`uses: ${ACTION}@`).test(s));
+      const elsewhere = steps.slice(1).some((s) => new RegExp(`uses:\\s*${ACTION}@`).test(s.text));
       problems.push({ job: job.id, code: elsewhere ? 'not-first' : 'missing' });
       continue;
     }
@@ -94,9 +127,10 @@ export function checkRelease(text, expectedSha) {
     } else if (uses[1] !== expectedSha) {
       problems.push({ job: job.id, code: 'stale-sha' });
     }
-    if (!/^ {10}egress-policy: audit\s*$/m.test(first)) {
+    if (!/^\s+egress-policy:\s*['"]?audit['"]?\s*(?:#.*)?$/m.test(first)) {
       problems.push({ job: job.id, code: 'wrong-policy' });
     }
   }
+  if (!all.some(holdsIdToken)) problems.push({ job: '-', code: 'no-release-jobs' });
   return problems;
 }

@@ -43,7 +43,7 @@ test('the rule does not depend on the text of any comment', () => {
 test('the parser sees the template as two jobs whose first step is the harden-runner', () => {
   const jobs = jobBlocks(template);
   assert.deepEqual(jobs.map((j) => j.id), ['build', 'publish']);
-  for (const job of jobs) assert.match(stepBlocks(job)[0], /- name: Harden runner\n[\s\S]*uses: step-security\/harden-runner@/);
+  for (const job of jobs) assert.match(stepBlocks(job)[0].text, /- name: Harden runner\n[\s\S]*uses: step-security\/harden-runner@/);
 });
 
 test('a job without the step is reported as missing', () => {
@@ -89,9 +89,56 @@ test('a version comment is required next to the commit', () => {
 });
 
 test('a file with no job holding id-token has no release jobs, and a release job without steps is reported', () => {
-  assert.deepEqual(checkRelease('name: x\njobs:\n  build:\n    steps:\n      - run: echo\n', SHA), [{ job: '-', code: 'no-release-jobs' }]);
+  assert.deepEqual(checkRelease('name: x\njobs:\n  lint:\n    steps:\n      - run: echo\n', SHA), [{ job: '-', code: 'no-release-jobs' }]);
   const empty = 'name: x\njobs:\n  publish:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n';
   assert.deepEqual(checkRelease(empty, SHA), [{ job: 'publish', code: 'no-steps' }]);
+});
+
+// Shapes of a real release.yml that the first parser read wrongly: some made it skip a job (a missed
+// adopter, the failure this check exists to prevent), some made a valid file fail.
+const bareJob = (id, steps, extra = '') =>
+  `  ${id}:\n    runs-on: ubuntu-latest\n${extra}    steps:\n${steps}`;
+const GOOD_STEP = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA} # v2.22.4\n        with:\n          egress-policy: audit\n`;
+const OTHER_STEP = '      - name: Checkout\n        run: echo hi\n';
+const ID_TOKEN = '    permissions:\n      id-token: write\n';
+const BAD_PUBLISH = (key = 'publish') => bareJob(key, OTHER_STEP, ID_TOKEN);
+
+test('a comment at column 0 between two jobs does not end the jobs section', () => {
+  const text = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n# a note about the next job\n${BAD_PUBLISH()}`;
+  assert.deepEqual(checkRelease(text, SHA), [{ job: 'publish', code: 'missing' }]);
+});
+
+test('a quoted job key is read as its own job, not merged into the previous one', () => {
+  const text = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n${BAD_PUBLISH('"publish"')}`;
+  assert.deepEqual(checkRelease(text, SHA), [{ job: 'publish', code: 'missing' }]);
+  const single = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n${BAD_PUBLISH("'publish'")}`;
+  assert.deepEqual(checkRelease(single, SHA), [{ job: 'publish', code: 'missing' }]);
+});
+
+test('an id-token written in flow style still marks a job as holding the release', () => {
+  const text = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, '    permissions: { id-token: write, contents: write }\n')}`;
+  assert.deepEqual(checkRelease(text, SHA), [{ job: 'deploy', code: 'missing' }]);
+});
+
+test('a line at the job level that is not a job key is reported, not ignored', () => {
+  const text = `name: x\njobs:\n${bareJob('build', GOOD_STEP)}\n  *anchored:\n    runs-on: ubuntu-latest\n`;
+  assert.ok(checkRelease(text, SHA).some((p) => p.code === 'unparsed'));
+});
+
+test('valid spellings of the step are accepted: a policy with a comment or quotes, uses on the dash line, steps at the key indent', () => {
+  const trailing = GOOD_STEP.replace('egress-policy: audit', 'egress-policy: audit # keep');
+  const quoted = GOOD_STEP.replace('egress-policy: audit', "egress-policy: 'audit'");
+  const dash = `      - uses: step-security/harden-runner@${SHA} # v2.22.4\n        with:\n          egress-policy: audit\n`;
+  const flush = '    - name: Harden runner\n      uses: step-security/harden-runner@' + SHA + ' # v2.22.4\n      with:\n        egress-policy: audit\n';
+  for (const step of [trailing, quoted, dash]) {
+    assert.deepEqual(checkRelease(`name: x\njobs:\n${bareJob('publish', step, ID_TOKEN)}`, SHA), []);
+  }
+  assert.deepEqual(checkRelease(`name: x\njobs:\n  publish:\n    permissions:\n      id-token: write\n    steps:\n${flush}`, SHA), []);
+});
+
+test('named jobs are checked even when no job holds id-token, and the missing id-token is reported too', () => {
+  const text = `name: x\njobs:\n${bareJob('build', OTHER_STEP)}`;
+  assert.deepEqual(checkRelease(text, SHA), [{ job: 'build', code: 'missing' }, { job: '-', code: 'no-release-jobs' }]);
 });
 
 test('the adopter list parses, rejects anything that is not owner/name, and names real repositories only', () => {
