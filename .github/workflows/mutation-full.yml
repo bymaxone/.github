@@ -99,6 +99,26 @@ permissions:
   contents: read
 
 jobs:
+  # Every job below is limited to the default branch (the reason is in the first one), so a dispatch
+  # on any other ref would skip all of them: a run with no score and no failure, which a caller can
+  # read as fine. This job runs only in that case and says so. It adds no `needs:` to the others, a
+  # skipped dependency would only skip them again; their own conditions already keep them off.
+  guard:
+    name: Default branch only
+    if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Refuse a run on another ref
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
+          echo "::error title=mutation-full::mutation-full runs only on the default branch ($(clean "$DEFAULT_BRANCH")). Dispatch it there; for a pre-merge check run Stryker on the changed files."
+          exit 1
+
   full:
     name: Full mutation run
     # Default branch only, and this is a correctness guard rather than tidiness. A caller's

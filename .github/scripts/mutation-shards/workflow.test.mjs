@@ -137,3 +137,46 @@ test('the plan fetches its weights through weights-run, not from the last succes
   assert.doesNotMatch(fetch, /--status success/);
   assert.doesNotMatch(fetch, /gh run list/, 'the selection is the script\'s, which is tested');
 });
+
+/** The text of one job of the workflow, from its id line to the next job. */
+function jobText(id) {
+  const start = workflow.indexOf(`\n  ${id}:\n`);
+  assert.notEqual(start, -1, `job ${id} exists`);
+  const rest = workflow.slice(start + 1);
+  const next = rest.slice(1).search(/\n {2}[a-z][\w-]*:\n/);
+  return next === -1 ? rest : rest.slice(0, next + 1);
+}
+
+const DEFAULT_BRANCH_ONLY = "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)";
+
+// A dispatch on another ref used to skip every job: no score, no failure, which reads as fine. The
+// guard job fails it instead, and the jobs that did the work keep their ids and check names.
+test('a run on another ref fails in a guard job rather than skipping silently', () => {
+  const guard = jobText('guard');
+  assert.match(guard, /if: github\.ref != format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
+  assert.match(guard, /::error title=mutation-full::/);
+  assert.match(guard, /\n\s+exit 1\n/);
+  assert.match(guard, /permissions: \{\}/);
+  assert.ok(!/uses:/.test(guard), 'it runs no action and no repository code');
+  // The value comes in through env and is cleaned before it reaches a workflow command.
+  assert.match(guard, /DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.match(guard, /tr -d '\\000-\\037\\177'/);
+  assert.ok(!guard.includes('${{ github.ref'), 'the ref is not interpolated into the script');
+});
+
+test('every job that does the work still runs on the default branch only, so none can run beside the guard', () => {
+  for (const id of ['full', 'plan', 'shard', 'aggregate']) {
+    assert.ok(jobText(id).includes(DEFAULT_BRANCH_ONLY), `${id} is limited to the default branch`);
+  }
+});
+
+test('the jobs and their check names are the ones callers already require', () => {
+  const names = [...workflow.matchAll(/^ {2}([a-z][\w-]*):\n {4}name: (.+)$/gm)].map((m) => `${m[1]}=${m[2]}`);
+  assert.deepEqual(names, [
+    'guard=Default branch only',
+    'full=Full mutation run',
+    'plan=Plan mutation shards',
+    'shard=Mutation shard',
+    'aggregate=Aggregate mutation shards',
+  ]);
+});
