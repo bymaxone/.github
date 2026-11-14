@@ -7,12 +7,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { checkRelease, FORWARD_STEP, forwardStep, parseWorkflow, pinnedSha } from './check-release.mjs';
+import { checkRelease, FORWARD_STEP, forwardRule, parseWorkflow, pinnedSha } from './check-release.mjs';
 
 const template = readFileSync(new URL('../../../.github/workflow-templates/npm-release.yml', import.meta.url), 'utf8');
 const TEMPLATE = parseWorkflow(template);
 const SHA = pinnedSha(TEMPLATE);
-const FORWARD = forwardStep(TEMPLATE);
+const FORWARD = forwardRule(TEMPLATE).step;
+const RULE = forwardRule(TEMPLATE);
 
 /** A copy of the template as an adopter would hold it: the package name filled in, then edited by `fn`. */
 function copy(fn = () => {}) {
@@ -21,7 +22,7 @@ function copy(fn = () => {}) {
   fn(workflow);
   return workflow;
 }
-const codes = (workflow) => checkRelease(workflow, SHA, FORWARD).map((p) => `${p.job}:${p.code}`);
+const codes = (workflow) => checkRelease(workflow, SHA, RULE).map((p) => `${p.job}:${p.code}`);
 const stepsOf = (workflow, job = 'publish') => workflow.jobs[job].steps;
 const indexOfForward = (steps) => steps.findIndex((s) => s.name === FORWARD_STEP);
 const isDownload = (s) => typeof s.uses === 'string' && s.uses.startsWith('actions/download-artifact@');
@@ -139,4 +140,25 @@ test('every job whose effective permissions hold the token is asked, the inherit
   assert.deepEqual(codes(two).filter((c) => c.startsWith('other:')), [], 'the second job carries the step and passes');
   two.jobs.other.steps.find((s) => s.name === FORWARD_STEP).run = '';
   assert.deepEqual(codes(two).filter((c) => c.startsWith('other:')), ['other:forward-step-differs']);
+});
+
+test('only the template\'s own steps may stand ahead of the step: the premise of the download anchor is checked, not assumed', () => {
+  const at = (w) => indexOfForward(stepsOf(w));
+  // A publish that happens before the step, with the download moved behind it: ahead of the download, yet too late.
+  const publishedFirst = copy((w) => {
+    const steps = stepsOf(w);
+    const download = steps.splice(steps.findIndex(isDownload), 1)[0];
+    steps.splice(at(w), 0, { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } }, { run: 'npm publish ./x.tgz' });
+    steps.splice(at(w) + 1, 0, download);
+  });
+  assert.deepEqual(codes(publishedFirst), ['publish:forward-step-preceded'], 'checkout and publish ahead of the step, download after it');
+  assert.deepEqual(codes(copy((w) => stepsOf(w).splice(at(w), 0, { run: 'echo hi' }))), ['publish:forward-step-preceded'], 'an unknown step ahead');
+  assert.deepEqual(codes(copy((w) => { const s = stepsOf(w)[at(w) - 1]; s.run = `${s.run}\ntrue`; })), ['publish:forward-step-preceded'], 'a template step ahead, edited');
+  // Membership, not order: the template's steps ahead of the step may come in any order, and the harden-runner is the other rule's.
+  assert.deepEqual(codes(copy((w) => { const s = stepsOf(w); [s[1], s[3]] = [s[3], s[1]]; })), [], 'two of the template steps swapped');
+  // A harden-runner pinned to another commit is the pin rule's finding (stale-sha), not a stranger ahead of the step.
+  const stale = codes(copy((w) => { stepsOf(w)[0].uses = `step-security/harden-runner@${'0'.repeat(40)}`; }));
+  assert.deepEqual(stale.filter((c) => c.includes('preceded')), [], 'a stale harden-runner is not a preceding stranger');
+  assert.deepEqual(codes(copy()), [], 'the template order');
+  assert.deepEqual(codes(copy((w) => { w.jobs.publish.steps = [stepsOf(w)[at(w)], ...stepsOf(w).filter((s) => s.name !== FORWARD_STEP)]; })).filter((c) => c.includes('preceded')), [], 'nothing ahead of it at all');
 });

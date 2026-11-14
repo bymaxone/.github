@@ -9,7 +9,7 @@
 // Every job whose effective permissions hold the token must also carry the template's forward-only step,
 // the one whose script refuses a release that does not move forward: the same step as a parsed object
 // (name, env, run, no other key), with no `if` or `continue-on-error`, ahead of the first step that
-// downloads the build's artifact. A copy that keeps the name and changes what the step does differs, and
+// downloads the build's artifact, with only the template's own steps ahead of it. A copy that keeps the name and changes what the step does differs, and
 // the template's own test of that script (forward-only.test.mjs) is then a test of every copy.
 //
 // The workflow is read by a real YAML parser (Ruby's Psych, which the GitHub-hosted Ubuntu images
@@ -74,10 +74,14 @@ const stepUses = (step) => (isObject(step) && typeof step.uses === 'string' ? st
 
 export const FORWARD_STEP = 'Require a release that moves forward';
 
-/** The template's forward-only step, as the parsed object, or null when its publish job has none. */
-export function forwardStep(workflow) {
+/**
+ * The template's forward-only rule as `{ step, before }`: the step as the parsed object, and the steps of its
+ * publish job that stand ahead of it. Null when the template's publish job has no such step.
+ */
+export function forwardRule(workflow) {
   const steps = isObject(workflow?.jobs?.publish) && Array.isArray(workflow.jobs.publish.steps) ? workflow.jobs.publish.steps : [];
-  return steps.find((s) => isObject(s) && s.name === FORWARD_STEP && typeof s.run === 'string') ?? null;
+  const at = steps.findIndex((s) => isObject(s) && s.name === FORWARD_STEP && typeof s.run === 'string');
+  return at === -1 ? null : { step: steps[at], before: steps.slice(0, at) };
 }
 
 const isDownload = (step) => stepUses(step).startsWith('actions/download-artifact@');
@@ -94,11 +98,13 @@ const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : isObject(v) ? Obje
  *   `forward-step-differs`     it is not the template's step (run, env or any other key);
  *   `no-download-step`         the job never downloads the build's artifact, so it is not the template's shape;
  *   `forward-step-late`        it comes after the first step that does;
+ *   `forward-step-preceded`    a step ahead of it is not one of the template's steps ahead of it (any order; the
+ *                              harden-runner step is the other rule's), so something else ran with the token first;
  *   `no-package-name`          `PACKAGE_NAME` is absent, empty or the template's placeholder in the job's env.
  * Placement is anchored on the download rather than on the publish command: the publish job has no checkout
  * and no install, so nothing it publishes exists before the download, whatever the command is spelled like.
  */
-function checkForwardStep(job, forward) {
+function checkForwardStep(job, { step: forward, before }) {
   const steps = Array.isArray(job.steps) ? job.steps : [];
   const at = steps.findIndex((s) => isObject(s) && s.name === FORWARD_STEP);
   if (at === -1) return ['no-forward-step'];
@@ -109,6 +115,11 @@ function checkForwardStep(job, forward) {
   const downloadAt = steps.findIndex(isDownload);
   if (downloadAt === -1) codes.push('no-download-step');
   else if (at > downloadAt) codes.push('forward-step-late');
+  // The download anchor rests on the publish job running nothing of its own ahead of the step: a checkout and a
+  // publish ahead of it, with the download moved behind, would pass it. Membership, not order. A step that is
+  // already late is reported as late only, since everything up to the download then stands ahead of it.
+  const late = downloadAt !== -1 && at > downloadAt;
+  if (!late && steps.slice(0, at).some((s) => !isHardenRunner(s) && !before.some((b) => sameValue(s, b)))) codes.push('forward-step-preceded');
   const name = isObject(job.env) ? job.env.PACKAGE_NAME : undefined;
   if (typeof name !== 'string' || name === '' || name.includes('CHANGE-ME')) codes.push('no-package-name');
   return codes;

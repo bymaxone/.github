@@ -10,7 +10,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from '../mutation-shards/lib.mjs';
-import { checkRelease, forwardStep, parseWorkflow, parseWorkflowResult, pinnedSha } from './check-release.mjs';
+import { checkRelease, forwardRule, parseWorkflow, parseWorkflowResult, pinnedSha } from './check-release.mjs';
 
 const REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -79,7 +79,7 @@ export function main(argv, env = process.env) {
   }
   const expected = pinnedSha(parseWorkflow(readFileSync(args.template, 'utf8')));
   if (!expected) throw new Error('The template carries no pinned harden-runner step.');
-  const forward = forwardStep(parseWorkflow(readFileSync(args.template, 'utf8')));
+  const forward = forwardRule(parseWorkflow(readFileSync(args.template, 'utf8')));
   if (!forward) throw new Error('The template carries no forward-only step in its publish job.');
   const results = checkFamily(readList(readFileSync(args.list, 'utf8')), expected, gh, forward);
   const text = report(results, expected);
