@@ -299,7 +299,8 @@ jobs:
             const all = [].concat(JSON.parse(require("fs").readFileSync(0, "utf8")));
             console.log(all.filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)).join("\n"));
           ' | sort -V | tail -n 1)
-          if [ -n "$highest" ] && [ "$(printf '%s\n%s\n' "$highest" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
+          # Strictly greater: a version the listing already holds is not newer, even when the exact lookup above did not answer.
+          if [ -n "$highest" ] && { [ "$highest" = "$VERSION" ] || [ "$(printf '%s\n%s\n' "$highest" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; }; then
             echo "::error title=release::The version is not greater than the highest version on npm."
             exit 1
           fi

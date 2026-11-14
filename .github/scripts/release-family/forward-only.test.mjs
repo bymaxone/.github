@@ -31,7 +31,7 @@ const NPM = `#!/bin/bash
 echo "npm $*" >> "$STUB_LOG"
 # A scoped name starts with @, so only an @ after the first character separates a version.
 case "\${2:1}" in
-  *@*) case " $NPM_VERSIONS " in *" \${2##*@} "*) exit 0 ;; *) exit 1 ;; esac ;;
+  *@*) [ "\${NPM_EXACT_FAIL:-}" = "1" ] && exit 1; case " $NPM_VERSIONS " in *" \${2##*@} "*) exit 0 ;; *) exit 1 ;; esac ;;
 esac
 case "$NPM_MODE" in
   e404) echo "npm error code E404" >&2; exit 1 ;;
@@ -41,7 +41,7 @@ esac
 `;
 
 /** Runs the step. Returns { code, out, log }. */
-function run({ tag = 'v1.5.0', version = '1.5.0', tags = 'v1.4.0\nv1.5.0', status = 'ahead', npm = '1.4.0', npmMode = '', ghFail = '' } = {}) {
+function run({ tag = 'v1.5.0', version = '1.5.0', tags = 'v1.4.0\nv1.5.0', status = 'ahead', npm = '1.4.0', npmMode = '', ghFail = '', exactFail = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'forward-only-'));
   try {
     for (const [name, body] of [['gh', GH], ['npm', NPM]]) {
@@ -66,6 +66,7 @@ function run({ tag = 'v1.5.0', version = '1.5.0', tags = 'v1.4.0\nv1.5.0', statu
         GH_FAIL: ghFail,
         NPM_VERSIONS: npm,
         NPM_MODE: npmMode,
+        NPM_EXACT_FAIL: exactFail ? '1' : '',
       },
     });
     let log = '';
@@ -121,7 +122,7 @@ test('a first release (no previous tag, package not on npm) passes', () => {
   assert.doesNotMatch(r.log, /compare\//, 'nothing to compare with');
 });
 
-test('a version equal to or below the highest on npm fails', () => {
+test('a version below the highest on npm fails', () => {
   for (const npm of ['1.5.1', '1.5.0 1.4.0'.replace('1.5.0 ', '9.0.0 ')]) {
     const r = run({ npm });
     assert.notEqual(r.code, 0, npm);
@@ -132,6 +133,13 @@ test('a version equal to or below the highest on npm fails', () => {
 test('the highest version is compared as a version, not as text, and prereleases do not count', () => {
   assert.equal(run({ tag: 'v1.10.0', version: '1.10.0', tags: 'v1.9.0', npm: '1.9.0 1.2.0 2.0.0-rc.1' }).code, 0);
   assert.notEqual(run({ tag: 'v1.9.0', version: '1.9.0', tags: 'v1.8.0', npm: '1.8.0 1.10.0' }).code, 0);
+});
+
+test('a version equal to the highest on npm fails when the exact-version lookup did not answer', () => {
+  // The listing holds the version, the single lookup failed: the rule is "greater", not "at least".
+  const r = run({ npm: '1.4.0 1.5.0', exactFail: true });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /not greater than the highest version on npm/);
 });
 
 test('a version already on npm is the re-run case and passes', () => {
