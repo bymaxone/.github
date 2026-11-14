@@ -83,7 +83,26 @@ export function stepBlocks(job) {
   return steps.map((s) => ({ text: s.join('\n'), indent }));
 }
 
-const holdsIdToken = (job) => job.lines.some((l) => /(?:^|[\s{,])id-token:\s*['"]?write\b/.test(l.replace(/#.*$/, '')));
+const ID_TOKEN_WRITE = /["']?id-token["']?\s*:\s*["']?write["']?/;
+
+/**
+ * Whether the job's OWN `permissions:` holds `id-token: write`, in block or flow style, with the key and
+ * the value optionally quoted, or `write-all`. Only that block is read: the same words in a step's
+ * script, or `id-token: none`, do not make a release job. Aliases and permissions inherited from the
+ * workflow level are not read.
+ */
+const holdsIdToken = (job) => {
+  const at = job.lines.findIndex((l) => /^ {4}permissions:/.test(l));
+  if (at === -1) return false;
+  const inline = job.lines[at].replace(/^ {4}permissions:/, '').replace(/#.*$/, '').trim();
+  if (inline !== '') return inline === 'write-all' || ID_TOKEN_WRITE.test(inline);
+  for (const line of job.lines.slice(at + 1)) {
+    if (COMMENT_OR_BLANK.test(line)) continue;
+    if (!/^ {5,}\S/.test(line)) break; // back at the job's own level
+    if (ID_TOKEN_WRITE.test(line.replace(/#.*$/, ''))) return true;
+  }
+  return false;
+};
 
 /** The jobs the rule applies to. */
 export function releaseJobs(text) {

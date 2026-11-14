@@ -141,6 +141,23 @@ test('named jobs are checked even when no job holds id-token, and the missing id
   assert.deepEqual(checkRelease(text, SHA), [{ job: 'build', code: 'missing' }, { job: '-', code: 'no-release-jobs' }]);
 });
 
+test('only the job\'s own permissions decide whether it holds the release: a quoted key counts, text inside a step does not', () => {
+  const quoted = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, '    permissions:\n      "id-token": write\n')}`;
+  assert.deepEqual(checkRelease(quoted, SHA), [{ job: 'deploy', code: 'missing' }]);
+  const singleQuoted = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, "    permissions:\n      'id-token': 'write'\n")}`;
+  assert.deepEqual(checkRelease(singleQuoted, SHA), [{ job: 'deploy', code: 'missing' }]);
+  const echoed = `name: x\njobs:\n${bareJob('publish', GOOD_STEP, ID_TOKEN)}\n${bareJob('lint', '      - run: echo "id-token: write"\n')}`;
+  assert.deepEqual(checkRelease(echoed, SHA), []);
+  assert.deepEqual(releaseJobs(echoed).map((j) => j.id), ['publish']);
+  const readOnly = `name: x\njobs:\n${bareJob('publish', GOOD_STEP, ID_TOKEN)}\n${bareJob('docs', OTHER_STEP, '    permissions:\n      id-token: none\n      contents: write\n')}`;
+  assert.deepEqual(checkRelease(readOnly, SHA), [], 'id-token: none is not the release');
+});
+
+test('write-all permissions hold the release too', () => {
+  const text = `name: x\njobs:\n${bareJob('deploy', OTHER_STEP, '    permissions: write-all\n')}`;
+  assert.deepEqual(checkRelease(text, SHA), [{ job: 'deploy', code: 'missing' }]);
+});
+
 test('the adopter list parses, rejects anything that is not owner/name, and names real repositories only', () => {
   assert.deepEqual(readList('# c\n\nbymaxone/nest-auth # x\nbymaxone/nest-core\n'), ['bymaxone/nest-auth', 'bymaxone/nest-core']);
   assert.throws(() => readList('bymaxone/nest-auth\nnot a repo\n'));
