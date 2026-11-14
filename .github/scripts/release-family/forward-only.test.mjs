@@ -17,10 +17,11 @@ const step = parseWorkflow(template).jobs.publish.steps.find((s) => s.name === S
 // `gh api` prints the tags it is given for the ref listing, and the status it is given for a compare.
 const GH = `#!/bin/bash
 echo "$*" >> "$STUB_LOG"
-[ "\${GH_FAIL:-}" = "1" ] && { echo "gh: boom" >&2; exit 1; }
+# A failing gh prints its diagnostic, which can carry the request URL: the step must not pass it on.
+fail() { echo "gh: diagnostic-from-gh $*" >&2; exit 1; }
 case "$*" in
-  *matching-refs*) printf '%s\\n' "$GH_TAGS" ;;
-  *compare/*) echo "$GH_STATUS" ;;
+  *matching-refs*) [ "\${GH_FAIL:-}" = "list" ] && fail "$*"; printf '%s\\n' "$GH_TAGS" ;;
+  *compare/*) [ "\${GH_FAIL:-}" = "compare" ] && fail "$*"; echo "$GH_STATUS" ;;
   *) exit 2 ;;
 esac
 `;
@@ -40,7 +41,7 @@ esac
 `;
 
 /** Runs the step. Returns { code, out, log }. */
-function run({ tag = 'v1.5.0', version = '1.5.0', tags = 'v1.4.0\nv1.5.0', status = 'ahead', npm = '1.4.0', npmMode = '', ghFail = false } = {}) {
+function run({ tag = 'v1.5.0', version = '1.5.0', tags = 'v1.4.0\nv1.5.0', status = 'ahead', npm = '1.4.0', npmMode = '', ghFail = '' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'forward-only-'));
   try {
     for (const [name, body] of [['gh', GH], ['npm', NPM]]) {
@@ -62,7 +63,7 @@ function run({ tag = 'v1.5.0', version = '1.5.0', tags = 'v1.4.0\nv1.5.0', statu
         PACKAGE_NAME: '@bymax-one/example',
         GH_TAGS: tags,
         GH_STATUS: status,
-        GH_FAIL: ghFail ? '1' : '',
+        GH_FAIL: ghFail,
         NPM_VERSIONS: npm,
         NPM_MODE: npmMode,
       },
@@ -145,8 +146,13 @@ test('a registry that cannot be read is a failure, not a first release', () => {
   assert.match(r.out, /registry could not be read/);
 });
 
-test('a GitHub API failure is a failure', () => {
-  assert.notEqual(run({ ghFail: true }).code, 0);
+test('a GitHub API failure is a failure that carries none of gh\'s own diagnostic', () => {
+  for (const ghFail of ['list', 'compare']) {
+    const r = run({ ghFail });
+    assert.notEqual(r.code, 0, ghFail);
+    assert.match(r.out, /::error title=release::/, ghFail);
+    assert.doesNotMatch(r.out, /diagnostic-from-gh|v1\.5\.0|c{40}/, `${ghFail}: gh's text reached the log`);
+  }
 });
 
 test('a single published version comes back as a bare string and is still compared', () => {
