@@ -1,0 +1,62 @@
+# Checks that every repository carrying the org npm release template still starts its release jobs with
+# the audit-mode harden-runner the template pins (DEC-164).
+#
+# The template is COPIED into each adopter's release.yml, so nothing here can update a copy; this reads
+# the copies. For each repository in .github/release-adopters.txt it resolves the default branch to a
+# commit, reads .github/workflows/release.yml at that commit, and applies the rule of
+# .github/scripts/release-family/check-release.mjs: the jobs named build or publish, and any job that
+# holds `id-token: write`, start with `step-security/harden-runner` pinned to the commit the template
+# carries, with `egress-policy: audit`. The summary names the commit read for each repository.
+#
+# Not a gate on pull requests: it reads other repositories, so a red run is the signal that an adopter
+# needs a pull request, most often after the template's pin moved.
+name: release-family-check
+
+on:
+  schedule:
+    - cron: '41 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  family:
+    name: Release template family
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # A dispatch can be aimed at any ref; the template and the list are read from the checked-out ref,
+      # so only the default branch's own are the ones to measure the family against.
+      - name: Refuse a run outside the default branch
+        env:
+          RUN_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
+          if [ "$RUN_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error title=release-family::release-family-check runs only on the default branch ($(clean "$DEFAULT_BRANCH")). Dispatch it there."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Check every adopter's release.yml
+        env:
+          # The adopters are public, so the job's own token reads them; no other credential is used.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/release-family/check-family.mjs \
+            --list .github/release-adopters.txt \
+            --template .github/workflow-templates/npm-release.yml

@@ -316,6 +316,7 @@ jobs:
           package-manager-cache: false
 
       # Built-ins only, so no install. It also holds the check that the two copies of the
-      # "decide whether anything moved the score" step in mutation-full.yml are identical.
+      # "decide whether anything moved the score" step in mutation-full.yml are identical, and the
+      # fixtures of the release-template family check.
       - name: Run the tests
-        run: node --test '.github/scripts/mutation-shards/*.test.mjs'
+        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs'
