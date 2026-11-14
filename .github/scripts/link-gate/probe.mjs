@@ -8,7 +8,7 @@
 // so a branch that is dead in a copy shows up as a case that does not come out as wanted.
 //
 // The text comes from another repository and is code nobody reviewed here, so it runs in a child process
-// that is given nothing: an empty environment (no token), a stubbed `fetch` and DNS, a timeout, and, where
+// that is given nothing: an empty environment (no token, not even the stub's table), a stubbed `fetch` and DNS, a timeout, and, where
 // the caller asks for it, a network namespace and an unprivileged user (see `isolation`).
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -34,11 +34,13 @@ export function isolation(uid = process.getuid?.()) {
   return uid === 0 ? drop : ['sudo', '-n', ...drop];
 }
 
-const STUB = `import dns from 'node:dns/promises'
+const STUB = `import { readFileSync } from 'node:fs'
+import dns from 'node:dns/promises'
 import { syncBuiltinESMExports } from 'node:module'
 dns.lookup = async () => [{ address: '93.184.216.34', family: 4 }]
 syncBuiltinESMExports()
-const table = JSON.parse(process.env.STUB_LINKS)
+// The table is a file next to this one, not a variable: the child has no environment, and sudo would drop one.
+const table = JSON.parse(readFileSync(new URL('./table.json', import.meta.url), 'utf8'))
 globalThis.fetch = async (url, init) => {
   const e = table[url] ?? table[url.replace(/^https:\\/\\/registry\\.npmjs\\.org\\//, 'https://www.npmjs.com/package/')]
   if (!e) return new Response(null, { status: 599 })
@@ -83,10 +85,11 @@ console.log('@@RESULT ' + JSON.stringify(failures))
 `;
     writeFileSync(join(dir, 'main.mjs'), main);
     writeFileSync(join(dir, 'stub.mjs'), STUB);
+    writeFileSync(join(dir, 'table.json'), JSON.stringify(links));
     if (modular) writeFileSync(join(dir, 'links.mjs'), script);
     // The child may run as another user: it must be able to read what it is given.
     chmodSync(dir, 0o755);
-    for (const f of ['main.mjs', 'stub.mjs', 'links.mjs']) {
+    for (const f of ['main.mjs', 'stub.mjs', 'table.json', 'links.mjs']) {
       try {
         chmodSync(join(dir, f), 0o644);
       } catch {
@@ -96,8 +99,8 @@ console.log('@@RESULT ' + JSON.stringify(failures))
     const [command, ...prefix] = [...wrap, process.execPath];
     const r = spawnSync(command, [...prefix, '--import', join(dir, 'stub.mjs'), join(dir, 'main.mjs')], {
       encoding: 'utf8',
-      // Nothing is inherited: no token, no PATH, no HOME. The only variable is the stub's table.
-      env: { STUB_LINKS: JSON.stringify(links) },
+      // Nothing is inherited and nothing is added: no token, no PATH, no HOME. (The stub's table is a file.)
+      env: {},
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
     });

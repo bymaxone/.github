@@ -52,13 +52,13 @@ test('a text with no link check is unrecognised, not ok', () => {
 // check at the first closing brace in column 0, so a body written here keeps its own braces indented.
 const hostile = (body) => `/** Slug a Markdown heading */\nfunction slug(h) { return h }\nasync function checkLinks() {\n${body}\n}\n`;
 
-test('the child sees no token and nothing else of the caller\'s environment', () => {
+test('the child sees no token and no environment at all', () => {
   process.env.GH_TOKEN = 'secret-gh-token-123';
   process.env.GITHUB_TOKEN = 'secret-github-token-456';
   try {
     // macOS adds __CF_USER_TEXT_ENCODING to every process; it is the system's, not the caller's.
     const r = probe(hostile("fail('env', JSON.stringify(Object.keys(process.env).filter((k) => k !== '__CF_USER_TEXT_ENCODING').sort()) + JSON.stringify([process.env.GH_TOKEN, process.env.GITHUB_TOKEN]))"), { 'https://a.example/x': { GET: 200 } });
-    assert.deepEqual(r.failures, ['env: ["STUB_LINKS"][null,null]']);
+    assert.deepEqual(r.failures, ['env: [][null,null]']);
   } finally {
     delete process.env.GH_TOKEN;
     delete process.env.GITHUB_TOKEN;
