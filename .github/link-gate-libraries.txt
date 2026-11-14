@@ -1,0 +1,14 @@
+# Libraries whose published-surface gate checks the links of the README. The link-gate family check
+# (link-gate-family.yml) runs the matrix of .github/scripts/link-gate on each one's link check, read at the
+# commit its default branch points to. One owner/name per line.
+bymaxone/nest-auth
+bymaxone/nest-cache
+bymaxone/nest-config
+bymaxone/nest-core
+bymaxone/nest-logger
+bymaxone/nest-notification
+bymaxone/nest-queue
+bymaxone/nest-realtime
+bymaxone/nest-storage
+bymaxone/nest-telemetry
+bymaxone/nest-ai-tokens
