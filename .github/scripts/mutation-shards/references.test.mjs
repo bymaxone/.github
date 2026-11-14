@@ -58,6 +58,15 @@ test('the npm release template builds without a credential and packs once', () =
   assert.match(build, /sha256=\$sha256/, 'the digest is a job output');
 });
 
+// A library's published-surface gate reads the tags (`git fetch --tags`, `git tag --list`) and fails on
+// a shallow clone. Each adopter used to have to notice that and add the depth itself.
+test('the npm release template checks out the full history and still leaves no credential', () => {
+  const { build } = jobs();
+  const checkout = build.slice(build.indexOf('- name: Checkout'), build.indexOf('- name: Setup pnpm'));
+  assert.match(checkout, /fetch-depth: 0\n/);
+  assert.match(checkout, /persist-credentials: false\n/);
+});
+
 test('the npm release template publishes exactly the file the build packed, and nothing else runs there', () => {
   const { publish } = jobs();
   assert.match(publish, /id-token: write/);
