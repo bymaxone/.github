@@ -391,6 +391,10 @@ write the tag in the trailing comment, and copy the Dependabot group from
 arrives as its own pull request. Leave `canonical-ref` at `v1`: it only chooses which text is
 offered as a pull request, and a person reviews that.
 
+The job refuses to run on any ref but the default branch, before it reads the key: dispatch it there.
+That stops a dispatch on the wrong ref. Keeping the key from a workflow someone pushes to another
+branch is the job of scoping the secret to an environment, which is a repository setting.
+
 ### 🏷️ Versioning
 
 Point callers at **`@v1`** (a moving major alias): a deliberate `v1.x` release propagates

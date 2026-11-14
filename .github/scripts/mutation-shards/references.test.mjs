@@ -143,3 +143,47 @@ test('without GH_REPO the same step fails outside a git directory', () => {
   delete step.env.GH_REPO;
   assert.notEqual(runReleaseStep(step, { releaseExists: false }).status, 0);
 });
+
+// agents-sync mints an installation token that can write to the caller's repository. A dispatch
+// aimed at another ref has to stop before any step that reads the App key.
+const agentsSync = () => read('.github/workflows/agents-sync.yml');
+const guardStep = () => {
+  const text = agentsSync();
+  const start = text.indexOf('      - name: Refuse a run outside the default branch\n');
+  assert.ok(start > 0, 'the guard step exists');
+  const end = text.indexOf('\n      #', start);
+  const step = text.slice(start, end);
+  const script = step.slice(step.indexOf('run: |\n') + 'run: |\n'.length).split('\n').map((l) => l.slice(10)).join('\n');
+  return { text, start, step, script };
+};
+const runGuard = (script, env) =>
+  spawnSync('bash', ['-c', script], { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' });
+
+test('agents-sync refuses a run outside the default branch before any step can read the App key', () => {
+  const { text, start, step } = guardStep();
+  const sync = text.indexOf('\n  sync:\n');
+  const firstStep = text.indexOf('    steps:\n', sync) + '    steps:\n'.length;
+  assert.equal(text.slice(firstStep).search(/^ {6}- name:/m) + firstStep, start, 'it is the first step of the job');
+  assert.ok(start < text.indexOf('- name: Mint an installation token\n'));
+  assert.doesNotMatch(step, /uses:|secrets\./, 'it runs no action and reads no secret');
+  assert.doesNotMatch(step, /\$\{\{ *github\.ref *\}\}[^\n]*\n\s+run/, 'the ref reaches the script through env');
+  assert.match(step, /RUN_REF: \$\{\{ github\.ref \}\}/);
+  assert.match(step, /DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+});
+
+test('the agents-sync guard passes on the default branch and fails on any other ref', () => {
+  const { script } = guardStep();
+  assert.equal(runGuard(script, { RUN_REF: 'refs/heads/main', DEFAULT_BRANCH: 'main' }).status, 0);
+  for (const ref of ['refs/heads/feature', 'refs/pull/7/merge', 'refs/tags/v1.0.0', 'refs/heads/main-old']) {
+    const result = runGuard(script, { RUN_REF: ref, DEFAULT_BRANCH: 'main' });
+    assert.equal(result.status, 1, ref);
+    assert.match(result.stdout, /::error title=agents-sync::agents-sync runs only on the default branch \(main\)\./);
+  }
+});
+
+test('the agents-sync guard prints no character that could start a workflow command', () => {
+  const { script } = guardStep();
+  const result = runGuard(script, { RUN_REF: 'refs/heads/x', DEFAULT_BRANCH: 'main\n::error::injected' });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout.split('\n').filter((l) => l.startsWith('::')).length, 1, 'one workflow command only');
+});
