@@ -41,7 +41,12 @@
 #     `v*.*.*` only.
 #   - A tag ruleset on `v*.*.*` limiting who can create them.
 #
-# What is NOT measured here: provenance on a publish from a tarball.
+# Provenance on a publish from a tarball (measured on nest-telemetry 1.0.4, run 43554514730): both the
+# npm publish attestation and the SLSA provenance v1 carry the sha512 of the tarball as their subject,
+# and the provenance names `release.yml` at `refs/tags/<tag>` and the commit it ran on.
+# Verification note: a publish of a tarball leaves no `gitHead` in the registry entry, so the commit is
+# recorded only in the provenance. A check that used to read `gitHead` must read the provenance's
+# `buildDefinition.resolvedDependencies[].digest.gitCommit` instead.
 name: Release
 
 on:
