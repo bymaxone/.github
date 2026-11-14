@@ -6,10 +6,11 @@
 // copies: which jobs must carry the step, that it is the FIRST step, that it is pinned to the commit
 // the template carries, that it audits, and that it is not made conditional.
 //
-// The same copies must carry the template's forward-only step ahead of the publish: the step whose
-// script refuses a release that does not move forward. Its script is compared with the template's, not
-// searched for by name or by a phrase, so a copy that keeps the name and changes what the script does
-// fails, and the template's own test of that script (forward-only.test.mjs) is a test of every copy.
+// Every job whose effective permissions hold the token must also carry the template's forward-only step,
+// the one whose script refuses a release that does not move forward: the same step as a parsed object
+// (name, env, run, no other key), with no `if` or `continue-on-error`, ahead of the first step that
+// downloads the build's artifact. A copy that keeps the name and changes what the step does differs, and
+// the template's own test of that script (forward-only.test.mjs) is then a test of every copy.
 //
 // The workflow is read by a real YAML parser (Ruby's Psych, which the GitHub-hosted Ubuntu images
 // ship), not by line rules: quoted keys, flow style, comments, anchors and aliases are then the
