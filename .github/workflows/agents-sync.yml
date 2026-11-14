@@ -96,6 +96,24 @@ jobs:
       HAS_APP_KEY: ${{ secrets.app-private-key != '' }}
       HAS_SYNC_TOKEN: ${{ secrets.sync-token != '' }}
     steps:
+      # First, ahead of every step that can read the App key. A caller's `workflow_dispatch` can be
+      # aimed at any ref, and this job mints an installation token with write access to the
+      # repository, so a run on another ref stops here instead of reaching the mint steps. This
+      # guards against a dispatch on the wrong ref; it does not stop someone who can push a
+      # workflow to a branch from calling something else with the secret, which is what scoping the
+      # secret to an environment is for.
+      - name: Refuse a run outside the default branch
+        env:
+          RUN_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
+          if [ "$RUN_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error title=agents-sync::agents-sync runs only on the default branch ($(clean "$DEFAULT_BRANCH")). Dispatch it there."
+            exit 1
+          fi
+
       # The key needs an identifier, and `app-id` needs the key. Without this
       # step either mismatch would be silent -- the run would fall back and look
       # like a repository that never configured an App at all. The client ID
