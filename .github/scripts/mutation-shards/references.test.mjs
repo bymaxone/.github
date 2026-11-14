@@ -82,8 +82,9 @@ test('the npm release template checks out the full history and still leaves no c
   assert.match(checkout, /persist-credentials: false\n/);
 });
 
-// Egress auditing is kept in the template and nowhere else (DEC-164): a repository that adopts the
-// template carries no copy of it, so the step cannot drift or be dropped one repository at a time.
+// Egress auditing lives in the template (DEC-164), not in each repository's own release.yml: an
+// adopter copies the step with the file instead of writing one, so it is not dropped or varied per
+// repository.
 test('the npm release template starts both jobs with an egress-audit harden-runner pinned to a commit', () => {
   const { build, publish } = jobs();
   for (const [name, job] of [['build', build], ['publish', publish]]) {
