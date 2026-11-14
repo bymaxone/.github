@@ -162,3 +162,21 @@ test('only the template\'s own steps may stand ahead of the step: the premise of
   assert.deepEqual(codes(copy()), [], 'the template order');
   assert.deepEqual(codes(copy((w) => { w.jobs.publish.steps = [stepsOf(w)[at(w)], ...stepsOf(w).filter((s) => s.name !== FORWARD_STEP)]; })).filter((c) => c.includes('preceded')), [], 'nothing ahead of it at all');
 });
+
+test('a harden-runner step is exempt from the membership check only as the first step, the one the pin rule judges', () => {
+  const sorted = (w) => codes(w).sort();
+  const hardenAt = (sha) => ({ uses: `step-security/harden-runner@${sha}`, with: { 'egress-policy': 'audit' } });
+  const forwardAt = (w) => indexOfForward(stepsOf(w));
+  // Codex's trigger: a mutable-tag harden-runner as a second step runs with the token before the guard.
+  assert.deepEqual(sorted(copy((w) => stepsOf(w).splice(1, 0, { uses: 'step-security/harden-runner@v2' }))), ['publish:forward-step-preceded'], 'a second harden-runner at a tag');
+  assert.deepEqual(sorted(copy((w) => stepsOf(w).splice(1, 0, hardenAt('2'.repeat(40))))), ['publish:forward-step-preceded'], 'a second one at another commit');
+  assert.deepEqual(sorted(copy((w) => stepsOf(w).splice(1, 0, structuredClone(stepsOf(w)[0])))), [], 'a second one identical to the template\'s is a member');
+  // The first step is the pin rule's: a stale pin there is one finding, not two.
+  assert.deepEqual(sorted(copy((w) => { stepsOf(w)[0].uses = `step-security/harden-runner@${'0'.repeat(40)}`; })), ['publish:stale-sha']);
+  assert.deepEqual(sorted(copy((w) => { stepsOf(w)[0].uses = `step-security/harden-runner@${'0'.repeat(40)}`; stepsOf(w).splice(1, 0, hardenAt('2'.repeat(40))); })), ['publish:forward-step-preceded', 'publish:stale-sha'], 'a stale first step and a stranger behind it');
+  // A first step that is not a harden-runner is judged by both rules.
+  const checkoutFirst = copy((w) => stepsOf(w).unshift({ uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' }));
+  assert.deepEqual(sorted(checkoutFirst), ['publish:forward-step-preceded', 'publish:not-first'], 'checkout, harden-runner, forward, download');
+  assert.ok(forwardAt(checkoutFirst) > 1);
+  assert.deepEqual(sorted(copy()), [], 'the template order');
+});

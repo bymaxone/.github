@@ -98,8 +98,9 @@ const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : isObject(v) ? Obje
  *   `forward-step-differs`     it is not the template's step (run, env or any other key);
  *   `no-download-step`         the job never downloads the build's artifact, so it is not the template's shape;
  *   `forward-step-late`        it comes after the first step that does;
- *   `forward-step-preceded`    a step ahead of it is not one of the template's steps ahead of it (any order; the
- *                              harden-runner step is the other rule's), so something else ran with the token first;
+ *   `forward-step-preceded`    a step ahead of it is not one of the template's steps ahead of it (any order), so
+ *                              something else ran with the token first. A first step that is a harden-runner is
+ *                              exempt, because the pin rule judges that one;
  *   `no-package-name`          `PACKAGE_NAME` is absent, empty or the template's placeholder in the job's env.
  * Placement is anchored on the download rather than on the publish command: the publish job has no checkout
  * and no install, so nothing it publishes exists before the download, whatever the command is spelled like.
@@ -119,7 +120,7 @@ function checkForwardStep(job, { step: forward, before }) {
   // publish ahead of it, with the download moved behind, would pass it. Membership, not order. A step that is
   // already late is reported as late only, since everything up to the download then stands ahead of it.
   const late = downloadAt !== -1 && at > downloadAt;
-  if (!late && steps.slice(0, at).some((s) => !isHardenRunner(s) && !before.some((b) => sameValue(s, b)))) codes.push('forward-step-preceded');
+  if (!late && steps.slice(0, at).some((s, i) => !(i === 0 && isHardenRunner(s)) && !before.some((b) => sameValue(s, b)))) codes.push('forward-step-preceded');
   const name = isObject(job.env) ? job.env.PACKAGE_NAME : undefined;
   if (typeof name !== 'string' || name === '' || name.includes('CHANGE-ME')) codes.push('no-package-name');
   return codes;
