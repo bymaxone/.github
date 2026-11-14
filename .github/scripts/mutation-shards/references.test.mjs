@@ -25,6 +25,21 @@ test('the Dependabot template moves that pin in its own group and never takes a 
   assert.match(template, /dependency-name: 'bymaxone\/\.github\*'\n\s+update-types: \['version-update:semver-major'\]/);
 });
 
+// The block below is spliced into every caller's AGENTS.md and tells a reviewer not to propose a SHA
+// pin for a first-party reusable. It must name the same exception the README's examples act on, or the
+// reviewer flags the pin the README tells a caller to write.
+test('the shared review block names exactly the reusables the README pins to a commit', () => {
+  const readme = read('README.md');
+  const used = [...readme.matchAll(/uses: bymaxone\/\.github\/\.github\/workflows\/([\w.-]+\.yml)@(\S+)/g)];
+  assert.ok(used.length > 0, 'the README carries caller examples');
+  const pinned = [...new Set(used.filter((m) => /^[0-9a-f]{40}$/.test(m[2])).map((m) => m[1]))].sort();
+  const block = read('agents/code-review-rules.md');
+  const exception = /The one exception among the `bymaxone\/\.github` reusables is `([\w.-]+\.yml)`/.exec(block);
+  assert.ok(exception, 'the block names the exception');
+  assert.deepEqual([exception[1]], pinned);
+  assert.match(block, /do not propose\s+moving it back to `@v1`/);
+});
+
 test('AGENTS.md states the exception where it states the rule', () => {
   const agents = read('AGENTS.md');
   const rule = agents.indexOf('**Use the alias, not a commit SHA:**');
