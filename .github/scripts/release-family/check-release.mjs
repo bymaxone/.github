@@ -6,6 +6,11 @@
 // copies: which jobs must carry the step, that it is the FIRST step, that it is pinned to the commit
 // the template carries, that it audits, and that it is not made conditional.
 //
+// The same copies must carry the template's forward-only step ahead of the publish: the step whose
+// script refuses a release that does not move forward. Its script is compared with the template's, not
+// searched for by name or by a phrase, so a copy that keeps the name and changes what the script does
+// fails, and the template's own test of that script (forward-only.test.mjs) is a test of every copy.
+//
 // The workflow is read by a real YAML parser (Ruby's Psych, which the GitHub-hosted Ubuntu images
 // ship), not by line rules: quoted keys, flow style, comments, anchors and aliases are then the
 // parser's problem, and the rule is plain checks on the resulting object. A comment is not part of
@@ -64,6 +69,50 @@ export function releaseJobs(workflow) {
     .map(([id, job]) => ({ id, job }));
 }
 
+export const FORWARD_STEP = 'Require a release that moves forward';
+
+/** A script without comment lines, blank lines and trailing spaces: what a copy may shorten is not compared. */
+const normalizeScript = (run) =>
+  String(run)
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '' && !line.trim().startsWith('#'))
+    .join('\n');
+
+/** The template's forward-only step as `{ script, env }`, or null when its publish job has none. */
+export function forwardStep(workflow) {
+  const steps = isObject(workflow?.jobs?.publish) && Array.isArray(workflow.jobs.publish.steps) ? workflow.jobs.publish.steps : [];
+  const step = steps.find((s) => isObject(s) && s.name === FORWARD_STEP && typeof s.run === 'string');
+  return step ? { script: normalizeScript(step.run), env: isObject(step.env) ? step.env : {} } : null;
+}
+
+const runsPublish = (step) => isObject(step) && typeof step.run === 'string' && /\bnpm publish\b/.test(step.run);
+const sameEnv = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+/**
+ * What is wrong with the forward-only step of one job that holds the token, as codes: `no-forward-step`
+ * (no step carries the template's script), `forward-step-late` (it comes after the step that publishes),
+ * `forward-step-conditional` (an `if` or `continue-on-error`), `forward-step-env` (its env is not the
+ * template's, apart from the package name), `no-package-name` (no `PACKAGE_NAME`, or the template's
+ * placeholder, in the job's or the step's env).
+ */
+function checkForwardStep(job, forward) {
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const at = steps.findIndex((s) => isObject(s) && typeof s.run === 'string' && normalizeScript(s.run) === forward.script);
+  if (at === -1) return ['no-forward-step'];
+  const step = steps[at];
+  const codes = [];
+  const publishAt = steps.findIndex(runsPublish);
+  if (publishAt !== -1 && at > publishAt) codes.push('forward-step-late');
+  if ('if' in step || 'continue-on-error' in step) codes.push('forward-step-conditional');
+  const { PACKAGE_NAME: ownName, ...ownEnv } = isObject(step.env) ? step.env : {};
+  if (!sameEnv(ownEnv, forward.env)) codes.push('forward-step-env');
+  const jobEnv = isObject(job.env) ? job.env : {};
+  const name = ownName ?? jobEnv.PACKAGE_NAME;
+  if (typeof name !== 'string' || name === '' || name.includes('CHANGE-ME')) codes.push('no-package-name');
+  return codes;
+}
+
 const stepUses = (step) => (isObject(step) && typeof step.uses === 'string' ? step.uses : '');
 const isHardenRunner = (step) => stepUses(step).startsWith(`${ACTION}@`);
 
@@ -88,7 +137,7 @@ export function pinnedSha(workflow) {
  * `wrong-policy` (not `egress-policy: audit`), `conditional` (the step carries an `if` or
  * `continue-on-error`, so it may not run or may fail unnoticed).
  */
-export function checkRelease(workflow, expectedSha) {
+export function checkRelease(workflow, expectedSha, forward = null) {
   if (!isObject(workflow)) return [{ job: '-', code: 'unparseable' }];
   const problems = [];
   const jobs = isObject(workflow.jobs) ? workflow.jobs : {};
@@ -98,6 +147,7 @@ export function checkRelease(workflow, expectedSha) {
       problems.push({ job: id, code: 'no-steps' });
       continue;
     }
+    if (forward && holdsIdToken(workflow, job)) for (const code of checkForwardStep(job, forward)) problems.push({ job: id, code });
     const first = steps[0];
     if (!isHardenRunner(first)) {
       problems.push({ job: id, code: steps.slice(1).some(isHardenRunner) ? 'not-first' : 'missing' });
