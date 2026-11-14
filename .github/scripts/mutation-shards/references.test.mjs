@@ -82,6 +82,22 @@ test('the npm release template checks out the full history and still leaves no c
   assert.match(checkout, /persist-credentials: false\n/);
 });
 
+// Egress auditing lives in the template (DEC-164), not in each repository's own release.yml: an
+// adopter copies the step with the file instead of writing one, so it is not dropped or varied per
+// repository.
+test('the npm release template starts both jobs with an egress-audit harden-runner pinned to a commit', () => {
+  const { build, publish } = jobs();
+  for (const [name, job] of [['build', build], ['publish', publish]]) {
+    const steps = job.slice(job.indexOf('    steps:\n') + '    steps:\n'.length);
+    const first = steps.slice(steps.search(/^ {6}- name:/m));
+    assert.match(
+      first,
+      /^ {6}- name: Harden runner\n(?: {8}#[^\n]*\n)* {8}uses: step-security\/harden-runner@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}egress-policy: audit\n/,
+      `${name}: the first step is the audit-mode harden-runner, pinned to a commit with its version`,
+    );
+  }
+});
+
 test('the npm release template publishes exactly the file the build packed, and nothing else runs there', () => {
   const { publish } = jobs();
   assert.match(publish, /id-token: write/);
