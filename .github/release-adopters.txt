@@ -1,0 +1,13 @@
+# Repositories that carry the org npm release template as .github/workflows/release.yml. The family
+# check (release-family-check.yml) reads each one at the commit its default branch points to. One
+# owner/name per line; add a repository in the PR that adopts the template, so the check covers it
+# from the first release. A repository that publishes but is missing from this list is not seen.
+bymaxone/nest-auth
+bymaxone/nest-cache
+bymaxone/nest-config
+bymaxone/nest-core
+bymaxone/nest-logger
+bymaxone/nest-queue
+bymaxone/nest-realtime
+bymaxone/nest-telemetry
+bymaxone/nest-ai-tokens

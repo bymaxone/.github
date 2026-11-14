@@ -299,7 +299,9 @@ jobs:
 
   mutation-shard-scripts:
     name: Mutation shard scripts pass their tests
-    runs-on: ubuntu-latest
+    # The release-family tests run Ruby's YAML parser, so the image, and with it the Ruby, is the one named
+    # in release-family-check.yml.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -316,6 +318,7 @@ jobs:
           package-manager-cache: false
 
       # Built-ins only, so no install. It also holds the check that the two copies of the
-      # "decide whether anything moved the score" step in mutation-full.yml are identical.
+      # "decide whether anything moved the score" step in mutation-full.yml are identical, and the
+      # fixtures of the release-template family check.
       - name: Run the tests
-        run: node --test '.github/scripts/mutation-shards/*.test.mjs'
+        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs'
