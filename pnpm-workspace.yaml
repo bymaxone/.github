@@ -20,7 +20,11 @@ overrides:
   # minimatch selector stops at 10 on purpose: forcing 11 onto 7 to 9 is what breaks glob 10.
   'minimatch@>=10.0.0 <11.0.1': '>=11.0.1'
   'test-exclude@^7': '^8'
-  'glob@10': '^13.0.6'
+  # GHSA-3g3m-2fjr-6pw4 (medium): `glob` AbortSignal cancellation bypass, fixed in 14.0.2. Dev tooling
+  # only (jest and its coverage tooling). The parents' own ranges stop at glob 13, so only a floor
+  # above them moves the lockfile. Drop both entries once no parent ranges below 14.0.2.
+  'glob@10': '^14.0.2'
+  'glob@13': '^14.0.2'
   # Floor the PACKAGE, never a window of it: a selector like `qs@>=6.11.1 <=6.15.1` stops matching
   # once the resolved version leaves the window, and the entry keeps reading as coverage.
   # GHSA-4mjr-xmp4-gh2g, GHSA-x5fp-wj9c-mxmx, GHSA-6pq8-jhm2-2vcw, GHSA-q8mj-m7cp-5q26: fixed in 6.16.1.
