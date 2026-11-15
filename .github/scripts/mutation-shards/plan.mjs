@@ -7,8 +7,9 @@
 //
 // The split is deterministic: the same files and weights give the same slices, so a rerun of one
 // failed shard sees the slice it had. Weight is the time the previous merged report measured for
-// the mutants of the file (the number of mutants that cost a test run when it has no durations), and
-// bytes of source where there is no report. A file the report has no weight for takes the median.
+// the mutants of the file; when it has no durations, the test executions those mutants cost
+// (`testsCompleted`), then the number of mutants that cost a test run; and bytes of source where
+// there is no report. A file the report has no weight for takes the median.
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve, sep } from 'node:path';
@@ -62,23 +63,49 @@ const RAN_TESTS = new Set(['Killed', 'Survived', 'Timeout', 'RuntimeError']);
  * (incremental) mutant keeps the duration of the run that measured it, or has none: the durations
  * that are present are used, and a file with none is left out, so the planner gives it the median.
  *
- * `count`: when no mutant of the whole report has a duration (an older Stryker, or a reporter that
- * leaves it out), the number of mutants that cost a test run, as before.
+ * `tests`: when no mutant of the whole report has a duration (Stryker 9 writes none) but mutants carry
+ * `testsCompleted`, the sum of `testsCompleted` over the mutants that ran tests: how many test
+ * executions the file's mutants cost, which is closer to what the runner pays than the number of
+ * mutants, because one mutant of a file everything covers runs far more tests than one of a file
+ * only its own spec covers. Still a proxy: a test execution does not always cost the same. The edges,
+ * as for durations: the values present are used, so a report where only some mutants carry
+ * `testsCompleted` (a reused mutant may not) weighs a file by those; a file whose sum is zero or that
+ * has none (every mutant NoCoverage or CompileError, or none carrying the number) is left out, and so
+ * is a file the report lacks, so the planner gives both the median of the weights it has instead of
+ * packing a cluster of them into one shard as if they were free.
+ *
+ * `count`: when neither is in the report, the number of mutants that cost a test run, as before.
  */
 export function weightsFromReport(report) {
   const files = Object.entries(report.files ?? {});
   const timed = new Map();
+  const executed = new Map();
   for (const [file, data] of files) {
-    const durations = data.mutants.filter((m) => RAN_TESTS.has(m.status) && Number.isFinite(m.duration));
+    const ran = data.mutants.filter((m) => RAN_TESTS.has(m.status));
+    const durations = ran.filter((m) => Number.isFinite(m.duration));
     if (durations.length > 0) timed.set(file, durations.reduce((sum, m) => sum + m.duration, 0));
+    const tests = ran.filter((m) => Number.isFinite(m.testsCompleted)).reduce((sum, m) => sum + m.testsCompleted, 0);
+    if (tests > 0) executed.set(file, tests);
   }
   if (timed.size > 0) return { source: 'duration', weights: timed };
+  if (executed.size > 0) return { source: 'tests', weights: executed };
   const counted = new Map();
   for (const [file, data] of files) counted.set(file, data.mutants.filter((m) => TESTED.has(m.status)).length);
   return { source: 'count', weights: counted };
 }
 
-const UNIT = { duration: 'ms', count: 'mutants', size: 'bytes' };
+/**
+ * The weight the planner gives a file: the report's, the median of the report's positive weights for a
+ * file the report has none for (so unknown files spread across shards instead of weighing nothing), or
+ * the file's size when there is no report at all. `sizeOf` is injected so this needs no filesystem.
+ */
+export function weightFunction(weights, sizeOf) {
+  const known = weights ? [...weights.values()].filter((w) => w > 0).sort((a, b) => a - b) : [];
+  const median = known.length ? known[Math.floor(known.length / 2)] : 1;
+  return (file) => (weights ? (weights.has(file) ? weights.get(file) : median) : sizeOf(file));
+}
+
+const UNIT = { duration: 'ms', tests: 'test executions', count: 'mutants', size: 'bytes' };
 
 /** The lines the plan prints: each shard's predicted weight, so a run's walls can be compared with them. */
 export function planSummary(source, fileCount, slices) {
@@ -146,10 +173,7 @@ async function main() {
   let weights = null;
   let source = 'size';
   if (args.weights) ({ source, weights } = weightsFromReport(readJson(args.weights)));
-  const known = weights ? [...weights.values()].filter((w) => w > 0).sort((a, b) => a - b) : [];
-  const median = known.length ? known[Math.floor(known.length / 2)] : 1;
-  const size = (f) => statSync(f).size;
-  const weightOf = (f) => (weights ? (weights.has(f) ? weights.get(f) : median) : size(f));
+  const weightOf = weightFunction(weights, (f) => statSync(f).size);
 
   const slices = partition(files, weightOf, shards);
   assertPlan(files, slices);
