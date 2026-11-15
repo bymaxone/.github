@@ -12,3 +12,4 @@ bymaxone/nest-realtime
 bymaxone/nest-telemetry
 bymaxone/nest-ai-tokens
 bymaxone/nest-storage
+bymaxone/nest-notification
