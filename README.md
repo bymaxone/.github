@@ -308,9 +308,9 @@ with a message instead. Use scoped Stryker on the changed files for a pre-merge 
 
 The split is balanced by the time the last run that left a report measured (the newest recent completed run on the default branch that left one, whatever its conclusion): per file, the sum of the durations of
 its mutants that ran tests. A mutant's `duration` is in the report of Stryker 10; a report without
-durations (Stryker 9) is balanced by the test executions its mutants cost, the sum of each mutant's
-`testsCompleted`, and a report with neither by the number of mutants that cost a test run. A file the
-report gives no weight (no mutant of it ran tests, or it is absent) takes the median of the others.
+durations (Stryker 9) is balanced by the test executions its mutants cost (`testsCompleted`), and a
+report with neither by the number of mutants that cost a test run. With durations or test executions,
+a file the report gives no weight takes the median of the others.
 With no previous report it falls back to file size. The plan prints which weight it used and the
 predicted weight of each shard, so a run's shard times can be compared with it. Each
 shard pays its own dry run, so total CPU rises by about that per extra shard. The scripts the
