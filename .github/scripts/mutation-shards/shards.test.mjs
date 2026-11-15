@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { matchesGlob } from 'node:path';
 import test from 'node:test';
-import { assertPlan, expandMutate, partition, planSummary, weightsFromReport } from './plan.mjs';
+import { assertPlan, expandMutate, partition, planSummary, weightFunction, weightsFromReport } from './plan.mjs';
 import { chooseRun } from './weights-run.mjs';
 import { buildShardConfig } from './shard-config.mjs';
 import { mergeReports } from './merge.mjs';
@@ -100,6 +100,112 @@ test('weightsFromReport uses the durations present and leaves out a file that ha
   assert.equal(weights.has('c.ts'), false, 'a duration on a mutant that ran no test is not a weight');
 });
 
+// Stryker 9 writes no `duration`, but it writes `testsCompleted`: how many test executions each mutant
+// cost. That is the next best weight, ahead of the plain count of mutants.
+const executed = (id, status, testsCompleted) => mutant(id, status, 1, testsCompleted === undefined ? {} : { testsCompleted });
+
+test('weightsFromReport weighs by test executions when there are no durations and says so', () => {
+  const report = {
+    files: {
+      'busy.ts': { mutants: [executed('0', 'Killed', 400), executed('1', 'Survived', 100), executed('2', 'NoCoverage')] },
+      'quiet.ts': { mutants: [executed('0', 'Killed', 3), executed('1', 'Killed', 2), executed('2', 'Killed', 1)] },
+    },
+  };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'tests');
+  assert.equal(weights.get('busy.ts'), 500);
+  assert.equal(weights.get('quiet.ts'), 6, 'the file with more mutants is not the heavier one');
+});
+
+test('weightsFromReport keeps durations when they exist, whatever else the report carries', () => {
+  const report = {
+    files: { 'a.ts': { mutants: [{ ...executed('0', 'Killed', 9000), duration: 40 }] }, 'b.ts': { mutants: [executed('0', 'Killed', 1)] } },
+  };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'duration');
+  assert.deepEqual([...weights], [['a.ts', 40]], 'only the file with a duration is weighed, the other takes the median');
+});
+
+test('weightsFromReport counts when neither durations nor test executions are in the report', () => {
+  const report = { files: { 'a.ts': { mutants: [executed('0', 'Killed'), executed('1', 'Survived'), executed('2', 'NoCoverage')] } } };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'count');
+  assert.equal(weights.get('a.ts'), 3);
+});
+
+test('weightsFromReport, tests mode, edge: a file whose sum is zero is left out, not weighed as free', () => {
+  const report = {
+    files: {
+      'busy.ts': { mutants: [executed('0', 'Killed', 50)] },
+      'uncovered.ts': { mutants: [executed('0', 'NoCoverage'), executed('1', 'CompileError')] },
+      'zeros.ts': { mutants: [executed('0', 'Killed', 0)] },
+    },
+  };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'tests');
+  assert.deepEqual([...weights], [['busy.ts', 50]]);
+});
+
+test('weightsFromReport, tests mode, edge: only some mutants carry the number, so the values present are used', () => {
+  const report = {
+    files: {
+      'part.ts': { mutants: [executed('0', 'Killed', 30), executed('1', 'Killed'), executed('2', 'Survived', 20)] },
+      'none.ts': { mutants: [executed('0', 'Killed'), executed('1', 'Killed')] },
+    },
+  };
+  const { source, weights } = weightsFromReport(report);
+  assert.equal(source, 'tests');
+  assert.equal(weights.get('part.ts'), 50, 'the mutant without the number adds nothing');
+  assert.equal(weights.has('none.ts'), false, 'a file with no number at all is left out');
+});
+
+// A file the report does not weigh (left out, or absent from it) takes the median of the weights the
+// report has, so a cluster of them spreads across the shards instead of piling into one at weight zero.
+test('weightFunction gives an unweighed file the median, and the cluster of them is spread across shards', () => {
+  const weights = new Map([['a.ts', 10], ['b.ts', 20], ['c.ts', 30]]);
+  const weightOf = weightFunction(weights, () => 999);
+  assert.equal(weightOf('a.ts'), 10);
+  assert.equal(weightOf('zero.ts'), 20, 'the median of 10, 20, 30');
+  assert.equal(weightFunction(null, () => 7)('x.ts'), 7, 'with no report the size is the weight');
+  const files = ['a.ts', 'b.ts', 'c.ts', 'u1.ts', 'u2.ts', 'u3.ts', 'u4.ts'];
+  const slices = partition(files, weightOf, 2);
+  const unknownPerShard = slices.map((s) => s.files.filter((f) => f.startsWith('u')).length);
+  assert.deepEqual(unknownPerShard.sort(), [2, 2], 'four unknown files, two to each shard');
+});
+
+// The real report: nest-logger's 1.4.19 cold run (Stryker 9.6.1, no durations). Per file the fixture keeps
+// what the planner reads: the mutants that cost a test run or had no coverage, those that ran tests, and
+// the sum of their `testsCompleted`. One file carries 26.8% of all test executions, which is the floor.
+test('on logger\'s real report four shards balanced by tests share the executions, where the mutant count does not', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/logger-1.4.19-weights.json', import.meta.url), 'utf8')).files;
+  const reportOf = (withTests) => ({
+    files: Object.fromEntries(
+      Object.entries(fixture).map(([file, [tested, ran, sum]]) => [
+        file,
+        {
+          mutants: [
+            ...Array.from({ length: ran }, (_, i) => executed(String(i), 'Killed', withTests ? (i === 0 ? sum : 0) : undefined)),
+            ...Array.from({ length: tested - ran }, (_, i) => executed(`n${i}`, 'NoCoverage')),
+          ],
+        },
+      ]),
+    ),
+  });
+  const total = Object.values(fixture).reduce((n, [, , sum]) => n + sum, 0);
+  const heaviestShare = (withTests) => {
+    const { source, weights } = weightsFromReport(reportOf(withTests));
+    const slices = partition(Object.keys(fixture), weightFunction(weights, () => 1), 4);
+    const shares = slices.map((s) => s.files.reduce((n, f) => n + fixture[f][2], 0) / total);
+    return { source, share: Math.max(...shares) };
+  };
+  const byCount = heaviestShare(false);
+  const byTests = heaviestShare(true);
+  assert.equal(byCount.source, 'count');
+  assert.equal(byTests.source, 'tests');
+  assert.ok(byCount.share > 0.4 && byCount.share < 0.45, `by count the heaviest shard holds ${byCount.share}`);
+  assert.ok(byTests.share > 0.267 && byTests.share < 0.27, `by tests the heaviest shard holds ${byTests.share}, the floor is 0.268`);
+});
+
 test('planSummary names the weight source and prints the predicted weight of every shard', () => {
   const slices = [{ index: 1, weight: 6593000, files: ['a'] }, { index: 2, weight: 5536400, files: ['b'] }];
   const lines = planSummary('duration', 2, slices);
@@ -111,6 +217,7 @@ test('planSummary names the weight source and prints the predicted weight of eve
   ]);
   assert.match(planSummary('size', 2, slices).join('\n'), /weight source: size \(bytes\)/);
   assert.match(planSummary('count', 2, slices).join('\n'), /weight source: count \(mutants\)/);
+  assert.match(planSummary('tests', 2, slices).join('\n'), /weight source: tests \(test executions\)/);
 });
 
 test('partition gives every file to exactly one shard, balanced, and the same answer twice', () => {

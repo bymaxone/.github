@@ -1,0 +1,260 @@
+{
+ "source": "nest-logger 1.4.19 cold run (Stryker 9.6.1 mutation.json, schema 1.0, no durations); per file: [mutants that cost a test run or had no coverage, mutants that ran tests, sum of testsCompleted of those]",
+ "files": {
+  "src/server/config/default-options.ts": [
+   29,
+   29,
+   18818
+  ],
+  "src/server/config/validate-options.ts": [
+   380,
+   380,
+   10653
+  ],
+  "src/server/constants/default-redact-paths.constants.ts": [
+   1,
+   1,
+   3
+  ],
+  "src/server/constants/prototype-polluting-keys.constants.ts": [
+   0,
+   0,
+   0
+  ],
+  "src/server/decorators/inject-logger.decorator.ts": [
+   2,
+   2,
+   4
+  ],
+  "src/server/decorators/log-context.decorator.ts": [
+   0,
+   0,
+   0
+  ],
+  "src/server/decorators/log-performance.decorator.ts": [
+   15,
+   15,
+   89
+  ],
+  "src/server/filters/http-exception.filter.ts": [
+   16,
+   16,
+   252
+  ],
+  "src/server/logger.module.builder.ts": [
+   4,
+   4,
+   120
+  ],
+  "src/server/logger.module.ts": [
+   38,
+   38,
+   544
+  ],
+  "src/server/middlewares/apply-request-id-middleware.ts": [
+   1,
+   1,
+   3
+  ],
+  "src/server/middlewares/request-id.middleware.ts": [
+   34,
+   34,
+   989
+  ],
+  "src/server/mixins/trace-context.mixin.ts": [
+   17,
+   17,
+   1419
+  ],
+  "src/server/pino-factory.ts": [
+   104,
+   104,
+   31014
+  ],
+  "src/server/services/destination-registry.service.ts": [
+   111,
+   111,
+   2978
+  ],
+  "src/server/services/pino-logger.service.ts": [
+   60,
+   60,
+   12143
+  ],
+  "src/server/sinks/pino-unexpected-error.sink.ts": [
+   42,
+   42,
+   708
+  ],
+  "src/server/utils/bounded-text.util.ts": [
+   21,
+   21,
+   7686
+  ],
+  "src/server/utils/destination-to-stream.ts": [
+   62,
+   62,
+   19906
+  ],
+  "src/server/utils/escape-log-text.util.ts": [
+   3,
+   3,
+   37
+  ],
+  "src/server/utils/exposed-client-error.util.ts": [
+   10,
+   10,
+   552
+  ],
+  "src/server/utils/http-log-state.util.ts": [
+   17,
+   17,
+   919
+  ],
+  "src/server/utils/normalize-url.util.ts": [
+   78,
+   78,
+   9861
+  ],
+  "src/server/utils/otel-detector.ts": [
+   67,
+   67,
+   11777
+  ],
+  "src/server/utils/own-field-policy.util.ts": [
+   21,
+   21,
+   7979
+  ],
+  "src/server/utils/redact-by-name.util.ts": [
+   149,
+   149,
+   90809
+  ],
+  "src/server/utils/redact-error-parts.util.ts": [
+   79,
+   79,
+   23394
+  ],
+  "src/server/utils/resolve-resource.util.ts": [
+   79,
+   79,
+   20979
+  ],
+  "src/server/utils/sanitize-error.util.ts": [
+   110,
+   110,
+   32935
+  ],
+  "src/server/utils/truncate-large-entries.ts": [
+   7,
+   7,
+   1558
+  ],
+  "src/shared/constants/log-keys-convention.constants.ts": [
+   0,
+   0,
+   0
+  ],
+  "src/server/interceptors/http-logging.interceptor.ts": [
+   53,
+   53,
+   454
+  ],
+  "src/server/middlewares/apply-access-log.ts": [
+   5,
+   5,
+   20
+  ],
+  "src/server/middlewares/apply-request-context.ts": [
+   5,
+   5,
+   14
+  ],
+  "src/server/services/destination-health.service.ts": [
+   50,
+   50,
+   1624
+  ],
+  "src/server/destinations/pretty-dev.destination.ts": [
+   71,
+   71,
+   1159
+  ],
+  "src/server/interceptors/passthrough.interceptor.ts": [
+   0,
+   0,
+   0
+  ],
+  "src/server/utils/serialize-request.util.ts": [
+   27,
+   27,
+   7773
+  ],
+  "src/server/destinations/default-stdout.destination.ts": [
+   4,
+   4,
+   47
+  ],
+  "src/server/middlewares/record-parser-error.middleware.ts": [
+   2,
+   2,
+   16
+  ],
+  "src/server/utils/compile-redact-paths.util.ts": [
+   2,
+   2,
+   130
+  ],
+  "src/server/utils/with-timeout.util.ts": [
+   7,
+   7,
+   33
+  ],
+  "src/server/decorators/inject-logger.provider.ts": [
+   5,
+   5,
+   34
+  ],
+  "src/server/middlewares/http-access-log.middleware.ts": [
+   43,
+   43,
+   1009
+  ],
+  "src/server/services/log-context.service.ts": [
+   11,
+   11,
+   410
+  ],
+  "src/server/utils/matches-exclude-path.util.ts": [
+   6,
+   6,
+   418
+  ],
+  "src/server/utils/censor-raw-headers.util.ts": [
+   9,
+   9,
+   144
+  ],
+  "src/server/utils/is-error.util.ts": [
+   4,
+   4,
+   2336
+  ],
+  "src/server/utils/redact-error-clone.util.ts": [
+   20,
+   20,
+   12380
+  ],
+  "src/server/utils/report-destination-failure.util.ts": [
+   14,
+   14,
+   1787
+  ],
+  "src/server/utils/safe-stdio.util.ts": [
+   10,
+   10,
+   1056
+  ]
+ }
+}
