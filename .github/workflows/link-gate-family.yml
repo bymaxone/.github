@@ -14,11 +14,13 @@
 # each library's check in a child process that gets an empty environment (no token), stubbed fetch and DNS,
 # a timeout, a network namespace of its own and the `nobody` user (see .github/scripts/link-gate/probe.mjs).
 #
-# Dispatch only, until every library carries the patch: scheduled now it would be red from the first run.
-# Not a gate on pull requests.
+# Weekly, and on dispatch. It was dispatch-only until every library carried the patch, since scheduled
+# earlier it would have been red from the first run. Not a gate on pull requests.
 name: link-gate-family
 
 on:
+  schedule:
+    - cron: '53 6 * * 1'
   workflow_dispatch:
 
 permissions:
