@@ -260,22 +260,79 @@ jobs:
           }
 
           # The step runs as `bash -e` and a non-zero exit of the scan is a result, not a failure of the step:
-          # the status is read here and the verdict is decided below.
+          # the status is read here and the verdict is decided below. The report is written as JSON to a
+          # directory the image can write, because it holds what the text output leaves out: the rules that
+          # failed to load and the files that were skipped or only partly parsed.
+          reports="$RUNNER_TEMP/semgrep-out"
+          mkdir -p "$reports"
+          chmod 777 "$reports"
           status=0
-          docker run --rm --volume "${GITHUB_WORKSPACE}:/src:ro" --volume "${SEMGREP_RULES}:/rules:ro" --workdir /src "${SEMGREP_IMAGE}" \
-            semgrep scan --metrics=off --error --disable-version-check --config /rules ${config_args[@]+"${config_args[@]}"} \
+          docker run --rm --volume "${GITHUB_WORKSPACE}:/src:ro" --volume "${SEMGREP_RULES}:/rules:ro" --volume "${reports}:/out" --workdir /src "${SEMGREP_IMAGE}" \
+            semgrep scan --metrics=off --error --disable-version-check --verbose --json-output=/out/semgrep.json --config /rules ${config_args[@]+"${config_args[@]}"} \
             >"$out" 2>"$err" || status=$?
+
+          # A finished scan (exit 0 or 1) is read through its report. A rule that failed to load or parse
+          # (ours or a pack's) is a RULE ERROR: the scan did not apply every rule. A file that was skipped or
+          # only partly parsed is PARTIAL: the scan did not read all of the tree. A finished scan with no
+          # readable report did not complete.
+          reason="NOT SCANNED: semgrep exited with status $status before finishing, so nothing here says the code is clean. The usual cause is a registry pack that could not be fetched."
+          rule_errors=0
+          partial=0
+          rule_list="$RUNNER_TEMP/semgrep.rules"
+          partial_list="$RUNNER_TEMP/semgrep.partial"
+          : > "$rule_list"
+          : > "$partial_list"
+          if [ "$status" -le 1 ]; then
+            if jq -e . "$reports/semgrep.json" >/dev/null 2>&1; then
+              # Where an error points decides what it is. An error with no path, or a path under /rules, is a problem of
+              # the rules whatever Semgrep names it, so it fails closed; an error that names a path of the scanned tree
+              # (a parse problem, a timeout) and a skipped file are partial.
+              jq -r 'def etype: (.type | if type == "array" then .[0] else . end | tostring); def rule_error: ((.path == null) or (.path | startswith("/rules")));
+                .errors[]? | select(rule_error) | "\(.path // "a rule"): \(etype)"' "$reports/semgrep.json" \
+                | tr -d '\000-\011\013-\037' | cut -c1-300 > "$rule_list"
+              jq -r 'def etype: (.type | if type == "array" then .[0] else . end | tostring); def rule_error: ((.path == null) or (.path | startswith("/rules")));
+                (.errors[]? | select(rule_error | not) | "\(.path // "unknown"): \(etype)"),
+                (.paths.skipped[]? | select((.reason // "") | test("size|parser|internal|error|timeout"; "i")) | "\(.path): \(.reason)")' "$reports/semgrep.json" \
+                | tr -d '\000-\011\013-\037' | cut -c1-300 > "$partial_list"
+              rule_errors=$(awk 'END { print NR }' "$rule_list")
+              partial=$(awk 'END { print NR }' "$partial_list")
+            else
+              status=2
+              reason="NOT SCANNED: semgrep finished but left no readable report, so nothing here says the code is clean."
+            fi
+          fi
+          red=0
+          notes() {
+            if [ "$rule_errors" -gt 0 ]; then
+              summary "RULE ERROR: $rule_errors rule(s) failed to load or parse, so the scan did not apply every rule." "$rule_list"
+              if [ "$SEMGREP_MODE" = "warn" ]; then
+                echo "::warning title=semgrep rule error::$rule_errors rule(s) failed to load or parse (warn mode; the list is in the job summary)."
+              else
+                echo "::error title=semgrep rule error::$rule_errors rule(s) failed to load or parse (the list is in the job summary)."
+                red=1
+              fi
+            fi
+            if [ "$partial" -gt 0 ]; then
+              summary "PARTIAL: $partial files or rules not scanned." "$partial_list"
+              echo "::warning title=semgrep partial::$partial files or rules not scanned (the list is in the job summary)."
+            fi
+          }
 
           case "$status" in
             0)
               show "$out"
-              echo "Scanned the whole tree, no findings."
-              { echo "### Semgrep"; echo; echo "Scanned the whole tree, no findings."; } >> "$GITHUB_STEP_SUMMARY"
-              exit 0
+              clean="Scanned the whole tree, no findings."
+              [ "$partial" -eq 0 ] || clean="No findings in what was scanned: $partial files or rules were not."
+              [ "$rule_errors" -eq 0 ] || clean="No findings from the rules that ran: $rule_errors rule(s) did not run."
+              echo "$clean"
+              { echo "### Semgrep"; echo; echo "$clean"; } >> "$GITHUB_STEP_SUMMARY"
+              notes
+              exit "$red"
               ;;
             1)
               show "$out"
               summary "Findings:" "$out"
+              notes
               where="the list is in the job summary"
               [ "$cut" -eq 0 ] || where="the first $limit lines are in the job summary"
               if [ "$SEMGREP_MODE" = "warn" ]; then
@@ -287,7 +344,7 @@ jobs:
               ;;
             *)
               show "$err"
-              summary "NOT SCANNED: semgrep exited with status $status before finishing, so nothing here says the code is clean. The usual cause is a registry pack that could not be fetched." "$err"
+              summary "$reason" "$err"
               if [ "$SEMGREP_MODE" = "warn" ]; then
                 echo "::warning title=semgrep unavailable::Rules could not be fetched; nothing was scanned."
                 exit 0
