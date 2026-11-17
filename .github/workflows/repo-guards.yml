@@ -322,4 +322,24 @@ jobs:
       # fixtures of the release-template family check, and the link-gate probe, whose isolation test runs
       # `unshare` and `setpriv` through the runner's passwordless sudo.
       - name: Run the tests
-        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs' '.github/scripts/link-gate/*.test.mjs' '.github/scripts/script-family/*.test.mjs'
+        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs' '.github/scripts/link-gate/*.test.mjs' '.github/scripts/script-family/*.test.mjs' '.github/scripts/semgrep/*.test.mjs'
+
+  semgrep-rules:
+    name: Vendored Semgrep rules pass their tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # The rules ship to every caller of `security.yml` that sets `semgrep`, so a rule that stops
+      # matching its `ruleid` lines, or starts matching its `ok` lines, is found here and not by
+      # a consumer. The image is the one `security.yml` scans with, so the tests run on the engine
+      # the rules run on. The mount is read-only: `--test` reads the rules and writes nothing.
+      - name: Run the rule tests
+        env:
+          SEMGREP_IMAGE: semgrep/semgrep:1.184.0-nonroot@sha256:f62960e8bc7c3d6bf2f5acebdb8e25add95e1efbc93a479c3ed3d5366619ac24
+        run: |
+          docker run --rm --volume "${GITHUB_WORKSPACE}/.github/semgrep:/work:ro" --workdir /work "${SEMGREP_IMAGE}" \
+            semgrep --test --quiet --metrics=off --disable-version-check rules

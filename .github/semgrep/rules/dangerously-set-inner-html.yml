@@ -1,0 +1,14 @@
+rules:
+  - id: bymax.js.dangerously-set-inner-html-non-literal
+    message: >-
+      HTML is written through dangerouslySetInnerHTML from a value that is not a literal. Whoever
+      controls the value runs script in the page (XSS). Render the value as a child, or sanitise
+      it with a vetted sanitiser first.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-79: Improper Neutralization of Input During Web Page Generation"]
+      category: security
+    patterns:
+      - pattern: '<$EL ... dangerouslySetInnerHTML={{ __html: $X }} ... />'
+      - pattern-not: '<$EL ... dangerouslySetInnerHTML={{ __html: "..." }} ... />'

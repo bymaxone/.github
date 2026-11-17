@@ -6,7 +6,9 @@
 # event-driven PR gate that blocks a pull request from INTRODUCING a vulnerable or
 # disallowed dependency. The dependency-review job uses only GitHub-owned actions; the
 # optional signatures job installs through the org's setup-node-pnpm action, which uses
-# pnpm/action-setup, so it needs that action on the org's third-party-action allow-list.
+# pnpm/action-setup, so it needs that action on the org's third-party-action allow-list. The
+# optional semgrep job runs a pinned image on the checkout, with the rules vendored in this
+# repository and any registry packs the caller names.
 name: security
 
 on:
@@ -28,6 +30,21 @@ on:
           It runs on whatever event the caller triggers it on.
         type: string
         default: "off"
+      semgrep:
+        description: >-
+          `off`, `warn` or `enforce`. Runs Semgrep over the whole checkout, with the rules this
+          repository vendors plus the registry packs named in `semgrep-config`. `warn` annotates
+          findings and stays green; `enforce` fails the check. A scan that could not fetch its
+          rules is reported as NOT SCANNED, a warning in `warn` and a failure in `enforce`.
+        type: string
+        default: "off"
+      semgrep-config:
+        description: >-
+          Whitespace-separated Semgrep registry packs, each passed as one `--config` value (for
+          example `p/typescript p/secrets`). Only `p/<name>` and `r/<path>` are accepted. Empty
+          scans with the vendored rules alone.
+        type: string
+        default: ""
 
 # Read-only: requesting no write scope keeps this callable from repos whose
 # default GITHUB_TOKEN is restricted (no per-repo permission grant needed). The
@@ -100,3 +117,157 @@ jobs:
           fi
           echo "::error title=audit signatures::A package has an invalid or missing registry signature or attestation."
           exit 1
+
+  semgrep:
+    name: Semgrep
+    if: inputs.semgrep != 'off'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No secret and no write scope. SARIF upload would need `security-events: write`, so the verdict
+    # is this job's exit code and the findings are in the log and the job summary.
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        # Egress is audited, not blocked: the report lists every host the job reached.
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Check the inputs
+        # Both values are data, never shell text: they arrive through the environment, every token must
+        # match an allow-list pattern, and a rejected one is reported by position, never echoed raw.
+        # The accepted tokens are written one per line for the scan step to read into an array.
+        env:
+          SEMGREP_MODE: ${{ inputs.semgrep }}
+          SEMGREP_CONFIG: ${{ inputs.semgrep-config }}
+        run: |
+          set -euo pipefail
+          case "$SEMGREP_MODE" in
+            warn|enforce) ;;
+            *) echo "::error title=semgrep::semgrep must be off, warn or enforce."; exit 1 ;;
+          esac
+          tokens=()
+          IFS=$' \t\n' read -r -d '' -a tokens < <(printf '%s' "$SEMGREP_CONFIG") || true
+          : > "$RUNNER_TEMP/semgrep-config.txt"
+          position=0
+          for token in ${tokens[@]+"${tokens[@]}"}; do
+            position=$((position + 1))
+            if [[ "$token" =~ ^p/[A-Za-z0-9._-]+$ || "$token" =~ ^r/[A-Za-z0-9._/-]+$ ]] && [[ "$token" != *..* ]]; then
+              printf '%s\n' "$token" >> "$RUNNER_TEMP/semgrep-config.txt"
+            else
+              echo "::error title=semgrep::semgrep-config entry $position is not a registry pack. Each entry must be p/<name> or r/<path>."
+              exit 1
+            fi
+          done
+
+      # No credential is left in `.git/config`: the mount hands the tree to a third-party image with
+      # network access, and the scan needs no git remote.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Require this workflow's own commit
+        # `job.workflow_*` names the reusable workflow's repository and commit. If it were ever
+        # empty, the rules fetch below would read a branch's tarball instead of this commit's
+        # and scan with its files, so an empty or malformed value stops the job instead.
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WORKFLOW_REPOSITORY" ] || ! printf '%s' "$WORKFLOW_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error title=semgrep::job.workflow_repository='$WORKFLOW_REPOSITORY' job.workflow_sha='$WORKFLOW_SHA' is not a repository and a commit."
+            exit 1
+          fi
+
+      - name: Fetch the vendored rules from this workflow's own commit
+        # The rules and the file that passes them can never be out of step, because both are read at the
+        # commit of THIS workflow file (`job.workflow_sha`), not from a tag. They land outside the
+        # workspace, so a rule file is not part of the tree that is scanned. `actions/checkout` cannot
+        # write outside the workspace, and its sparse mode is cone mode, which also brings every file at
+        # this repository's root. So the tarball of the exact commit is read, and only the rules are
+        # extracted. Every failure here stops the job.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=semgrep::$1"; exit 1; }
+          [ -n "$GH_TOKEN" ] || fail "There is no token to read the rules with."
+          rules="$RUNNER_TEMP/semgrep-rules"
+          archive="$RUNNER_TEMP/semgrep-rules.tar.gz"
+          rm -rf "$rules" "$archive"
+          mkdir -p "$rules"
+          status=$(curl --silent --show-error --location --output "$archive" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$WORKFLOW_REPOSITORY/tarball/$WORKFLOW_SHA")
+          [ "$status" = 200 ] || fail "Reading $WORKFLOW_REPOSITORY at $WORKFLOW_SHA answered HTTP $status."
+          top=$(tar -tzf "$archive" | sed -n 1p)
+          [[ "$top" =~ ^[^/]+-${WORKFLOW_SHA:0:7}/$ ]] || fail "The archive's top directory '$top' does not name commit ${WORKFLOW_SHA:0:7}."
+          tar -xzf "$archive" -C "$rules" --strip-components=4 "${top}.github/semgrep/rules"
+          # The rule tests sit beside the rules; only the rules are loaded.
+          find "$rules" -type f ! -name '*.yml' -delete
+          [ -n "$(find "$rules" -type f -name '*.yml' -print -quit)" ] || fail "There are no rules in $WORKFLOW_SHA."
+          echo "SEMGREP_RULES=$rules" >> "$GITHUB_ENV"
+
+      # The whole tree is scanned. The mount is read-only, which rules out the diff-aware
+      # `--baseline-commit` mode: it writes to `.git`. Registry rules are fetched on every run, and the
+      # vendored rules are mounted at /rules.
+      #
+      # Semgrep exits 0 for a clean scan and 1 for findings (with `--error`). Any other status means
+      # the scan did not complete, which is the case when a registry pack cannot be fetched. That is
+      # reported on its own, as NOT SCANNED, so a green `warn` run is never read as a clean scan.
+      # Everything semgrep prints goes to a file and is shown behind a prefix, so none of its output
+      # can start a workflow command.
+      - name: Semgrep scan
+        env:
+          SEMGREP_IMAGE: semgrep/semgrep:1.184.0-nonroot@sha256:f62960e8bc7c3d6bf2f5acebdb8e25add95e1efbc93a479c3ed3d5366619ac24
+          SEMGREP_MODE: ${{ inputs.semgrep }}
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/semgrep.out"
+          err="$RUNNER_TEMP/semgrep.err"
+          config_args=()
+          while IFS= read -r token; do
+            [ -n "$token" ] && config_args+=(--config "$token")
+          done < "$RUNNER_TEMP/semgrep-config.txt"
+
+          show() { sed 's/^/  | /' "$1"; }
+          summary() { { echo "### Semgrep"; echo; echo "$1"; echo; echo '```'; sed -n '1,200p' "$2"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"; }
+
+          docker run --rm --volume "${GITHUB_WORKSPACE}:/src:ro" --volume "${SEMGREP_RULES}:/rules:ro" --workdir /src "${SEMGREP_IMAGE}" \
+            semgrep scan --metrics=off --error --disable-version-check --config /rules ${config_args[@]+"${config_args[@]}"} \
+            >"$out" 2>"$err"
+          status=$?
+
+          case "$status" in
+            0)
+              show "$out"
+              echo "Scanned the whole tree, no findings."
+              { echo "### Semgrep"; echo; echo "Scanned the whole tree, no findings."; } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            1)
+              show "$out"
+              summary "Findings:" "$out"
+              if [ "$SEMGREP_MODE" = "warn" ]; then
+                echo "::warning title=semgrep::Semgrep reported findings (warn mode; the list is in the job summary)."
+                exit 0
+              fi
+              echo "::error title=semgrep::Semgrep reported findings."
+              exit 1
+              ;;
+            *)
+              show "$err"
+              summary "NOT SCANNED: semgrep exited with status $status before finishing, so nothing here says the code is clean. The usual cause is a registry pack that could not be fetched." "$err"
+              if [ "$SEMGREP_MODE" = "warn" ]; then
+                echo "::warning title=semgrep unavailable::Rules could not be fetched; nothing was scanned."
+                exit 0
+              fi
+              echo "::error title=semgrep unavailable::Rules could not be fetched; nothing was scanned."
+              exit 1
+              ;;
+          esac

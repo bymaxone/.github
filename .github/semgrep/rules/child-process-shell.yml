@@ -1,0 +1,24 @@
+rules:
+  - id: bymax.js.child-process-shell-non-literal
+    message: >-
+      A shell command is built from a value that is not a literal. Whoever controls the value
+      injects shell commands. Use execFile or spawn with an argument array and no `shell: true`.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-78: Improper Neutralization of Special Elements used in an OS Command"]
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec($CMD, ...)
+          - pattern: $CP.execSync($CMD, ...)
+          - pattern: exec($CMD, ...)
+          - pattern: execSync($CMD, ...)
+          - pattern: '$CP.spawn($CMD, ..., { ..., shell: true, ... })'
+          - pattern: '$CP.spawnSync($CMD, ..., { ..., shell: true, ... })'
+          - pattern: 'spawn($CMD, ..., { ..., shell: true, ... })'
+          - pattern: 'spawnSync($CMD, ..., { ..., shell: true, ... })'
+      - metavariable-pattern:
+          metavariable: $CMD
+          patterns:
+            - pattern-not: '"..."'

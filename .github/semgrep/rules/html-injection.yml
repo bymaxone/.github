@@ -1,0 +1,20 @@
+rules:
+  - id: bymax.js.html-injection-non-literal
+    message: >-
+      HTML is written from a value that is not a literal. Whoever controls the value runs script
+      in the page (XSS). Assign textContent, or sanitise with a vetted sanitiser before writing HTML.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-79: Improper Neutralization of Input During Web Page Generation"]
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: $E.innerHTML = $X
+          - pattern: $E.outerHTML = $X
+          - pattern: document.write($X)
+          - pattern: document.writeln($X)
+      - pattern-not: $E.innerHTML = "..."
+      - pattern-not: $E.outerHTML = "..."
+      - pattern-not: document.write("...")
+      - pattern-not: document.writeln("...")
