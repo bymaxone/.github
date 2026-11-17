@@ -43,6 +43,17 @@ with no dependencies; its test is a `node:test` file that builds throwaway git r
 `node --test scripts/check-suppressions-baseline.test.mjs`. A base revision without the file imposes nothing, which is
 the change that introduces it. A library copies the template byte for byte.
 
+## check-test-comments
+
+Fails when a test call (`it`, `test`, with `.only`, `.skip`, `.todo`, `.concurrent`, `.failing` or `.each`) in a tracked
+`src/` or `test/` spec has no comment directly above it, or only an empty comment or a tool directive, unless its file
+is on a baseline that can only shrink (`scripts/test-comment-baseline.json`, written with `--write-baseline`). The
+script needs `typescript`; its test is a `node:test` file that builds throwaway git repositories. Wire it as
+`"check:test-comments": "node scripts/check-test-comments.mjs"` and run it in the CI job that runs the other `check:*`
+scripts, with `--base origin/<default branch>` on pull requests, and the test with
+`node --test scripts/check-test-comments.test.mjs`. Not handled, on purpose: `xit`/`fit`, a test call wrapped in
+`await`, `void` or parentheses, a locally shadowed `it`, and whether the comment states a scenario and a rule.
+
 ## published-surface-links
 
 The link check of a library's published-surface gate, as a module of its own that exports exactly
@@ -128,3 +139,4 @@ reads the `file` of each entry; the reason is the line below.
 | `check-spec-headers` | `src/check-spec-headers.spec.ts` | Runs `scripts/check-spec-headers.mjs` as a child process and imports nothing from `src/`, so it judges no mutant. |
 | `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
 | `check-suppressions-baseline` | none | Its test is `scripts/check-suppressions-baseline.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
+| `check-test-comments` | none | Its test is `scripts/check-test-comments.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
