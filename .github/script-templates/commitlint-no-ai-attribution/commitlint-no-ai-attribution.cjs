@@ -12,10 +12,12 @@
 'use strict'
 
 /** The strict profile: every repository but the narrow ones. */
-const STRICT = "(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|(^|[^@\\w])(codex|anthropic|chatgpt)\\b|\\bclaude([^.]|$))"
+const STRICT =
+  '(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|(^|[^@\\w])(codex|anthropic|chatgpt)\\b|\\bclaude([^.]|$))'
 
 /** The narrow profile: a repository whose subject matter names the products. */
-const NARROW = "(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(reviews?|pass|reviewer|bot|findings?)\\b)"
+const NARROW =
+  '(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(reviews?|pass|reviewer|bot|findings?)\\b)'
 
 /**
  * The JavaScript form of a pattern: the leading `(?im)` becomes the `im` flags.
@@ -27,6 +29,24 @@ function compile(pattern) {
   return new RegExp(pattern.slice('(?im)'.length), 'im')
 }
 
+/** The line git writes above the diff under `git commit -v`; everything after it is not the message. */
+const SCISSORS = /^# -+ >8 -+$/
+
+/**
+ * The text of the message itself: the raw text of a commit message file without the comment lines git adds and
+ * without the diff under the scissors line.
+ *
+ * @param {string} raw The raw text of the commit message file.
+ * @returns {string} The message.
+ */
+function messageOf(raw) {
+  const lines = raw.split(/\r?\n/)
+  const end = lines.findIndex((line) => SCISSORS.test(line))
+  return (end === -1 ? lines : lines.slice(0, end))
+    .filter((line) => !line.startsWith('#'))
+    .join('\n')
+}
+
 /**
  * The plugin for one profile.
  *
@@ -34,15 +54,23 @@ function compile(pattern) {
  * @returns {{ rules: Record<string, (parsed: { raw?: string }) => [boolean, string?]> }} A commitlint plugin.
  */
 function build(profile = 'strict') {
-  if (profile !== 'strict' && profile !== 'narrow') throw new Error('the profile must be strict or narrow')
+  if (profile !== 'strict' && profile !== 'narrow')
+    throw new Error('the profile must be strict or narrow')
   const pattern = compile(profile === 'narrow' ? NARROW : STRICT)
   return {
     rules: {
-      'no-ai-attribution': (parsed) => {
-        const match = pattern.exec(parsed.raw ?? '')
+      'no-ai-attribution': (parsed, when = 'always') => {
+        if (when !== 'always')
+          throw new Error(
+            "no-ai-attribution has an always form only: configure it as [2, 'always']",
+          )
+        const match = pattern.exec(messageOf(parsed.raw ?? ''))
         if (match === null) return [true]
         const found = match[0].replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 80)
-        return [false, `the message names an AI tool as its author or its reviewer ("${found}"); reword it, no commit does this`]
+        return [
+          false,
+          `the message names an AI tool as its author or its reviewer ("${found}"); reword it, no commit does this`,
+        ]
       },
     },
   }

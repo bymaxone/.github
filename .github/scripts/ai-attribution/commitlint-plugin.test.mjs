@@ -40,6 +40,21 @@ test('what matched is shown on one line, even when the match spans a line break'
   assert.match(message, /Claude \+ Codex/);
 });
 
+test('only the message is read: git comment lines and the diff under a scissors line are not', () => {
+  const verbose = 'fix: x\n\n# ------------------------ >8 ------------------------\ndiff --git a/a b/a\n+use claude here\n';
+  const commented = 'fix: x\n\n# note: codex is not the author\n# Please enter the commit message\n';
+  assert.equal(check('strict', verbose)[0], true);
+  assert.equal(check('strict', commented)[0], true);
+  assert.equal(check('strict', 'fix: x\n\n# a comment\nCo-Authored-By: Claude <a@b.c>\n')[0], false);
+  assert.equal(check('strict', '# first line is a comment\nfeat: Generated with Claude Code')[0], false);
+});
+
+test('the rule has an always form only: a never form is refused instead of read as always', () => {
+  const rule = plugin.rules['no-ai-attribution'];
+  assert.equal(rule({ raw: 'feat: fine' }, 'always')[0], true);
+  assert.throws(() => rule({ raw: 'feat: fine' }, 'never'), /always/);
+});
+
 test('the default export is the strict profile and a message with nothing to read is accepted', () => {
   assert.equal(plugin.rules['no-ai-attribution']({ raw: "feat(prices): add claude-opus pricing" })[0], false);
   assert.equal(plugin.rules['no-ai-attribution']({ raw: '' })[0], true);
