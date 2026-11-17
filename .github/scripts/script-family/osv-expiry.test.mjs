@@ -139,3 +139,19 @@ test('every form of a TOML date and date-time is read once, as the case list say
   assert.equal(unreadable(block('2026-02-30')), 1);
   assert.equal(unreadable(block('"soon"')), 1);
 });
+
+test('a table header with a comment, a multi-line string and a comment line never change what is read', () => {
+  const cases = [
+    ['[[IgnoredVulns]] # triaged\nid = "A"\nignoreUntil = 2027-01-01\n', ['A']],
+    ['[[IgnoredVulns]]\nid = "A"\nreason = """\n[CVE-1] not reachable\n"""\nignoreUntil = 2027-01-01\n', ['A']],
+    ['[[IgnoredVulns]]\nid = "A"\nreason = """\nignoreUntil = 2099-01-01\n"""\nignoreUntil = 2027-01-01\n', ['A']],
+    ["[[IgnoredVulns]]\nid = \"A\"\nreason = \'\'\'\nid = \"B\"\n\'\'\'\nignoreUntil = 2027-01-01\n", ['A']],
+    ['[[IgnoredVulns]]\nid = "A"\nreason = """\n[[IgnoredVulns]]\n"""\nignoreUntil = 2027-01-01\n', ['A']],
+    ['# [[IgnoredVulns]]\n[[IgnoredVulns]]\nid = "A"\n# ignoreUntil = 2020-01-01\nignoreUntil = 2027-01-01\n', ['A']],
+  ];
+  for (const [text, ids] of cases) {
+    const found = ignores(text);
+    assert.deepEqual(found.map(({ id }) => id), ids, text);
+    assert.equal(found[0].until.toISOString().slice(0, 10), '2027-01-01', text);
+  }
+});

@@ -51,10 +51,19 @@ export function dateOf(text) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * The text with every multi-line string and every whole-line comment blanked and the newlines kept, so a line inside
+ * a reason or a comment is never read as a key or as a table header.
+ */
+function blanked(toml) {
+  const spans = toml.replace(/"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'/g, (span) => span.replace(/[^\r\n]/g, ' '));
+  return spans.replace(/^[ \t]*#.*$/gm, '');
+}
+
 /** Every `[[IgnoredVulns]]` block that names an id: `{ id, until, dated }`, `until` null when there is no date or it cannot be read. */
 function blocks(toml) {
   const found = [];
-  for (const block of toml.split(/^\s*\[\[IgnoredVulns\]\]\s*$/m).slice(1)) {
+  for (const block of blanked(toml).split(/^[ \t]*\[\[IgnoredVulns\]\][ \t]*(?:#.*)?$/m).slice(1)) {
     const next = block.search(/^\s*\[/m);
     const body = next === -1 ? block : block.slice(0, next);
     const id = valueOf(body, 'id');
