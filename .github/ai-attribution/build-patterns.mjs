@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds the strict and the narrow pattern from `lists.json`, and writes them where they are copied: the patterns
 // file, the two organisation ruleset bodies and the commitlint plugin template. Run it after a change to
-// `lists.json`; a test fails when any copy differs from what it builds.
+// `lists.json`; `--check` reports a copy that differs.
 //
 // Usage: node .github/ai-attribution/build-patterns.mjs [--check]
 //   --check  write nothing and exit 1 when a copy differs

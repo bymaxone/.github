@@ -1,5 +1,5 @@
 // Tests for the AI-attribution patterns: the case table against both profiles, and the two organisation
-// rulesets against the patterns file, so the three copies of one pattern cannot drift.
+// rulesets and the patterns file against what the lists build, so those copies cannot drift.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -50,7 +50,7 @@ test('the narrow profile is a subset of what the strict profile rejects, except 
 const lists = read('lists.json');
 const cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 
-test('every copy of the patterns equals what the lists build: the file, the two rulesets and the plugin', () => {
+test('every copy of the patterns equals what the lists build: the file and the two rulesets', () => {
   const built = build(lists);
   assert.equal(patterns.strict, built.strict);
   assert.equal(patterns.narrow, built.narrow);
