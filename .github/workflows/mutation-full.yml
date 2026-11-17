@@ -25,7 +25,7 @@ on:
           least 1.5 times the wall time of the caller's last measured cold run (with `shards`
           above 1, its slowest shard) and write the run and its minutes in a comment beside the
           value. Measured: nest-auth's slowest shard took 6,613 s (110 min) in run 43540212734,
-          so 165 min or more; nest-logger's took 46.4 min, so 70 min or more.
+          so 166 min or more; nest-logger's took 46.4 min, so 70 min or more.
         type: number
         default: 60
       full-command:
