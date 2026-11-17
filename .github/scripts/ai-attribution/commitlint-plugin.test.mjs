@@ -34,7 +34,7 @@ test('a refusal carries a message that names what matched and says to reword', (
 });
 
 test('what matched is shown on one line, even when the match spans a line break', () => {
-  const [valid, message] = check('narrow', 'feat: x\n\nreviewed by Claude\n+\nCodex');
+  const [valid, message] = check('narrow', 'feat: x\n\nClaude\n+\nCodex');
   assert.equal(valid, false);
   assert.doesNotMatch(message, /[\n\r]/);
   assert.match(message, /Claude \+ Codex/);

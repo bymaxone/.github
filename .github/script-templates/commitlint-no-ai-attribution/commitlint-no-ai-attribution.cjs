@@ -13,11 +13,11 @@
 
 /** The strict profile: every repository but the narrow ones. */
 const STRICT =
-  '(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|(^|[^@\\w])(codex|anthropic|chatgpt)\\b|\\bclaude([^.]|$))'
+  '(?im)(^[ \\t>]*[a-z][a-z-]*-by[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|noreply@(anthropic|openai|claude)\\.|\\b(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\[bot\\]|🤖[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|^[ \\t>*_-]*[\\[(]?(ai[- ](generated|assisted|authored|written)|(generated|assisted|authored|written|created|made)\\s+(with|by)\\s+ai)[\\])]?[ \\t.]*$|\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|\\b(thanks\\s+to|courtesy\\s+of)\\s+(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|\\b(generated|authored|co-authored|reviewed|assisted|approved|audited|verified|drafted|checked|proposed|suggested|created|written|made|produced|built|fixed|implemented)\\s+(with|by|using)\\s+(the\\s+|an?\\s+|\\[)?(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|(^|[^@\\w])(codex|anthropic|chatgpt)\\b|\\bclaude([^.]|$))'
 
 /** The narrow profile: a repository whose subject matter names the products. */
 const NARROW =
-  '(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(reviews?|pass|reviewer|bot|findings?)\\b)'
+  '(?im)(^[ \\t>]*[a-z][a-z-]*-by[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|noreply@(anthropic|openai|claude)\\.|\\b(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\[bot\\]|🤖[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|^[ \\t>*_-]*[\\[(]?(ai[- ](generated|assisted|authored|written)|(generated|assisted|authored|written|created|made)\\s+(with|by)\\s+ai)[\\])]?[ \\t.]*$|\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|\\b(thanks\\s+to|courtesy\\s+of)\\s+(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|\\b(generated|authored|co-authored|reviewed|assisted|approved|audited|verified|drafted|checked|proposed|suggested)\\s+(with|by|using)\\s+(the\\s+|an?\\s+|\\[)?(claude|anthropic|codex|openai|chatgpt|gpt|copilot|gemini|cursor|windsurf|devin|aider|codeium|tabnine|bard|grok|deepseek|mistral|kiro|perplexity)\\b|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(review|reviews|pass|reviewer|bot|finding|findings)\\b)'
 
 /**
  * The JavaScript form of a pattern: the leading `(?im)` becomes the `im` flags.
@@ -52,6 +52,21 @@ function messageOf(parsed) {
 }
 
 /**
+ * The text shown to the committer on one line: a control character becomes a space.
+ *
+ * @param {string} text The text that matched.
+ * @returns {string} At most 80 characters on one line.
+ */
+function oneLine(text) {
+  return Array.from(text, (character) => {
+    const code = character.codePointAt(0)
+    return code < 32 || code === 127 ? ' ' : character
+  })
+    .join('')
+    .slice(0, 80)
+}
+
+/**
  * The plugin for one profile.
  *
  * @param {'strict' | 'narrow'} [profile] The profile to apply; strict when omitted.
@@ -70,7 +85,7 @@ function build(profile = 'strict') {
           )
         const match = pattern.exec(messageOf(parsed))
         if (match === null) return [true]
-        const found = match[0].replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 80)
+        const found = oneLine(match[0])
         return [
           false,
           `the message names an AI tool as its author or its reviewer ("${found}"); reword it, no commit does this`,

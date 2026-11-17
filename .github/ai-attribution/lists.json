@@ -1,0 +1,15 @@
+{
+  "description": "The two lists the patterns are built from: the names of the tools, and the verbs that attribute work to them. A new tool is added once and is covered by every phrasing; a new phrasing is added once and applies to every tool.",
+  "tools": [
+    "claude", "anthropic", "codex", "openai", "chatgpt", "gpt", "copilot", "gemini", "cursor", "windsurf",
+    "devin", "aider", "codeium", "tabnine", "bard", "grok", "deepseek", "mistral", "kiro", "perplexity"
+  ],
+  "verbs": [
+    "generated", "authored", "co-authored", "reviewed", "assisted", "approved", "audited", "verified",
+    "drafted", "checked", "proposed", "suggested"
+  ],
+  "strictVerbs": ["created", "written", "made", "produced", "built", "fixed", "implemented"],
+  "bareWordsStrict": ["codex", "anthropic", "chatgpt"],
+  "narrowNear": ["claude", "codex"],
+  "narrowNearWords": ["review", "reviews", "pass", "reviewer", "bot", "finding", "findings"]
+}
