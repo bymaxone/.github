@@ -1278,6 +1278,32 @@ test('a name that is also an ordinary word is the tool after a credit verb only 
   }
 })
 
+test('narrow: a product word, a number or a comma and ends the credit phrase after the tool, a vendor sentence does not', () => {
+  for (const message of [
+    'Built with Cursor AI',
+    'Built with GPT 5',
+    'Built with Cursor, and shipped',
+    'Made with Gemini 2.5',
+    'Built with Cursor IDE',
+    'Made with Gemini Pro.',
+    'Built with Cursor v0.4',
+    'Raised by Codex CLI',
+  ]) {
+    assert.equal(narrow.test(message), true, `narrow: ${message}`)
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+  }
+  for (const message of [
+    'Built with Gemini bindings',
+    'Made with the OpenAI SDK',
+    'Made by Anthropic, priced per token',
+    'Built with Gemini 2.5 Flash on 200 prompts',
+    'Built with Cursor for the editor tests',
+    'Tested with Gemini 2.5 Flash on 200 prompts',
+  ]) {
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+})
+
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
   for (const message of [
     'fix: guard the AI provider timeout',
