@@ -1,0 +1,61 @@
+# Compares each library's copy of a script template with the template in .github/script-templates, byte for
+# byte. A script that every library copies drifts one edit at a time; this names the library that drifted.
+# For each repository in .github/script-adopters.txt it resolves the default branch to a commit and reads
+# every file the template's template.json lists at that commit. A copy that differs, or is missing, is red.
+#
+# It only reads and compares; no code from another repository is executed. The job holds `contents: read`,
+# references no secret, and starts with harden-runner in audit mode. The files are public, so the job's own
+# token reads them. Weekly, and on dispatch; not a gate on pull requests.
+name: script-family-check
+
+on:
+  schedule:
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  family:
+    name: Script template family
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        # Egress is audited, not blocked: the report lists every host the job reached.
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      # A dispatch can be aimed at any ref; the templates and the list are read from the checked-out ref, so
+      # only the default branch's own are the ones to compare the libraries with.
+      - name: Refuse a run outside the default branch
+        env:
+          RUN_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          clean() { printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200; }
+          if [ "$RUN_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error title=script-family::script-family-check runs only on the default branch ($(clean "$DEFAULT_BRANCH")). Dispatch it there."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Compare every adopter's copy with its template
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/script-family/check-family.mjs --list .github/script-adopters.txt --templates .github/script-templates
