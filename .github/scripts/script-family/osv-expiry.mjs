@@ -24,28 +24,43 @@ export function ignores(toml) {
   return blocks(toml).filter((block) => block.until !== null).map(({ id, until }) => ({ id, until }));
 }
 
-/** Every `[[IgnoredVulns]]` block that names an id: `{ id, until }`, `until` null when it has no date or one that cannot be read. */
+/**
+ * The value of `key = ...` in a block, as TOML writes it: a basic or a literal string, or a bare value, up to a comment
+ * outside quotes. `undefined` when the key is absent.
+ */
+function valueOf(body, key) {
+  const line = new RegExp(`^[ \\t]*${key}[ \\t]*=[ \\t]*(.*)$`, 'm').exec(body)?.[1];
+  if (line === undefined) return undefined;
+  const quoted = /^"([^"\r\n]*)"|^'([^'\r\n]*)'/.exec(line);
+  if (quoted) return quoted[1] ?? quoted[2];
+  return line.replace(/[ \t]*#.*$/, '').trim();
+}
+
+/**
+ * A date or date-time as TOML (and a quoted string of one) writes it, as a `Date`, or null when it is not one:
+ * `YYYY-MM-DD`, then optionally `T` or a space, `HH:MM:SS`, fractional seconds, and `Z` or an offset. A local
+ * date-time and a date are read as UTC. The day must exist (2028-02-29 does, 2027-02-29 does not).
+ */
+export function dateOf(text) {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/i.exec(text ?? '');
+  if (!parts) return null;
+  const [, year, month, day, time = '00:00:00', fraction = '', zone = 'Z'] = parts;
+  const exists = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (exists.getUTCFullYear() !== Number(year) || exists.getUTCMonth() !== Number(month) - 1 || exists.getUTCDate() !== Number(day)) return null;
+  const date = new Date(`${year}-${month}-${day}T${time}${fraction}${zone.toUpperCase()}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Every `[[IgnoredVulns]]` block that names an id: `{ id, until, dated }`, `until` null when there is no date or it cannot be read. */
 function blocks(toml) {
   const found = [];
   for (const block of toml.split(/^\s*\[\[IgnoredVulns\]\]\s*$/m).slice(1)) {
     const next = block.search(/^\s*\[/m);
     const body = next === -1 ? block : block.slice(0, next);
-    const id = /^\s*id\s*=\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)')/m.exec(body);
+    const id = valueOf(body, 'id');
     if (!id) continue;
-    const raw = /^\s*ignoreUntil\s*=\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}[^\s#]*)?|[^\s#]+))/m.exec(body);
-    const text = raw?.[1] ?? raw?.[2] ?? raw?.[3];
-    let until = null;
-    if (text !== undefined) {
-      const parts = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:\d{2})?)?$/.exec(text);
-      if (parts) {
-        const date = new Date(`${parts[1]}T${parts[2] ?? '00:00:00'}${parts[3] ?? 'Z'}`);
-        // A shape that parses is not a date that exists: 2026-02-30 would be read as March.
-        const day = new Date(`${parts[1]}T00:00:00Z`);
-        const real = !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === parts[1];
-        until = Number.isNaN(date.getTime()) || !real ? null : date;
-      }
-    }
-    found.push({ id: id[1] ?? id[2], until, dated: text !== undefined });
+    const text = valueOf(body, 'ignoreUntil');
+    found.push({ id, until: text === undefined ? null : dateOf(text), dated: text !== undefined });
   }
   return found;
 }

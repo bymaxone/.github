@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { clean, expiring, ignores, line, main, scan, unreadable } from './osv-expiry.mjs';
+import { clean, dateOf, expiring, ignores, line, main, scan, unreadable } from './osv-expiry.mjs';
 
 const NOW = new Date('2026-11-17T12:00:00Z');
 const toml = (...blocks) => blocks.map(([id, until]) => `[[IgnoredVulns]]\nid = "${id}"\n${until ? `ignoreUntil = ${until}\n` : ''}reason = "x"\n`).join('\n');
@@ -99,4 +99,43 @@ test('a date that does not exist is unreadable, a time after a space is kept, an
   assert.equal(unreadable(text), 1);
   assert.equal(ignores(text)[0].until.toISOString(), '2026-12-01T10:00:00.000Z');
   assert.equal(/[\[\]()<>`]/.test(clean('[click](https://evil.example) <b>`x`')), false);
+});
+
+test('every form of a TOML date and date-time is read once, as the case list says', () => {
+  const read = (text) => dateOf(text)?.toISOString() ?? null;
+  const cases = [
+    ['2026-12-01', '2026-12-01T00:00:00.000Z'],
+    ['2026-12-01T10:00:00Z', '2026-12-01T10:00:00.000Z'],
+    ['2026-12-01t10:00:00z', '2026-12-01T10:00:00.000Z'],
+    ['2026-12-01 10:00:00', '2026-12-01T10:00:00.000Z'],
+    ['2026-12-01T10:00:00', '2026-12-01T10:00:00.000Z'],
+    ['2026-12-01T10:00:00.5Z', '2026-12-01T10:00:00.500Z'],
+    ['2026-12-01T10:00:00-03:00', '2026-12-01T13:00:00.000Z'],
+    ['2026-12-01 10:00:00+02:00', '2026-12-01T08:00:00.000Z'],
+    ['2028-02-29', '2028-02-29T00:00:00.000Z'],
+    ['2027-02-29', null],
+    ['2026-02-30', null],
+    ['2026-13-01', null],
+    ['2026-12-32', null],
+    ['2026-12-01T25:00:00Z', null],
+    ['soon', null],
+    ['', null],
+  ];
+  for (const [text, expected] of cases) assert.equal(read(text), expected, text);
+  const block = (value) => `[[IgnoredVulns]]\nid = "A"\nignoreUntil = ${value}\n`;
+  for (const [written, expected] of [
+    ['2026-12-01', '2026-12-01'],
+    ['"2026-12-01"', '2026-12-01'],
+    ["'2026-12-01'", '2026-12-01'],
+    ['2026-12-01 # note', '2026-12-01'],
+    ['"2026-12-01" # note', '2026-12-01'],
+    ['2026-12-01 10:00:00 # note', '2026-12-01'],
+    ['"2026-12-01T10:00:00Z"   # note', '2026-12-01'],
+  ]) {
+    const found = ignores(block(written));
+    assert.equal(found.length, 1, written);
+    assert.equal(found[0].until.toISOString().slice(0, 10), expected, written);
+  }
+  assert.equal(unreadable(block('2026-02-30')), 1);
+  assert.equal(unreadable(block('"soon"')), 1);
 });
