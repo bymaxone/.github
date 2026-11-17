@@ -86,10 +86,14 @@ jobs:
             echo "::error title=no-ai-attribution::This pull request has $PR_COMMITS commits and the API lists $listed, so the commit messages cannot all be read. Split the pull request."
             exit 1
           fi
-          # The first line of a merge commit is written by the merge from the names of the branches, and a branch
-          # may be named for a tool, so it is not read. Anything a person added below it is read.
-          jq -n --arg title "$PR_TITLE" --arg body "$PR_BODY" --slurpfile commits "$commits" \
-            '[{where: "title", text: $title}, {where: "body", text: $body}] + ($commits[0] | map({where, text: (if .merge then (.text | split("\n") | .[1:] | join("\n")) else .text end)}))' > "$items"
+          # The first line of a merge commit written by `git merge` or by the web merge button names its branches,
+          # and a branch may be named for a tool, so exactly those forms are not read. Every other first line, and
+          # everything a person added below it, is read, as is every commit that is not a merge.
+          jq -n --arg title "$PR_TITLE" --arg body "$PR_BODY" --slurpfile commits "$commits" '
+            def generated: test("^Merge (?:(?:remote-tracking )?branch(?:es)? \u0027[^\u0027]+\u0027(?: and \u0027[^\u0027]+\u0027)*(?: of [^ ]+)?(?: into [^ ]+)?|tag \u0027[^\u0027]+\u0027(?: into [^ ]+)?|pull request #[0-9]+ from [^ ]+)$");
+            def lines: split("\n");
+            [{where: "title", text: $title}, {where: "body", text: $body}]
+              + ($commits[0] | map({where, text: (if .merge and (.text | lines | .[0] | generated) then (.text | lines | .[1:] | join("\n")) else .text end)}))' > "$items"
           echo "AI_ATTRIBUTION_ITEMS=$items" >> "$GITHUB_ENV"
 
       - name: Look for an AI attribution
