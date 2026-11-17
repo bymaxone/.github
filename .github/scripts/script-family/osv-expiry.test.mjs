@@ -53,7 +53,7 @@ test('a date or a date-time is read in every form TOML writes, and an impossible
   // A day that does not exist is not TOML, so the file is not read and says so; the text is never printed.
   const { items, note } = read(block('A', '2026-02-30'));
   assert.deepEqual(items, []);
-  assert.match(note, /not valid TOML, not read/);
+  assert.match(note, /not valid TOML or not a list of ignores, not read/);
   assert.equal(note.includes('2026-02-30'), false);
   assert.match(read(block('A', '"soon"')).note, /1 ignore\(s\) with an ignoreUntil that is not a date/);
 });
@@ -115,4 +115,53 @@ test('the weekly workflow runs the script isolated, as a step that warns and doe
   assert.match(step, /if: \$\{\{ !cancelled\(\) \}\}/);
   assert.match(step, /python3 -I \.github\/scripts\/script-family\/osv_expiry\.py --list \.github\/script-adopters\.txt --days 21/);
   assert.doesNotMatch(step, /continue-on-error|exit 1/);
+});
+
+test('no file can make the run fail or abort the scan: an overflowing date, a list that is not one, a bad window', () => {
+  for (const toml of [
+    block('A', '9999-12-31T23:59:59-05:00'),
+    block('A', '0001-01-01T00:00:00+05:00'),
+    'IgnoredVulns = 5\n',
+    'IgnoredVulns = "x"\n',
+    'IgnoredVulns = { id = "A" }\n',
+    '[[IgnoredVulns]]\nid = 5\nignoreUntil = 2026-12-01\n',
+    '[[IgnoredVulns]]\nid = "A"\nignoreUntil = [1, 2]\n',
+    '\ufeff[[IgnoredVulns]]\nid = "A"\n',
+  ]) {
+    const file = join(dir, `odd-${Math.random().toString(16).slice(2)}.toml`);
+    writeFileSync(file, toml);
+    const run = python('--file', file, '--now', NOW);
+    assert.equal(run.status, 0, `${toml}: ${run.stderr}`);
+    assert.equal(run.stderr, '', toml);
+  }
+  const dirOf = mkdtempSync(join(tmpdir(), 'osv-odd-'));
+  writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\no/b demo\n');
+  writeFileSync(join(dirOf, 'o__a.toml'), 'IgnoredVulns = 5\n');
+  writeFileSync(join(dirOf, 'o__b.toml'), block('LATER', '2026-11-20'));
+  const run = python('--list', join(dirOf, 'list.txt'), '--now', NOW, '--from-dir', dirOf);
+  assert.equal(run.status, 0);
+  assert.match(run.stdout, /o\/a: osv-scanner.toml: not valid TOML or not a list of ignores/);
+  assert.match(run.stdout, /o\/b: the ignore of LATER ends on 2026-11-20/);
+  assert.notEqual(python('--list', join(dirOf, 'list.txt'), '--days', '-1', '--from-dir', dirOf).status, 0);
+});
+
+test('the step summary is written to the file GITHUB_STEP_SUMMARY names, and an ignore ending exactly now is ended', () => {
+  const dirOf = mkdtempSync(join(tmpdir(), 'osv-sum-'));
+  writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\n');
+  writeFileSync(join(dirOf, 'o__a.toml'), block('SOON', '2026-11-20') + block('EXACT', NOW));
+  const summary = join(dirOf, 'summary.md');
+  const run = spawnSync('python3', ['-I', SCRIPT, '--list', join(dirOf, 'list.txt'), '--now', NOW, '--from-dir', dirOf], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: summary } });
+  assert.equal(run.status, 0);
+  const text = readFileSync(summary, 'utf8');
+  assert.match(text, /the ignore of SOON ends on 2026-11-20/);
+  assert.match(text, /the ignore of EXACT ended on 2026-11-17/);
+});
+
+test('control and bidirectional characters are removed from what is printed, and a colon pair never starts a command', () => {
+  const dirOf = mkdtempSync(join(tmpdir(), 'osv-clean-'));
+  writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\n');
+  writeFileSync(join(dirOf, 'o__a.toml'), '[[IgnoredVulns]]\nid = "a\\u202eb\\u200bc::d"\nignoreUntil = 2020-01-01\n');
+  const run = python('--list', join(dirOf, 'list.txt'), '--now', NOW, '--from-dir', dirOf);
+  assert.equal(run.status, 0);
+  assert.match(run.stdout, /the ignore of abc:d ended/);
 });

@@ -11,6 +11,7 @@ A file that is missing, unreadable or not TOML is a note that names the reposito
 """
 import datetime
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,7 +21,7 @@ PATH = "osv-scanner.toml"
 HERE = "bymaxone/.github"
 REPO = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-UNSAFE = re.compile(r"[\x00-\x1f\x7f-\x9f  %\[\]()<>`*_|!&\\]")
+UNSAFE = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\ufeff%\\[\\]()<>`*_|!&\\\\]")
 
 
 def clean(text):
@@ -46,7 +47,10 @@ def read_list(text):
 def moment(value):
     """A TOML date or date-time, or a string of one, as an aware UTC datetime; None when it is not a date."""
     if isinstance(value, datetime.datetime):
-        return value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
+        try:
+            return value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
+        except (OverflowError, ValueError):
+            return None
     if isinstance(value, datetime.date):
         return datetime.datetime(value.year, value.month, value.day, tzinfo=datetime.timezone.utc)
     if isinstance(value, str):
@@ -62,7 +66,10 @@ def moment(value):
 def ignores(document):
     """`(id, until or None, dated)` for each `[[IgnoredVulns]]` table that names an id; `dated` is whether the key is present."""
     found = []
-    for table in document.get("IgnoredVulns", []):
+    tables = document.get("IgnoredVulns", [])
+    if not isinstance(tables, list):
+        raise ValueError("IgnoredVulns is not a list of tables")
+    for table in tables:
         if not isinstance(table, dict) or not isinstance(table.get("id"), str):
             continue
         found.append((table["id"], moment(table["ignoreUntil"]) if "ignoreUntil" in table else None, "ignoreUntil" in table))
@@ -118,12 +125,13 @@ def scan(repos, now, days, read):
             continue
         try:
             document = parse(text)
+            bad = unreadable(document)
+            found = due(document, now, days)
         except Exception:
-            results.append((repo, [], f"{PATH}: not valid TOML, not read"))
+            results.append((repo, [], f"{PATH}: not valid TOML or not a list of ignores, not read"))
             continue
-        bad = unreadable(document)
         note = f"{bad} ignore(s) with an ignoreUntil that is not a date" if bad else None
-        results.append((repo, due(document, now, days), note))
+        results.append((repo, found, note))
     return results
 
 
@@ -141,6 +149,8 @@ def main(argv):
         print("::warning title=osv-expiry::the expiry check needs Python 3.11 or later (the TOML parser); it did not run")
         return 0
     days = int(option(argv, "--days", "21"))
+    if days < 0:
+        raise SystemExit("--days is a whole number of days, zero or more")
     now_text = option(argv, "--now")
     now = moment(now_text) if now_text else datetime.datetime.now(datetime.timezone.utc)
     if now is None:
@@ -172,7 +182,7 @@ def main(argv):
             out.append(f"- {clean(repo)}: {note}")
     text = "\n".join(out) if out else f"No ignore ends within {days} days in {len(repos)} repositories."
     print(text)
-    summary = option(argv, "--summary")
+    summary = option(argv, "--summary", os.environ.get("GITHUB_STEP_SUMMARY"))
     if summary:
         with open(summary, "a", encoding="utf-8") as handle:
             handle.write(f"### OSV ignores that end soon\n\n{text}\n")
