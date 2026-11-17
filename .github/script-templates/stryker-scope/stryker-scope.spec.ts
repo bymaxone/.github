@@ -19,7 +19,7 @@ import { E2E_OWNED, EXCLUSIONS, EXPECTED, SHIPPED_DATA } from './stryker-scope.d
  * Why shipped files are not mutated, and the property that justifies it, checked against the files:
  * - `barrel`: re-exports only.
  * - `types`: compiles to nothing.
- * - `constants`: constant data with no logic, judged by a separate const-table check.
+ * - `constants`: constant data with no logic, checked by the constants-logic check below.
  * - `const-table`: types and frozen `as const` literals only.
  * - `e2e-owned`: judged by an end-to-end suite, not by a unit spec.
  */
@@ -71,11 +71,17 @@ function mutated(path: string, mutate: readonly string[]): boolean {
   return selected
 }
 
+/** The entry files an `entry: { name: 'path', ... }` object of a tsup config text names. */
+function entriesOf(text: string): string[] {
+  const pair = /(?:'[^']+'|"[^"]+"|[A-Za-z_$][\w$-]*)\s*:\s*(?:'([^']+)'|"([^"]+)")/g
+  return [...text.matchAll(/entry:\s*\{([^}]*)\}/g)].flatMap((object) =>
+    [...object[1]!.matchAll(pair)].map((match) => match[1] ?? match[2]!),
+  )
+}
+
 /** The package entry files named by `tsup.config.ts`. */
 function entries(): string[] {
-  return [...read('tsup.config.ts').matchAll(/entry:\s*\{\s*'[^']+':\s*'([^']+)'/g)].map(
-    (match) => match[1]!,
-  )
+  return entriesOf(read('tsup.config.ts'))
 }
 
 /** The relative module specifiers a source file imports or re-exports, as written. */
@@ -165,6 +171,8 @@ const LOGIC_KINDS: ReadonlySet<ts.SyntaxKind> = new Set([
   ts.SyntaxKind.NewExpression,
   ts.SyntaxKind.CallExpression,
   ts.SyntaxKind.TaggedTemplateExpression,
+  ts.SyntaxKind.DeleteExpression,
+  ts.SyntaxKind.PostfixUnaryExpression,
   ts.SyntaxKind.MethodDeclaration,
   ts.SyntaxKind.GetAccessor,
   ts.SyntaxKind.SetAccessor,
@@ -210,11 +218,21 @@ function isRuntimeLookup(node: ts.Node): boolean {
   return ts.isIdentifier(node) && RUNTIME_GLOBALS.has(node.text)
 }
 
+/** A prefix `++x` or `--x`: an update, unlike the prefix minus of `-1`, which is a constant written out. */
+function isIncrementOrDecrement(node: ts.Node): boolean {
+  return (
+    ts.isPrefixUnaryExpression(node) &&
+    (node.operator === ts.SyntaxKind.PlusPlusToken ||
+      node.operator === ts.SyntaxKind.MinusMinusToken)
+  )
+}
+
 /** The names of the logic constructs a source file contains: none for a file that is only constant data. */
 function logicIn(text: string): string[] {
   const found: string[] = []
   const visit = (node: ts.Node): void => {
     if (isRuntimeLookup(node)) found.push(`global ${node.getText()}`)
+    if (isIncrementOrDecrement(node)) found.push('update expression')
     if (LOGIC_KINDS.has(node.kind) && !isLiteralArithmetic(node) && !isSymbolToken(node)) {
       found.push(ts.SyntaxKind[node.kind])
     }
@@ -370,6 +388,29 @@ describe('mutation scope', () => {
     expect(logicIn('export const A = 24 * 3600')).toEqual([])
     expect(logicIn('export const A = B * 3600')).not.toEqual([])
     expect(logicIn('export const A = 1 < 2')).not.toEqual([])
+    expect(logicIn('export const A = counter++')).not.toEqual([])
+    expect(logicIn('export const A = ++counter')).not.toEqual([])
+    expect(logicIn('export const A = --counter')).not.toEqual([])
+    expect(logicIn('export const A = delete table.key')).not.toEqual([])
+    expect(logicIn('export const A = -1')).toEqual([])
+  })
+
+  /** The entries are read from the config text: every pair of an entry object counts, whatever its key is spelled like. */
+  it('reads every entry of a tsup entry object, with quoted or bare keys', () => {
+    expect(entriesOf("entry: { 'index': 'src/index.ts' }")).toEqual(['src/index.ts'])
+    expect(entriesOf("entry: { 'a': 'src/a.ts', 'b': 'src/b.ts' }")).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(entriesOf("entry: { index: 'src/index.ts', server: 'src/server.ts' }")).toEqual([
+      'src/index.ts',
+      'src/server.ts',
+    ])
+    expect(entriesOf('entry: {\n  "a/b": "src/a/b.ts",\n  c: "src/c.ts",\n}')).toEqual([
+      'src/a/b.ts',
+      'src/c.ts',
+    ])
+    expect(entriesOf("entry: { 'a': 'src/a.ts' }, x: 1, entry: { 'b': 'src/b.ts' }")).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+    ])
   })
 
   /** A const-table file holds types and `as const` literals only: any other statement is code the exclusion would hide. */
