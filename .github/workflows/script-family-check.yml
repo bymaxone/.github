@@ -70,7 +70,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node .github/scripts/script-family/osv-expiry.mjs --list .github/script-adopters.txt --days 21
+          # Isolated mode: no file of this repository is put on the interpreter's path. A Python older than 3.11
+          # has no TOML parser, and the script then warns and does not read.
+          python3 -I .github/scripts/script-family/osv_expiry.py --list .github/script-adopters.txt --days 21
 
       # A reminder, never a gate: the comments and review replies of the last week in every public repository of the
       # organisation are read with the patterns of the attribution rulesets, and a hit is a warning with its link.
