@@ -48,7 +48,7 @@ the change that introduces it. A library copies the template byte for byte.
 Fails when a test call (`it`, `test`, with `.only`, `.skip`, `.todo`, `.concurrent`, `.failing` or `.each`) in a tracked
 `src/` or `test/` spec has no comment directly above it, or only an empty comment or a tool directive, unless its file
 is on a baseline that can only shrink (`scripts/test-comment-baseline.json`, written with `--write-baseline`). The
-script needs `typescript`; its test is a `node:test` file that builds throwaway git repositories. Wire it as
+script needs `typescript`. Wire it as
 `"check:test-comments": "node scripts/check-test-comments.mjs"` and run it in the CI job that runs the other `check:*`
 scripts, with `--base origin/<default branch>` on pull requests, and the test with
 `node --test scripts/check-test-comments.test.mjs`. Not handled, on purpose: `xit`/`fit`, a test call wrapped in
