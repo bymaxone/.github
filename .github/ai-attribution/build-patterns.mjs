@@ -17,27 +17,38 @@ const alternation = (words) =>
 /**
  * The two patterns a set of lists builds, in the form the organisation rulesets carry (RE2, leading `(?im)`).
  *
- * @param {{ tools: string[], verbs: string[], strictVerbs: string[], bareWordsStrict: string[], narrowNear: string[], narrowNearWords: string[] }} lists The lists.
+ * @param {Record<string, string[]>} lists The lists of `lists.json`.
  * @returns {{ strict: string, narrow: string }} The patterns.
  */
 export function build(lists) {
   const tools = alternation(lists.tools)
+  const subject = alternation(lists.subjectVerbs)
+  const nouns = alternation(lists.nounsBy)
+  // The start of a line, with the marks a list item, a quote, a heading or an emphasis puts before the text.
+  const lineStart = `^[ \\t>*_\`(\\[-]*(\\d+[.)][ \\t]*)?`
   const common = [
-    // A trailer of any `-by` kind that names a tool: Co-authored-by, Signed-off-by, Reviewed-by, Assisted-by, ...
-    `^[ \\t>]*[a-z][a-z-]*-by[ \\t]*:[^\\n]*\\b(${tools})\\b`,
+    // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
+    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:([^\\n]*\\b(${tools})\\b|[ \\t]*(ai|llm)[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
     `noreply@(anthropic|openai|claude)\\.`,
-    `\\b(${tools})\\[bot\\]`,
+    `\\b(${tools})(\\[bot\\]|[ -](bot|agent|assistant)\\b)`,
     `🤖[^\\n]*\\b(${tools})\\b`,
-    // A signature line that says only that an AI wrote it; a sentence about AI-generated content is not one.
-    `^[ \\t>*_-]*[\\[(]?(ai[- ](generated|assisted|authored|written)|(generated|assisted|authored|written|created|made)\\s+(with|by)\\s+ai)[\\])]?[ \\t.]*$`,
+    `\\b(made|built|crafted)\\s+with\\s+[^\\n]{1,12}\\s+and\\s+(${tools})\\b`,
     `\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(${tools})\\b`,
-    `\\b(thanks\\s+to|courtesy\\s+of)\\s+(${tools})\\b`,
+    `\\b(thanks\\s+to|courtesy\\s+of|powered\\s+by)\\s+(${tools})\\b`,
+    `\\bpair[- ]programm(ed|ing)\\s+with\\s+(${tools})\\b`,
+    `\\b(${tools})\\s+(${subject})\\s+(this|it|these|the\\s+(change|commit|pr|patch|code))\\b`,
+    `\\b(${nouns})\\s+(by|from)\\s+(the\\s+)?(${tools})\\b`,
+    // A signature line that says only that an AI wrote it; a sentence about AI-generated content is not one.
+    `^[ \\t>*_-]*[\\[(]?(ai[- ](generated|assisted|authored|written)|(generated|assisted|authored|written|created|made)\\s+(with|by)\\s+ai)[\\])]?[ \\t.]*\\r?$`,
   ]
-  const phrase = (verbs) =>
-    `\\b(${alternation(verbs)})\\s+(with|by|using)\\s+(the\\s+|an?\\s+|\\[)?(${tools})\\b`
+  const production = `(${alternation(lists.productionVerbs)})\\s+(with|by|using|via|through)`
+  const judgement = `(${alternation(lists.judgementVerbs)})\\s+by`
+  const strictBy = `(${alternation(lists.strictByVerbs)})\\s+by`
+  const phrase = `(${production}|${judgement})\\s+(the\\s+|an?\\s+|\\[)?(${tools})\\b`
   const strict = [
     ...common,
-    phrase([...lists.verbs, ...lists.strictVerbs]),
+    `\\b(${production}|${judgement}|${strictBy})\\s+(the\\s+|an?\\s+|\\[)?(${tools})\\b`,
+    `\\b(${tools})\\s+(review|reviewer|findings?)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     `\\bclaude([^.]|$)`,
   ]
@@ -45,7 +56,9 @@ export function build(lists) {
   const nearWords = alternation(lists.narrowNearWords)
   const narrow = [
     ...common,
-    phrase(lists.verbs),
+    // A verb phrase counts only at the start of a line: a sentence that cites a vendor's documents or says what its
+    // models generate is not an attribution.
+    `${lineStart}${phrase}`,
     `\\b(${near})\\s*(\\+|and|&|/|,)\\s*(${near})\\b`,
     `\\b(${near})\\b[^\\n]{0,20}\\b(${nearWords})\\b`,
   ]

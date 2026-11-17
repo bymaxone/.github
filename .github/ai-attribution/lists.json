@@ -1,14 +1,14 @@
 {
-  "description": "The lists the patterns are built from: the names of the tools, the verbs that attribute work to them, and the word lists of the strict-only and narrow-only phrasings. Edit here, then run build-patterns.mjs.",
+  "description": "The lists the patterns are built from by build-patterns.mjs.",
   "tools": [
     "claude", "anthropic", "codex", "openai", "chatgpt", "gpt", "copilot", "gemini", "cursor", "windsurf",
     "devin", "aider", "codeium", "tabnine", "bard", "grok", "deepseek", "mistral", "kiro", "perplexity"
   ],
-  "verbs": [
-    "generated", "authored", "co-authored", "reviewed", "assisted", "approved", "audited", "verified",
-    "drafted", "checked", "proposed", "suggested"
-  ],
-  "strictVerbs": ["created", "written", "made", "produced", "built", "fixed", "implemented"],
+  "productionVerbs": ["generated", "authored", "co-authored", "assisted", "drafted", "created", "produced"],
+  "judgementVerbs": ["reviewed", "approved", "audited", "verified", "checked", "proposed", "suggested"],
+  "strictByVerbs": ["written", "made", "built", "fixed", "implemented"],
+  "subjectVerbs": ["reviewed", "wrote", "authored", "generated", "created", "co-authored", "approved", "drafted"],
+  "nounsBy": ["review", "approval", "authorship", "co-authorship", "assistance", "sign-off"],
   "bareWordsStrict": ["codex", "anthropic", "chatgpt"],
   "narrowNear": ["claude", "codex"],
   "narrowNearWords": ["review", "reviews", "pass", "reviewer", "bot", "finding", "findings"]

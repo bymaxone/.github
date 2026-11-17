@@ -64,6 +64,12 @@ test('the rule has an always form only: a never form is refused instead of read 
   assert.throws(() => rule({ raw: 'feat: fine' }, 'never'), /always/);
 });
 
+test('a line or paragraph separator inside what matched does not split the shown text either', () => {
+  const [valid, message] = check('strict', 'feat: x\n\n\u{1F916}\u2028Generated with Claude');
+  assert.equal(valid, false);
+  assert.doesNotMatch(message, /[\n\r\u2028\u2029\u0085]/);
+});
+
 test('the default export is the strict profile and a message with nothing to read is accepted', () => {
   assert.equal(plugin.rules['no-ai-attribution']({ raw: "feat(prices): add claude-opus pricing" })[0], false);
   assert.equal(plugin.rules['no-ai-attribution']({ raw: '' })[0], true);
