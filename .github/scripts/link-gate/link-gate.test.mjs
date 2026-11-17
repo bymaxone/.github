@@ -3,7 +3,9 @@
 // nothing: no token, no real network, a timeout, and (on Linux) no network namespace and another identity.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { checkFamily, readScript, report } from './check-family.mjs';
 import { CASES, mismatches, patched } from './matrix.mjs';
@@ -169,4 +171,24 @@ test('the link-check template is not accepted once a decision is removed from it
   // The stub resolves every name to a public address, so the literal check is the only guard an IPv4 literal meets.
   const priv = mismatched(mutate('if (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(h)) {', 'if (false) {'));
   assert.deepEqual(priv, ['https://10.0.0.1/private: wanted fail, got ok']);
+});
+
+// A raw HTML link is a link in either quote style. Each case needs no network: a relative target that does not
+// exist, an anchor with no heading, and a private IPv4 literal, which is refused before anything is requested.
+test('the link-check template checks raw HTML hrefs in single quotes as it does in double quotes', async () => {
+  const { checkLinks } = await import(new URL('../../script-templates/published-surface-links/published-surface-links.mjs', import.meta.url));
+  const root = mkdtempSync(join(tmpdir(), 'links-quotes-'));
+  try {
+    for (const quote of ['"', "'"]) {
+      const failures = [];
+      const readme = `# Title\n\n<a href=${quote}missing.md${quote}>a</a> <a href=${quote}#no-such-heading${quote}>b</a> <a href=${quote}https://10.0.0.1/x${quote}>c</a>\n`;
+      await checkLinks({ readme, root, fail: (...args) => failures.push(args.join(' ')) });
+      assert.equal(failures.length, 3, `${quote}: ${JSON.stringify(failures)}`);
+      assert.ok(failures.some((f) => f.includes('missing.md does not exist')), failures.join('|'));
+      assert.ok(failures.some((f) => f.includes('#no-such-heading matches no heading')), failures.join('|'));
+      assert.ok(failures.some((f) => f.includes('https://10.0.0.1/x')), failures.join('|'));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

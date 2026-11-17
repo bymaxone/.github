@@ -164,6 +164,12 @@ async function fetchChecked(url, init, hops = 0) {
   return fetchChecked(next, init, hops + 1)
 }
 
+
+/** The `href` of every raw HTML anchor in a text, whichever quote it is written with. */
+function rawHrefs(text) {
+  return [...text.matchAll(/<a\s+href=(?:"([^"]+)"|'([^']+)')/g)].map((m) => m[1] ?? m[2])
+}
+
 /**
  * Checks every link in the README: anchors against its headings, relative paths against the
  * repository, and external URLs over the network.
@@ -190,13 +196,15 @@ export async function checkLinks({ readme, root, fail }) {
   const clickable = README_PROSE.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
   const links = new Set([
     ...[...clickable.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map((m) => m[1]),
-    ...[...clickable.matchAll(/<a\s+href="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
+    ...rawHrefs(clickable).filter((href) => /^https?:\/\//.test(href))
   ])
   // Both spellings: the section links are Markdown, but the header navigation is
   // raw HTML, so both are collected or the nav bar goes unchecked.
   const internal = new Set([
     ...[...README_PROSE.matchAll(/\[[^\]]*\]\((#[^)\s]+)\)/g)].map((m) => m[1].toLowerCase()),
-    ...[...README_PROSE.matchAll(/<a\s+href="(#[^"]+)"/g)].map((m) => m[1].toLowerCase())
+    ...rawHrefs(README_PROSE)
+      .filter((href) => href.startsWith('#'))
+      .map((href) => href.toLowerCase())
   ])
 
   // Relative links are the ones most likely to rot — a file gets renamed and
@@ -205,7 +213,7 @@ export async function checkLinks({ readme, root, fail }) {
   const relative = new Set(
     [
       ...[...clickable.matchAll(/\[[^\]]*\]\((?!https?:|#|mailto:)([^)\s]+)\)/g)].map((m) => m[1]),
-      ...[...clickable.matchAll(/<a\s+href="(?!https?:|#|mailto:)([^"]+)"/g)].map((m) => m[1])
+      ...rawHrefs(clickable).filter((href) => !/^(?:https?:|#|mailto:)/.test(href))
     ]
       .map((target) => target.split('#')[0])
       .filter(Boolean)
