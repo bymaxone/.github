@@ -1,6 +1,7 @@
 declare const cmd: string;
 declare const arg: string;
 declare const args: string[];
+declare const someShell: string;
 declare const base: object;
 
 // ruleid: bymax.js.child-process-spawn-shell-command
@@ -53,3 +54,12 @@ require(`child_process`).spawn(cmd, [], { shell: true });
 require('some-other-module').spawn(cmd, [], { shell: true });
 // ok: bymax.js.child-process-spawn-shell-argument
 require('some-other-module').spawn('echo', [arg], { shell: true });
+// A string shell and a value that is only known at run time are findings: either can name a shell.
+// ruleid: bymax.js.child-process-spawn-shell-command
+require('child_process').spawn(cmd, [], { shell: '/bin/bash' });
+// ruleid: bymax.js.child-process-spawn-shell-command
+require('child_process').spawn(cmd, [], { shell: someShell });
+// ruleid: bymax.js.child-process-spawn-shell-argument
+require('child_process').spawn('echo', [arg], { shell: '/bin/bash' });
+// ruleid: bymax.js.child-process-spawn-shell-argument
+require('child_process').spawn('echo', [arg], { shell: someShell });

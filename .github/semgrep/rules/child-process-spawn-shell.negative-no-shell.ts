@@ -22,6 +22,22 @@ execFile(cmd, [arg]);
 execFile(cmd, [arg], () => {});
 // ok: bymax.js.child-process-spawn-shell-argument
 execFile('echo', [arg], { shell: false }, () => {});
+// ok: bymax.js.child-process-spawn-shell-command
+cp.spawn(cmd, [arg], { shell: undefined });
+// ok: bymax.js.child-process-spawn-shell-argument
+cp.spawn('echo', [arg], { shell: undefined });
+// ok: bymax.js.child-process-spawn-shell-command
+cp.spawn(cmd, [arg], { shell: 0 });
+// ok: bymax.js.child-process-spawn-shell-argument
+cp.spawn('echo', [arg], { shell: 0 });
+// ok: bymax.js.child-process-spawn-shell-command
+cp.spawn(cmd, [arg], { shell: '' });
+// ok: bymax.js.child-process-spawn-shell-argument
+cp.spawn('echo', [arg], { shell: '' });
+// ok: bymax.js.child-process-spawn-shell-command
+cp.spawn(cmd, [arg], { shell: "" });
+// ok: bymax.js.child-process-spawn-shell-argument
+cp.spawn('echo', [arg], { shell: "" });
 
 // The anchor the rule test harness needs to pair this file with the rule: a real finding, so that
 // the ok cases above are judged against a rule that does match something in this file.

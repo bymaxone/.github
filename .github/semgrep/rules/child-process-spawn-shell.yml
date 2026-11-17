@@ -139,6 +139,9 @@ rules:
           metavariable: $SH
           patterns:
             - pattern-not: 'false'
+            - pattern-not: 'undefined'
+            - pattern-not: '0'
+            - pattern-not: "''"
       - metavariable-pattern:
           metavariable: $CMD
           patterns:
@@ -283,6 +286,9 @@ rules:
           metavariable: $SH
           patterns:
             - pattern-not: 'false'
+            - pattern-not: 'undefined'
+            - pattern-not: '0'
+            - pattern-not: "''"
       - metavariable-pattern:
           metavariable: $ARG
           patterns:
