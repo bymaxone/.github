@@ -315,7 +315,7 @@ out-of-memory restart of a worker as the target.
 | `break-threshold` | _(config's `thresholds.break`)_ | Enforced once, on the merged score, because a shard scores only its slice    |
 | `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
 | `full-command`    | `pnpm mutation:full`       | the command that runs the suite cold; it must delete the incremental file first, and runs as a shell command: a literal, never event text |
-| `score-paths`     | _(a list of source, test and config paths)_ | pathspecs that can move the score; wider than the per-push glob on purpose (a changed test moves it too) |
+| `score-paths`     | _(see the workflow)_ | pathspecs that can move the score; wider than the per-push glob on purpose (a changed test moves it too) |
 | `inventory-exempt` | `scripts/mutation-inventory.exempt.json` | spec files the run may leave out, as `[{ "file", "reason" }]` |
 | `inventory-jest-config` | `jest.config.ts`      | the unit Jest config whose tests the mutation run must have run |
 
