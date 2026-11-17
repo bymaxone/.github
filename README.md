@@ -295,6 +295,10 @@ runs as one job by default. When a library's mutant count stops fitting one runn
 worker grows to several GiB over a long run, and a lost runner reports no error), set
 `shards` above 1 and the run is split across runners and merged.
 
+Two caller choices need a measurement, not a guess. `timeout-minutes` should be at least 1.5
+times the wall time of the last cold run (the slowest shard, when sharded), with the run and its
+minutes in a comment beside the value. Size `concurrency` from the shard's peak memory.
+
 | Input             | Default                    | What it does                                                                      |
 | ----------------- | -------------------------- | --------------------------------------------------------------------------------- |
 | `shards`          | `1`                        | `1` is the single job. Above 1: plan, one cold job per shard, one aggregate job   |
