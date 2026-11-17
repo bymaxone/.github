@@ -10,10 +10,70 @@ rules:
       category: security
     patterns:
       - pattern-either:
-          - pattern: $CP.exec($CMD, ...)
-          - pattern: $CP.execSync($CMD, ...)
-          - pattern: exec($CMD, ...)
-          - pattern: execSync($CMD, ...)
+          - patterns:
+              - pattern-either:
+                  - pattern: $CP.exec($CMD, ...)
+                  - pattern: $CP.execSync($CMD, ...)
+              - pattern-inside: |
+                  const $CP = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: $CP.exec($CMD, ...)
+                  - pattern: $CP.execSync($CMD, ...)
+              - pattern-inside: |
+                  $CP = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: $CP.exec($CMD, ...)
+                  - pattern: $CP.execSync($CMD, ...)
+              - pattern-inside: |
+                  import * as $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: $CP.exec($CMD, ...)
+                  - pattern: $CP.execSync($CMD, ...)
+              - pattern-inside: |
+                  import $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: $F($CMD, ...)
+              - pattern-inside: |
+                  import { ..., $F, ... } from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $F
+                  regex: ^(exec|execSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: $F($CMD, ...)
+              - pattern-inside: |
+                  const { ..., $F, ... } = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $F
+                  regex: ^(exec|execSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
           - pattern: '$CP.spawn($CMD, ..., { ..., shell: true, ... })'
           - pattern: '$CP.spawnSync($CMD, ..., { ..., shell: true, ... })'
           - pattern: 'spawn($CMD, ..., { ..., shell: true, ... })'

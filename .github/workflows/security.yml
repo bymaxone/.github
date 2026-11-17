@@ -208,7 +208,10 @@ jobs:
           top=$(tar -tzf "$archive" | sed -n 1p)
           [[ "$top" =~ ^[^/]+-${WORKFLOW_SHA:0:7}/$ ]] || fail "The archive's top directory '$top' does not name commit ${WORKFLOW_SHA:0:7}."
           tar -xzf "$archive" -C "$rules" --strip-components=4 "${top}.github/semgrep/rules"
-          # The rule tests sit beside the rules; only the rules are loaded.
+          # Only regular `.yml` files and the directories holding them are loaded. The rule tests sit
+          # beside the rules; a symlink, a device or any other entry is removed first, so nothing
+          # outside the archive can be read through the mount.
+          find "$rules" ! -type f ! -type d -delete
           find "$rules" -type f ! -name '*.yml' -delete
           [ -n "$(find "$rules" -type f -name '*.yml' -print -quit)" ] || fail "There are no rules in $WORKFLOW_SHA."
           echo "SEMGREP_RULES=$rules" >> "$GITHUB_ENV"
@@ -236,7 +239,23 @@ jobs:
           done < "$RUNNER_TEMP/semgrep-config.txt"
 
           show() { sed 's/^/  | /' "$1"; }
-          summary() { { echo "### Semgrep"; echo; echo "$1"; echo; echo '```'; sed -n '1,200p' "$2"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"; }
+          # The output sits in a code fence one backtick longer than the longest run of backticks in it
+          # (three at least), so a snippet that holds a fence cannot close this one. Only the first 200
+          # lines are shown; the summary says how many were cut.
+          limit=200
+          cut=0
+          summary() {
+            local fence lines
+            fence=$(awk '{ while (match($0, /`+/)) { if (RLENGTH > n) n = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } } END { s = "```"; for (i = 3; i <= n; i++) s = s "`"; print s }' "$2")
+            lines=$(wc -l < "$2" | tr -d ' ')
+            cut=0
+            [ "$lines" -le "$limit" ] || cut=$((lines - limit))
+            {
+              echo "### Semgrep"; echo; echo "$1"; echo
+              [ "$cut" -eq 0 ] || { echo "Only the first $limit of $lines lines are shown; $cut lines were cut."; echo; }
+              echo "$fence"; sed -n "1,${limit}p" "$2"; echo "$fence"
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
 
           docker run --rm --volume "${GITHUB_WORKSPACE}:/src:ro" --volume "${SEMGREP_RULES}:/rules:ro" --workdir /src "${SEMGREP_IMAGE}" \
             semgrep scan --metrics=off --error --disable-version-check --config /rules ${config_args[@]+"${config_args[@]}"} \
@@ -253,11 +272,13 @@ jobs:
             1)
               show "$out"
               summary "Findings:" "$out"
+              where="the list is in the job summary"
+              [ "$cut" -eq 0 ] || where="the first $limit lines are in the job summary"
               if [ "$SEMGREP_MODE" = "warn" ]; then
-                echo "::warning title=semgrep::Semgrep reported findings (warn mode; the list is in the job summary)."
+                echo "::warning title=semgrep::Semgrep reported findings (warn mode; $where)."
                 exit 0
               fi
-              echo "::error title=semgrep::Semgrep reported findings."
+              echo "::error title=semgrep::Semgrep reported findings ($where)."
               exit 1
               ;;
             *)

@@ -17,4 +17,4 @@ rules:
           - pattern: "{ ..., $VAR: <... Math.random() ...>, ... }"
       - metavariable-regex:
           metavariable: $VAR
-          regex: (?i)^.*(token|secret|password|passwd|nonce|apikey|api_key|session|otp|id)$
+          regex: (?i:^.*(token|secret|password|passwd|nonce|apikey|api_key|session|otp)$)|^(id|.*Id|.*[_-]id)$

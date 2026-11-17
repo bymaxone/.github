@@ -6,7 +6,7 @@
 // release-family checks do, so these tests need `ruby`.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -127,4 +127,56 @@ for (const bad of ['p/x;id', '$(id)', '--config', 'https://evil.example/r.yml', 
 test('a mode other than warn or enforce is rejected', () => {
   assert.equal(validate('', 'off').status, 1);
   assert.equal(validate('', 'WARN').status, 1);
+});
+
+test('the summary fence is computed from the output and a cut list is announced', () => {
+  assert.match(scan, /RLENGTH > n/, 'the longest run of backticks is measured');
+  assert.match(scan, /lines were cut/);
+  assert.match(scan, /the first \$limit lines are in the job summary/);
+  assert.doesNotMatch(scan, /echo '```'/, 'no fixed fence');
+});
+
+// The summary helper is executed against output that holds fences of its own.
+function summarize(output, message = 'Findings:') {
+  const dir = mkdtempSync(join(tmpdir(), 'semgrep-summary-'));
+  const helper = scan.match(/limit=200[\s\S]*?\n}\n/)?.[0] ?? 'exit 99';
+  writeFileSync(join(dir, 'out'), output);
+  const result = spawnSync('bash', ['-c', `${helper}\nsummary "$MESSAGE" "$OUT"`], {
+    env: { PATH: process.env.PATH, GITHUB_STEP_SUMMARY: join(dir, 'summary'), MESSAGE: message, OUT: join(dir, 'out') },
+    encoding: 'utf8',
+  });
+  const summary = existsSync(join(dir, 'summary')) ? readFileSync(join(dir, 'summary'), 'utf8') : '';
+  rmSync(dir, { recursive: true, force: true });
+  return { status: result.status, summary };
+}
+
+test('the fence is longer than every run of backticks in the output', () => {
+  const r = summarize('a\n```\nb ``` c\n````\n`x`\n');
+  assert.equal(r.status, 0);
+  const lines = r.summary.split('\n');
+  const wrapper = lines.filter((l) => l === '`````');
+  assert.equal(wrapper.length, 2, 'the wrapper is five backticks, one more than the longest run of four');
+  assert.equal(lines.indexOf('`````'), lines.indexOf('a') - 1);
+  assert.equal(lines.lastIndexOf('`````'), lines.length - 2);
+});
+
+test('the fence is three backticks when the output has none', () => {
+  const r = summarize('plain\n');
+  assert.match(r.summary, /\n```\nplain\n```\n$/);
+  assert.doesNotMatch(r.summary, /were cut/);
+});
+
+test('a list longer than the 200 lines shown says how many lines were cut', () => {
+  const r = summarize(Array.from({ length: 230 }, (_, i) => `line ${i + 1}`).join('\n') + '\n');
+  assert.match(r.summary, /Only the first 200 of 230 lines are shown; 30 lines were cut\./);
+  assert.ok(r.summary.includes('line 200\n') && !r.summary.includes('line 201\n'));
+});
+
+test('symlinks and other non-regular entries are removed before the non-yml files', () => {
+  const fetch = steps.find((s) => s.name?.startsWith('Fetch the vendored rules')).run;
+  const links = fetch.indexOf('find "$rules" ! -type f ! -type d -delete');
+  const others = fetch.indexOf("find \"$rules\" -type f ! -name '*.yml' -delete");
+  assert.ok(links >= 0, 'the symlink-removing find exists');
+  assert.ok(others > links, 'it precedes the non-yml deletion');
+  assert.ok(fetch.indexOf("-name '*.yml' -print -quit") > others, 'the non-empty check stays last');
 });

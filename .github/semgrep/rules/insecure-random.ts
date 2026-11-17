@@ -17,3 +17,15 @@ const delay = 1000 + Math.random() * 250;
 const tokenValue = crypto.randomUUID();
 // ok: bymax.js.math-random-secret
 const width = Math.random();
+
+// ok: bymax.js.math-random-secret
+const valid = Math.random() < 0.5;
+// ok: bymax.js.math-random-secret
+const grid = Math.random();
+
+// ruleid: bymax.js.math-random-secret
+const userId = Math.random();
+// ruleid: bymax.js.math-random-secret
+const session_id = 'sess-' + Math.random();
+// ruleid: bymax.js.math-random-secret
+const id = Math.random().toString(36);
