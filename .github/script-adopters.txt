@@ -1,0 +1,5 @@
+# Repositories that carry a copy of a script template, one per line: `owner/name template`.
+# `template` is a directory of .github/script-templates. Each file the template's template.json lists must be
+# byte-identical in the repository at the commit its default branch points to (script-family-check.yml).
+# The per-repository data a template reads (its baseline) is not part of the template and is not compared.
+bymaxone/nest-auth check-double-assertions

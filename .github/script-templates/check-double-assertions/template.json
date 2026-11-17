@@ -1,0 +1,6 @@
+{
+  "files": [
+    { "source": "check-double-assertions.mjs", "target": "scripts/check-double-assertions.mjs" },
+    { "source": "check-double-assertions.spec.ts", "target": "src/check-double-assertions.spec.ts" }
+  ]
+}
