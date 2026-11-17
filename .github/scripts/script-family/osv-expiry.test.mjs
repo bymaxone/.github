@@ -92,3 +92,11 @@ test('text from another repository file cannot add a workflow command or a line'
   }
   for (const out of lines) assert.equal(/[\r]|::error/.test(out), false, out);
 });
+
+test('a date that does not exist is unreadable, a time after a space is kept, and markdown cannot reach the summary', () => {
+  const text = '[[IgnoredVulns]]\nid = "A"\nignoreUntil = 2026-02-30\n[[IgnoredVulns]]\nid = "B"\nignoreUntil = 2026-12-01 10:00:00\n';
+  assert.deepEqual(ignores(text).map(({ id }) => id), ['B']);
+  assert.equal(unreadable(text), 1);
+  assert.equal(ignores(text)[0].until.toISOString(), '2026-12-01T10:00:00.000Z');
+  assert.equal(/[\[\]()<>`]/.test(clean('[click](https://evil.example) <b>`x`')), false);
+});

@@ -32,14 +32,17 @@ function blocks(toml) {
     const body = next === -1 ? block : block.slice(0, next);
     const id = /^\s*id\s*=\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)')/m.exec(body);
     if (!id) continue;
-    const raw = /^\s*ignoreUntil\s*=\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s#]+))/m.exec(body);
+    const raw = /^\s*ignoreUntil\s*=\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}[^\s#]*)?|[^\s#]+))/m.exec(body);
     const text = raw?.[1] ?? raw?.[2] ?? raw?.[3];
     let until = null;
     if (text !== undefined) {
       const parts = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:\d{2})?)?$/.exec(text);
       if (parts) {
         const date = new Date(`${parts[1]}T${parts[2] ?? '00:00:00'}${parts[3] ?? 'Z'}`);
-        until = Number.isNaN(date.getTime()) ? null : date;
+        // A shape that parses is not a date that exists: 2026-02-30 would be read as March.
+        const day = new Date(`${parts[1]}T00:00:00Z`);
+        const real = !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === parts[1];
+        until = Number.isNaN(date.getTime()) || !real ? null : date;
       }
     }
     found.push({ id: id[1] ?? id[2], until, dated: text !== undefined });
@@ -54,7 +57,7 @@ export function unreadable(toml) {
 
 /** Text from another repository's file, made safe to print in a workflow command and a summary. */
 export function clean(text) {
-  return String(text).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029%]/g, '').replace(/::/g, ':').slice(0, 80);
+  return String(text).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029%\[\]()<>`*_|!&\\]/g, '').replace(/::/g, ':').slice(0, 80);
 }
 
 /** The ignores that end within `days` days of `now`, or already have, soonest first, with the whole days left. */
