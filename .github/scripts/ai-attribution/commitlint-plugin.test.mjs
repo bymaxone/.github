@@ -34,7 +34,7 @@ test('a refusal carries a message that names what matched and says to reword', (
 });
 
 test('what matched is shown on one line, even when the match spans a line break', () => {
-  const [valid, message] = check('narrow', 'feat: x\n\nreviewed by Claude\n+\nCodex');
+  const [valid, message] = check('narrow', 'feat: x\n\nClaude\n+\nCodex');
   assert.equal(valid, false);
   assert.doesNotMatch(message, /[\n\r]/);
   assert.match(message, /Claude \+ Codex/);
@@ -62,6 +62,12 @@ test('the rule has an always form only: a never form is refused instead of read 
   const rule = plugin.rules['no-ai-attribution'];
   assert.equal(rule({ raw: 'feat: fine' }, 'always')[0], true);
   assert.throws(() => rule({ raw: 'feat: fine' }, 'never'), /always/);
+});
+
+test('a line or paragraph separator inside what matched does not split the shown text either', () => {
+  const [valid, message] = check('strict', 'feat: x\n\n\u{1F916}\u2028Generated with Claude');
+  assert.equal(valid, false);
+  assert.doesNotMatch(message, /[\n\r\u2028\u2029\u0085]/);
 });
 
 test('the default export is the strict profile and a message with nothing to read is accepted', () => {
