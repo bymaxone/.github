@@ -1,5 +1,5 @@
 """Warns before an `ignoreUntil` date of an adopter's osv-scanner.toml, so a dependency audit does not go red on the
-day an ignored advisory comes back. Layer: CI tooling for script-family-check.yml.
+day an ignored advisory comes back.
 
     python3 -I osv_expiry.py --list <file> [--days 21] [--summary <file>] [--from-dir <dir>]
     python3 -I osv_expiry.py --file <toml> --now <iso> [--days 21]      (one file, for tests)
@@ -60,7 +60,7 @@ def moment(value):
 
 
 def ignores(document):
-    """`(id, until or None)` for each `[[IgnoredVulns]]` table that names an id; None when the date is absent or no date."""
+    """`(id, until or None, dated)` for each `[[IgnoredVulns]]` table that names an id; `dated` is whether the key is present."""
     found = []
     for table in document.get("IgnoredVulns", []):
         if not isinstance(table, dict) or not isinstance(table.get("id"), str):
