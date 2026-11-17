@@ -594,6 +594,20 @@ describe('against a base revision', () => {
     assert.match(result.output, /not a revision in this repository/)
   })
 
+  // Scenario: `--base` or `--baseline` is the last argument, so it has no value,
+  // in a repository whose baseline widened. Expected: exit 2 naming the option, not exit 0. Why: a truncated or
+  // mistyped invocation must not read as "no base revision" and switch the widening guard off.
+  it('refuses an option that has no value', () => {
+    const root = repo({ 'src/a.spec.ts': BAD + BAD }, { files: { 'src/a.spec.ts': 1 } })
+    commitBase(root)
+    setBaseline(root, { files: { 'src/a.spec.ts': 2 } })
+    for (const args of [['--base'], ['--baseline']]) {
+      const result = run(root, ...args)
+      assert.equal(result.status, 2, args.join(' '))
+      assert.match(result.output, new RegExp(`${args[0]} needs a value`))
+    }
+  })
+
   // Scenario: a base revision that has no baseline file. Expected: nothing is imposed, exit 0.
   // Why: that is the change that introduces the baseline.
   it('imposes nothing when the base has no baseline file', () => {
