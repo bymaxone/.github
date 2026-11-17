@@ -10,8 +10,6 @@ A script or a spec that every library copies, kept here once so that a copy that
 - Data a template reads (a baseline, a list of exclusions) stays in the library and is not compared.
 - To change a template, change it here, then update each adopter's copy. The check is red for an adopter
   until it has.
-- Every template spec declares `@layer tests`: a library either uses the family `check-spec-headers` template, or accepts
-  `tests` in the list of layers its own spec-header gate allows.
 
 ## check-double-assertions
 
