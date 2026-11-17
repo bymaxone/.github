@@ -30,8 +30,11 @@ on:
 permissions:
   contents: read
 
+# Release runs queue one behind another (a version tag has dots, the alias does not). The run that the
+# alias move causes, by pushing `v1`, is in a group of its own: it only skips, and in the shared group it
+# would take the single pending place of a release tag pushed meanwhile and cancel that release.
 concurrency:
-  group: release-major-alias
+  group: ${{ contains(github.ref_name, '.') && 'release-major-alias' || 'release-major-alias-alias' }}
   cancel-in-progress: false
 
 jobs:
