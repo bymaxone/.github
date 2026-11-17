@@ -238,7 +238,9 @@ jobs:
             [ -n "$token" ] && config_args+=(--config "$token")
           done < "$RUNNER_TEMP/semgrep-config.txt"
 
-          show() { sed 's/^/  | /' "$1"; }
+          # A carriage return is dropped from everything that came from the scanned tree: a runner may read
+          # it as the end of a log line, and what follows would then start a line of its own.
+          show() { tr -d '\r' < "$1" | sed 's/^/  | /'; }
           # The output sits in a code fence one backtick longer than the longest run of backticks in it
           # (three at least), so a snippet that holds a fence cannot close this one. Only the first 200
           # lines are shown; the summary says how many were cut.
@@ -246,14 +248,14 @@ jobs:
           cut=0
           summary() {
             local fence lines
-            fence=$(awk '{ while (match($0, /`+/)) { if (RLENGTH > n) n = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } } END { s = "```"; for (i = 3; i <= n; i++) s = s "`"; print s }' "$2")
-            lines=$(awk 'END { print NR }' "$2")
+            fence=$(awk '{ while (match($0, /`+/)) { if (RLENGTH > n) n = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } } END { s = "```"; for (i = 3; i <= n; i++) s = s "`"; print s }' < <(tr -d '\r' < "$2"))
+            lines=$(tr -d '\r' < "$2" | awk 'END { print NR }')
             cut=0
             [ "$lines" -le "$limit" ] || cut=$((lines - limit))
             {
               echo "### Semgrep"; echo; echo "$1"; echo
               [ "$cut" -eq 0 ] || { echo "Only the first $limit of $lines lines are shown; $cut lines were cut."; echo; }
-              echo "$fence"; sed -n "1,${limit}p" "$2"; echo "$fence"
+              echo "$fence"; tr -d '\r' < "$2" | awk -v n="$limit" 'NR <= n'; echo "$fence"
             } >> "$GITHUB_STEP_SUMMARY"
           }
 

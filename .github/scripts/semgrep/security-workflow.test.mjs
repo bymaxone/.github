@@ -186,3 +186,26 @@ test('a last line without a trailing newline is counted, so the cut count is exa
   assert.match(r.summary, /Only the first 200 of 201 lines are shown; 1 lines were cut\./);
   assert.ok(r.summary.includes('line 200\n') && !r.summary.includes('line 201\n'));
 });
+
+// Output that came from the scanned tree is data. A lone carriage return could start a new log line on the
+// runner, so none reaches the log or the summary, and the closing fence of the summary is a line of its own.
+test('a carriage return in the output cannot start a workflow command in the log or the summary', () => {
+  const show = scan.match(/show\(\) \{[^\n]*\}/)?.[0] ?? 'exit 99';
+  const dir = mkdtempSync(join(tmpdir(), 'semgrep-show-'));
+  writeFileSync(join(dir, 'out'), 'finding\r::error::injected\nnext\r\nlast');
+  const shown = spawnSync('bash', ['-c', `${show}\nshow "$OUT"`], { env: { PATH: process.env.PATH, OUT: join(dir, 'out') }, encoding: 'utf8' });
+  rmSync(dir, { recursive: true, force: true });
+  assert.equal(shown.status, 0);
+  assert.doesNotMatch(shown.stdout, /\r/, 'the log carries no carriage return');
+  assert.ok(shown.stdout.split('\n').filter(Boolean).every((line) => line.startsWith('  | ')), shown.stdout);
+  const r = summarize('finding\r::error::injected\n');
+  assert.doesNotMatch(r.summary, /\r/, 'the summary carries no carriage return');
+});
+
+test('the closing fence of the summary is a line of its own when the output has no trailing newline', () => {
+  const r = summarize('a\nb\nc');
+  const lines = r.summary.split('\n');
+  const close = lines.lastIndexOf('```');
+  assert.ok(close > lines.indexOf('c'), r.summary);
+  assert.equal(lines[close - 1], 'c', 'the last output line is followed by a newline, then the fence');
+});

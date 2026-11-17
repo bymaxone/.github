@@ -8,8 +8,10 @@ rules:
     metadata:
       cwe: ["CWE-328: Use of Weak Hash"]
       category: security
-    pattern-either:
-      - pattern: $C.createHash("md5", ...)
-      - pattern: $C.createHash("sha1", ...)
-      - pattern: createHash("md5", ...)
-      - pattern: createHash("sha1", ...)
+    patterns:
+      - pattern-either:
+          - pattern: $C.createHash($ALGORITHM, ...)
+          - pattern: createHash($ALGORITHM, ...)
+      - metavariable-regex:
+          metavariable: $ALGORITHM
+          regex: (?i)^["'](md5|sha-?1|rsa-sha1)["']$
