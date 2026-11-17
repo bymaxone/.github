@@ -22,7 +22,7 @@ const alternation = (words) =>
  */
 export function build(lists) {
   const tools = alternation([...lists.tools, ...lists.toolSpellings])
-  const toolEnd = `[ \\t]*[.!]+([ \\t]|\\r?$)|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
+  const toolEnd = `[ \\t]*[.!]+[*_\`\\])}>"'”’]*([ \\t]|\\r?$)|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
   // A name that is also an ordinary word (cursor, gemini, aider, mistral) is read as the tool after a credit verb only
   // where it ends the phrase: `Built with <tool>.`, not `Paginated with cursor-based offsets`.
   const ambiguous = new Set(lists.ambiguousTools)
@@ -147,7 +147,7 @@ export function build(lists) {
     // Words that name the tool's product (ai, a product word, a version or a number) may follow it, and a comma that
     // goes on with another verb ends the phrase too; `Made by <vendor>, priced per token` and a noun after the tool
     // (`<tool> bindings`) are sentences about the vendor.
-    `${lineStart}${narrowCredit}${gapL}(${tools})([ \\t]+(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|[a-z]?[0-9][0-9.]*))*[*_\`\\])}>"'”’]*(${toolEnd}|,[ \\t]+(and|&)[ \\t])`,
+    `${lineStart}${narrowCredit}${gapL}(${tools})([ \\t]+(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|[a-z]?[0-9][0-9.]*))*[*_\`\\])}>"'”’]*(${toolEnd}|,[ \\t]+(and|&)[ \\t]+${andMarks}${andWords}((${participle})([ \\t]|\\r?$)|(${tools})${after}))`,
     `\\b(${near})\\s*(\\+|and|&|/|,)\\s*(${near})\\b`,
     `\\b(${near})\\b[^\\n]{0,20}\\b(${nearWords})\\b`,
   ]

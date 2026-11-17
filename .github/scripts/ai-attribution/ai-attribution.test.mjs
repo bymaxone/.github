@@ -1288,6 +1288,11 @@ test('narrow: a product word, a number or a comma and ends the credit phrase aft
     'Made with Gemini Pro.',
     'Built with Cursor v0.4',
     'Raised by Codex CLI',
+    '**Built with Cursor.**',
+    '*Raised by Codex.*',
+    'Built with Cursor.)',
+    'Built with Cursor, and then reviewed',
+    'Built with Cursor, and Copilot',
   ]) {
     assert.equal(narrow.test(message), true, `narrow: ${message}`)
     assert.equal(strict.test(message), true, `strict: ${message}`)
@@ -1299,6 +1304,8 @@ test('narrow: a product word, a number or a comma and ends the credit phrase aft
     'Built with Gemini 2.5 Flash on 200 prompts',
     'Built with Cursor for the editor tests',
     'Tested with Gemini 2.5 Flash on 200 prompts',
+    'Built with Gemini, and bindings are generated from the SDK',
+    'Built with Gemini, and the SDK is documented',
   ]) {
     assert.equal(narrow.test(message), false, `narrow: ${message}`)
   }
