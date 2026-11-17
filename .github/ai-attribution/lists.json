@@ -133,7 +133,12 @@
     "chatbot",
     "chat bot",
     "coding agent",
-    "language-model"
+    "language-model",
+    "llms",
+    "ais",
+    "language models",
+    "large language models",
+    "artificial intelligences"
   ],
   "genericDescriptors": [
     "coding",
@@ -159,7 +164,11 @@
     "intelig\u00eancia artificial",
     "inteligencia artificial",
     "llm",
-    "i.a."
+    "i.a.",
+    "ias",
+    "agente de ia",
+    "agentes de ia",
+    "agente de intelig\u00eancia artificial"
   ],
   "ptVerbs": [
     "gerado",
@@ -175,7 +184,17 @@
     "feito",
     "feita",
     "desenvolvido",
-    "desenvolvida"
+    "desenvolvida",
+    "redigido",
+    "redigida",
+    "elaborado",
+    "elaborada",
+    "implementado",
+    "implementada",
+    "produzido",
+    "produzida",
+    "programado",
+    "programada"
   ],
   "ptConnectors": [
     "por",
@@ -220,7 +239,9 @@
     "correcao",
     "texto",
     "descri\u00e7\u00e3o",
-    "descricao"
+    "descricao",
+    "patch",
+    "diff"
   ],
   "ptDeterminers": [
     "este",

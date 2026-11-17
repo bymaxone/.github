@@ -39,8 +39,11 @@ export function build(lists) {
   const ptVerbs = alternation(lists.ptVerbs)
   const ptConnectors = alternation(lists.ptConnectors)
   // A past participle: a word ending in -ed, or an irregular one, with an optional prefix (co-, auto-).
-  const participle = `([a-z]+-)*([a-z]+ed|${alternation(lists.irregularParticiples)})`
-  const credit = `${participle}\\s+(with|by|using|via|through)(\\s+the\\s+help\\s+of)?`
+  const participle = `([a-z]+-)*([a-z]+ed|(re|over|hand|ghost|mis|under|out)?(${alternation(lists.irregularParticiples)}))`
+  const credit = `${participle}([ \\t]+and[ \\t]+${participle})?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
+  // The gap that stays on one line, so a participle at the end of a line never joins the next line.
+  const marksL = marks.replace('\\s', ' \\t')
+  const gapL = `${marksL}+((${alternation(lists.fillers)})${marksL}+)*`
   const subject = alternation(lists.subjectVerbs)
   const nouns = alternation(lists.nounsBy)
   // The start of a line, with the marks a list item, a quote, a heading or an emphasis puts before the text.
@@ -60,14 +63,14 @@ export function build(lists) {
     `\\b(${nouns})\\s+(by|from)\\s+(the\\s+)?(${tools})${after}`,
     // A credit verb (a past participle) and a connector, then a tool or a generic agent, in a position that is an
     // attribution: a line that starts with it, or a sentence whose subject is the change itself.
-    `${lineStart}${credit}${gap}(${generic})${genericEnd}`,
-    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gap}(${generic})${genericEnd}`,
+    `${lineStart}${credit}${gapL}(${generic})${genericEnd}`,
+    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gapL}(${generic})${genericEnd}`,
     `${lineStart}(thanks\\s+to|courtesy\\s+of|with\\s+(the\\s+)?help\\s+(of|from))${gap}(${generic})${genericEnd}`,
-    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+((${generic})[- ](generated|assisted|authored|written)|${credit}${gap}(${generic})${genericEnd})`,
+    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+((${generic})[- ](generated|assisted|authored|written)|${credit}${gapL}(${generic})${genericEnd})`,
     // The robot-emoji line, and a tag that stands alone or sits in brackets, in English and in Portuguese.
     `🤖([^\\n]*[^a-z0-9])?(${generic})${genericEnd}`,
     `^[ \\t>*_-]*[\\[(]?((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]?[ \\t.]*\\r?$`,
-    `[\\[(]${credit}${gap}(${generic})${genericEnd}`,
+    `[\\[(]${credit}${gapL}(${generic})${genericEnd}`,
     `[\\[(]((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]`,
     `${lineStart}(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
     `${lineStart}(${alternation(lists.ptChangeNouns)})\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
@@ -84,9 +87,10 @@ export function build(lists) {
     `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})${after}`,
     `${lineStart}${lineStart2}${gap}(${tools})${after}`,
     // A credit verb before a tool is read only in the strict profile: the narrow one lets a vendor be cited.
-    `${lineStart}${credit}${gap}(${tools})${after}`,
-    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gap}(${tools})${after}`,
-    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gap}(${tools})${after}`,
+    `${lineStart}${credit}${gapL}(${tools})${after}`,
+    `${lineStart}(${ptVerbs})[ \\t]+(${ptConnectors})${gapL}(${tools})${after}`,
+    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gapL}(${tools})${after}`,
+    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gapL}(${tools})${after}`,
     `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     `\\bclaude([^.]|$)`,
