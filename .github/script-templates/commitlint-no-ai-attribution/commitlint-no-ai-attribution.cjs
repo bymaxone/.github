@@ -29,22 +29,26 @@ function compile(pattern) {
   return new RegExp(pattern.slice('(?im)'.length), 'im')
 }
 
-/** The line git writes above the diff under `git commit -v`; everything after it is not the message. */
-const SCISSORS = /^# -+ >8 -+$/
+/** The line git writes above the diff under `git commit -v`, with exactly this many dashes. */
+const SCISSORS = '# ------------------------ >8 ------------------------'
 
 /**
- * The text of the message itself: the raw text of a commit message file without the comment lines git adds and
- * without the diff under the scissors line.
+ * The text the rule reads. commitlint's own view of the message (its header, body and footer, which it reads with the
+ * comment character of the repository's git configuration) when it gives one; otherwise the raw text, all of it up
+ * to the scissors line, so a message the rule cannot split is read whole and not in part.
  *
- * @param {string} raw The raw text of the commit message file.
- * @returns {string} The message.
+ * @param {{ raw?: string, header?: string | null, body?: string | null, footer?: string | null }} parsed
+ *   The commit as commitlint parsed it.
+ * @returns {string} The text to read.
  */
-function messageOf(raw) {
-  const lines = raw.split(/\r?\n/)
-  const end = lines.findIndex((line) => SCISSORS.test(line))
-  return (end === -1 ? lines : lines.slice(0, end))
-    .filter((line) => !line.startsWith('#'))
-    .join('\n')
+function messageOf(parsed) {
+  const parts = [parsed.header, parsed.body, parsed.footer].filter(
+    (part) => typeof part === 'string' && part !== '',
+  )
+  if (parts.length > 0) return parts.join('\n')
+  const lines = (parsed.raw ?? '').split(/\r?\n/)
+  const end = lines.indexOf(SCISSORS)
+  return (end === -1 ? lines : lines.slice(0, end)).join('\n')
 }
 
 /**
@@ -64,7 +68,7 @@ function build(profile = 'strict') {
           throw new Error(
             "no-ai-attribution has an always form only: configure it as [2, 'always']",
           )
-        const match = pattern.exec(messageOf(parsed.raw ?? ''))
+        const match = pattern.exec(messageOf(parsed))
         if (match === null) return [true]
         const found = match[0].replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 80)
         return [

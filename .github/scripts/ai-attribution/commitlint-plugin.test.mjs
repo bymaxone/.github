@@ -40,13 +40,22 @@ test('what matched is shown on one line, even when the match spans a line break'
   assert.match(message, /Claude \+ Codex/);
 });
 
-test('only the message is read: git comment lines and the diff under a scissors line are not', () => {
-  const verbose = 'fix: x\n\n# ------------------------ >8 ------------------------\ndiff --git a/a b/a\n+use claude here\n';
-  const commented = 'fix: x\n\n# note: codex is not the author\n# Please enter the commit message\n';
+test('commitlint own view of the message is read when it gives one, and the raw text is not', () => {
+  const rule = plugin.rules['no-ai-attribution'];
+  const raw = 'fix: x\n\n# note: codex is not the author\n# modified: docs/claude-guide.md\n';
+  assert.equal(rule({ raw, header: 'fix: x', body: null, footer: null })[0], true);
+  assert.equal(rule({ raw, header: 'fix: x', body: 'a body', footer: 'Co-Authored-By: Claude <a@b.c>' })[0], false);
+  assert.equal(rule({ raw: 'x', header: 'feat: Generated with Claude Code' })[0], false);
+});
+
+test('without a parsed view the raw text is read whole up to the exact scissors line', () => {
+  const scissors = '# ------------------------ >8 ------------------------';
+  const verbose = `fix: x\n\n${scissors}\ndiff --git a/a b/a\n+use claude here\n`;
   assert.equal(check('strict', verbose)[0], true);
-  assert.equal(check('strict', commented)[0], true);
-  assert.equal(check('strict', 'fix: x\n\n# a comment\nCo-Authored-By: Claude <a@b.c>\n')[0], false);
-  assert.equal(check('strict', '# first line is a comment\nfeat: Generated with Claude Code')[0], false);
+  assert.equal(check('strict', 'fix: x\n\n# note: codex is not the author\n')[0], false);
+  assert.equal(check('strict', 'fix: x\n\n# Reviewed by Claude\n')[0], false);
+  assert.equal(check('strict', 'fix: x\n\n# --- >8 ---\nCo-Authored-By: Claude <a@b.c>\n')[0], false);
+  assert.equal(check('strict', `fix: x\n\n${scissors}\nCo-Authored-By: Claude <a@b.c>\n`)[0], true);
 });
 
 test('the rule has an always form only: a never form is refused instead of read as always', () => {
