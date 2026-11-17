@@ -50,6 +50,27 @@ export function readTemplate(dir, name) {
 
 const gh = (args) => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
 
+const EXEMPT_PATH = 'scripts/mutation-inventory.exempt.json';
+
+/**
+ * The template specs an adopter holds that its exempt list does not name. The cold mutation run fails a unit test that
+ * judges no mutant and is not listed there, and the per-push job does not run that check, so a copy of a template spec
+ * that is not listed fails only at the adopter's next release.
+ */
+function unlistedSpecs(repo, sha, held, fetch) {
+  const specs = held.filter((target) => target.endsWith('.spec.ts'));
+  if (specs.length === 0) return [];
+  let listed;
+  try {
+    const entries = JSON.parse(fetch(['api', `repos/${repo}/contents/${EXEMPT_PATH}?ref=${sha}`, '-H', 'Accept: application/vnd.github.raw+json']));
+    if (!Array.isArray(entries)) throw new Error('not a list');
+    listed = new Set(entries.map((entry) => entry?.file));
+  } catch {
+    return [`${EXEMPT_PATH}: missing or unreadable`];
+  }
+  return specs.filter((target) => !listed.has(target)).map((target) => `${target}: not in ${EXEMPT_PATH}`);
+}
+
 /** One result per adopter: `{ repo, template, sha, problems }`; `fetch` is injectable for tests. */
 export function checkFamily(entries, templates, fetch = gh) {
   return entries.map(({ repo, template }) => {
@@ -64,6 +85,7 @@ export function checkFamily(entries, templates, fetch = gh) {
     }
     if (!SHA.test(sha)) return { repo, template, sha: '-', problems: ['unreadable'] };
     const problems = [];
+    const held = [];
     for (const { target, text } of files) {
       let got;
       try {
@@ -72,8 +94,10 @@ export function checkFamily(entries, templates, fetch = gh) {
         problems.push(`${target}: missing`);
         continue;
       }
+      held.push(target);
       if (got !== text) problems.push(`${target}: differs from the template`);
     }
+    problems.push(...unlistedSpecs(repo, sha, held, fetch));
     return { repo, template, sha, problems };
   });
 }

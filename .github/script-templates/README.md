@@ -10,6 +10,10 @@ A script or a spec that every library copies, kept here once so that a copy that
 - Data a template reads (a baseline, a list of exclusions) stays in the library and is not compared.
 - To change a template, change it here, then update each adopter's copy. The check is red for an adopter
   until it has.
+- Every spec a template carries judges no mutant, so an adopter lists each one in
+  `scripts/mutation-inventory.exempt.json` (see the table at the end). The cold mutation run fails a spec that is
+  not listed, and the per-push job does not run that check, so an unlisted copy fails only at the adopter's next
+  release; the family check reports it with the repository's name.
 
 ## check-double-assertions
 
@@ -101,3 +105,15 @@ To adopt: copy `stryker-scope.spec.ts` to `src/`, write `src/stryker-scope.data.
 exclusions, delete the old spec, run `jest src/stryker-scope.spec.ts`, and add the library to `script-adopters.txt` here.
 A library whose `mutate` selects `src/**/*.ts` adds `!src/stryker-scope.data.ts`, which is not shipped and is not a spec.
 Every pair of an `entry: { ... }` object in `tsup.config.ts` counts, with a quoted or a bare key.
+
+## Exempt entries
+
+One entry per spec, `{ "file": "<spec>", "reason": "<line>" }`, in `scripts/mutation-inventory.exempt.json`. The family check
+reads the `file` of each entry; the reason is the line below.
+
+| Template | Spec files | Reason |
+| --- | --- | --- |
+| `check-double-assertions` | `src/check-double-assertions.spec.ts` | Runs `scripts/check-double-assertions.mjs` as a child process on fixture directories and imports nothing from `src/`, so it judges no mutant. |
+| `check-function-length` | `src/check-function-length.spec.ts`, `src/check-function-length.baseline.spec.ts`, `src/check-function-length.key.spec.ts` | Runs `scripts/check-function-length.mjs` (or `scripts/function-length-key.mjs`) as a child process on fixture directories and imports nothing from `src/`, so it judges no mutant. |
+| `check-spec-headers` | `src/check-spec-headers.spec.ts` | Runs `scripts/check-spec-headers.mjs` as a child process on fixture directories and imports nothing from `src/`, so it judges no mutant. |
+| `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
