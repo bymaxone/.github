@@ -1354,6 +1354,29 @@ test('a product that has AI features, a person named like a generic agent, and a
   }
 })
 
+test('an identifier that begins with a name (an error code, a package, an environment variable) is not the name, in both profiles', () => {
+  // The first row is the text of nest-ai-tokens pull request 247 that the workflow refused.
+  const passes = [
+    'Refused with `AI_TOKENS_INVALID_CONFIG`, the input named the option and the value was never read.',
+    'Refused with AI_TOKENS_BUDGET_EXCEEDED',
+    'fix: reported by `AI_TOKENS_BUDGET_EXCEEDED`',
+    'Built with `@bymax-one/nest-ai-tokens`',
+    'Rejected using AI_TOKENS_INVALID_CONFIG and logged',
+    '- Thrown with AI_TOKENS_INVALID_CONFIG.',
+    'feat(errors): AI_TOKENS_INVALID_CONFIG and AI_TOKENS_BUDGET_EXCEEDED',
+    'chore: bump @bymax-one/nest-ai-tokens to 1.2.0',
+    'Generated with codex_home set',
+  ]
+  for (const message of passes) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  // The same words ending where a name ends, or closing an emphasis, are still the attribution.
+  for (const message of ['Refused with AI', 'Refused with AI.', 'Written with _AI_', 'Written with _AI_.', 'Refused with AI_']) {
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+  }
+})
+
 test('a factual mention of a pull request bot is not an attribution', () => {
   for (const message of [
     'fix: address review feedback from Copilot bot',

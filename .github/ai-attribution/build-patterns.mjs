@@ -21,6 +21,10 @@ const alternation = (words) =>
  * @returns {{ strict: string, narrow: string }} The patterns.
  */
 export function build(lists) {
+  // An underscore that goes on into a letter or a digit makes an identifier (AI_TOKENS_INVALID_CONFIG, codex_home), not a
+  // name: it ends a name only as the closing mark of an emphasis (`_AI_`) or at the end of the text.
+  const after = `([^a-z0-9_]|_+([^a-z0-9_]|$)|$)`
+  const closeMarks = `[.,;:!?)\\]*\`"”’]+|_+([^a-z0-9_]|$)`
   const tools = alternation([...lists.tools, ...lists.toolSpellings])
   const toolEnd = `[ \\t]*[.!]+[*_\`\\])}>"'”’]*([ \\t]|\\r?$)|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
   // A name that is also an ordinary word (cursor, gemini, aider, mistral) is read as the tool after a credit verb only
@@ -33,13 +37,12 @@ export function build(lists) {
   // After an ambiguous name the tool is NOT meant when a hyphen and a letter follow (cursor-based) or an ordinary
   // noun does (cursor pagination); any other next character leaves it the tool: a mark, a comma, a colon, a slash, an
   // emoji, a number, the end of the line, `ai`, a product word, an and, or a spaced dash.
-  const ambiguousEnd = `([^a-z0-9 \\t-]|-([^a-z]|$)|[ \\t]*\\r?$|[ \\t]+([^a-z0-9 \\t]|[0-9]|(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|${ambiguousTools}|and|or|[a-z]?[0-9]+)([^a-z0-9]|$)))`
-  const creditTool = `((${clearTools})([^a-z0-9]|$)|(${ambiguousTools})${ambiguousEnd})`
+  const ambiguousEnd = `([^a-z0-9_ \\t-]|_+([^a-z0-9_]|$)|-([^a-z]|$)|[ \\t]*\\r?$|[ \\t]+([^a-z0-9 \\t]|[0-9]|(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|${ambiguousTools}|and|or|[a-z]?[0-9]+)${after}))`
+  const creditTool = `((${clearTools})${after}|(${ambiguousTools})${ambiguousEnd})`
   // What may stand between a connector and the tool: marks of emphasis, quotes, brackets or a handle, and words that
   // are not the tool (an article, a vendor, an adjective).
   // A tool name ends where a letter or a digit does not continue it: an underscore of emphasis closes it too.
   const before = `(^|[^a-z0-9])`
-  const after = `([^a-z0-9]|$)`
   const marks = `[\\s:*_\`"'\\[(@<>{}~|“”‘’-]`
   const gap = `${marks}+((${alternation(lists.fillers)})${marks}+)*`
   // A generic agent (an AI, an LLM, a language model) counts only in the position of an attribution and only where the
@@ -58,7 +61,7 @@ export function build(lists) {
   // Marks of emphasis, a quote, a bracket or a handle may stand before the verb or the tool; they never include blanks,
   // so they do not overlap the blanks that precede them.
   const andNext = `[ \\t]+(and|&)[ \\t]+${andMarks}${andWords}((${alternation(lists.andVerbs)})([ \\t]|[*_\`"'\\])}>~”’]|\\r?$)|(${tools})${after})`
-  const stop = `[ \\t]*[.,;:!?)\\]*_\`"”’]+|[ \\t]*\\r?$|[ \\t]+[-–—|(]|[ \\t]*[–—]|${andNext}`
+  const stop = `[ \\t]*(${closeMarks})|[ \\t]*\\r?$|[ \\t]+[-–—|(]|[ \\t]*[–—]|${andNext}`
   const genericEnd = `([ \\t]+(${descriptors}))*(${stop})`
   const pt = alternation(lists.ptAgents)
   const ptVerbs = `(${alternation(lists.ptVerbs)})([ \\t]+(${alternation(lists.ptAdverbs)}))?`
@@ -66,7 +69,7 @@ export function build(lists) {
   // The end of a phrase that names an agent and a noun: a mark, the end of the line, or an and.
   const phraseEnd = `(${stop})`
   // One end for every phrase that names an agent: the phrase must end there, in English and in Portuguese.
-  const ptEnd = `([ \\t]*[.,;:!?)\\]*_\`"”’]+|[ \\t]*\\r?$|[ \\t]+[-–—|(]|[ \\t]*[–—]|[ \\t]+(e|&)[ \\t]+${andMarks}(((${alternation(lists.ptAndAdverbs)})[ \\t]+)${andMarks}){0,1}((${alternation(lists.ptVerbs)})([ \\t]|[*_\`"'\\])}>~”’]|\\r?$)|(${tools})${after}))`
+  const ptEnd = `([ \\t]*(${closeMarks})|[ \\t]*\\r?$|[ \\t]+[-–—|(]|[ \\t]*[–—]|[ \\t]+(e|&)[ \\t]+${andMarks}(((${alternation(lists.ptAndAdverbs)})[ \\t]+)${andMarks}){0,1}((${alternation(lists.ptVerbs)})([ \\t]|[*_\`"'\\])}>~”’]|\\r?$)|(${tools})${after}))`
   const adverb = `((${alternation(lists.adverbs)})[ \\t]+)?`
   const credit = `${adverb}${participle}([ \\t]+and[ \\t]+${participle})?([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
   // The gap that stays on one line, so a participle at the end of a line never joins the next line.

@@ -39,6 +39,7 @@ author or its reviewer, in one place.
   (`cursor-based`) or an ordinary noun does; a product word, a number or a mark leaves it the tool.
 - A person whose name begins with a tool's (a name that continues with letters) passes; a person named exactly like a
   tool (a given name) is refused after an authorship verb.
+- An identifier that begins with a name (`AI_TOKENS_INVALID_CONFIG`, `codex_home`) is not the name: an underscore that goes on into a letter or a digit does not end it. A bare `AI` or tool name in a code span is still the name.
 - A trailer whose value is only words that name an agent is refused; one other word makes it a name.
 - The patterns cannot read a message written in a language that no list covers, or an attribution with no verb.
 - Adopters re-copy the plugin when the template changes. The weekly family check compares a copy only for the repositories listed for `commitlint-no-ai-attribution` in `script-adopters.txt`; a repository is listed once its copy equals the template.
