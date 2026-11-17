@@ -41,5 +41,5 @@ author or its reviewer, in one place.
   tool (a given name) is refused after an authorship verb.
 - A trailer whose value is only words that name an agent is refused; one other word makes it a name.
 - The patterns cannot read a message written in a language that no list covers, or an attribution with no verb.
-- Adopters re-copy the plugin when the template changes; the weekly family check lists a copy that differs.
+- Adopters re-copy the plugin when the template changes. The weekly family check compares a copy only for the repositories listed for `commitlint-no-ai-attribution` in `script-adopters.txt`; a repository is listed once its copy equals the template.
 
