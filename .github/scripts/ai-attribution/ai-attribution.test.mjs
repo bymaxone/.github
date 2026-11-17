@@ -68,3 +68,16 @@ for (const [file, profile, repos] of RULESETS) {
     assert.ok(['evaluate', 'active'].includes(ruleset.enforcement));
   });
 }
+
+test('the caller template the family check compares equals the starter workflow, byte for byte', () => {
+  const starter = readFileSync(new URL('../../workflow-templates/no-ai-attribution.yml', import.meta.url), 'utf8');
+  const copy = readFileSync(new URL('../../script-templates/no-ai-attribution-caller/no-ai-attribution.yml', import.meta.url), 'utf8');
+  assert.equal(copy, starter);
+});
+
+test('the caller template names the reusable workflow at @v1 and carries the four pull_request types', () => {
+  const copy = readFileSync(new URL('../../script-templates/no-ai-attribution-caller/no-ai-attribution.yml', import.meta.url), 'utf8');
+  assert.match(copy, /uses: bymaxone\/\.github\/\.github\/workflows\/no-ai-attribution\.yml@v1/);
+  assert.match(copy, /types: \[opened, edited, synchronize, reopened\]/);
+  assert.match(copy, /pull-requests: read/);
+});
