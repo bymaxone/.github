@@ -28,7 +28,7 @@
         "name": "no AI attribution in a commit message",
         "negate": true,
         "operator": "regex",
-        "pattern": "(?im)(^[ \\t]*co-authored-by:[^\\n]*(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)|noreply@(anthropic|openai)\\.com|\\bgenerated (with|by) (\\[|an? )?(claude|codex|ai|chatgpt|copilot)|\\b(codex|anthropic|openai|chatgpt)\\b|\\bclaude([^.]|$))"
+        "pattern": "(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|(^|[^@\\w])(codex|anthropic|chatgpt)\\b|\\bclaude([^.]|$))"
       }
     }
   ]

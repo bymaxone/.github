@@ -1,7 +1,7 @@
 {
   "description": "Patterns that reject a commit message, PR title or PR body naming an AI tool as its author or its reviewer. The organisation rulesets copy these two strings; a test keeps the copies equal. RE2 syntax, no lookaround.",
-  "strict": "(?im)(^[ \\t]*co-authored-by:[^\\n]*(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)|noreply@(anthropic|openai)\\.com|\\bgenerated (with|by) (\\[|an? )?(claude|codex|ai|chatgpt|copilot)|\\b(codex|anthropic|openai|chatgpt)\\b|\\bclaude([^.]|$))",
-  "narrow": "(?im)(^[ \\t]*co-authored-by:[^\\n]*(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)|noreply@(anthropic|openai)\\.com|\\bgenerated (with|by) (\\[|an? )?(claude|codex|ai|chatgpt|copilot)|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(reviews?|pass|reviewer|bot|findings?)\\b)",
+  "strict": "(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|(^|[^@\\w])(codex|anthropic|chatgpt)\\b|\\bclaude([^.]|$))",
+  "narrow": "(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(reviews?|pass|reviewer|bot|findings?)\\b)",
   "narrowRepos": [
     "bymax-agent-kit",
     "nest-ai-tokens",
@@ -109,6 +109,54 @@
       "message": "feat: price table for claude-sonnet",
       "strictRejects": true,
       "narrowRejects": false
+    },
+    {
+      "name": "dependency bump of openai",
+      "message": "chore(deps): bump openai from 4.0.0 to 5.0.0 (#9)",
+      "strictRejects": false,
+      "narrowRejects": false
+    },
+    {
+      "name": "dependency bump of an anthropic scoped package",
+      "message": "chore(deps): bump @anthropic-ai/sdk from 1.0.0 to 1.1.0 (#9)",
+      "strictRejects": false,
+      "narrowRejects": false
+    },
+    {
+      "name": "human co-author whose name contains a tool substring",
+      "message": "feat: x\n\nCo-authored-by: Haider Ali <haider@example.com>",
+      "strictRejects": false,
+      "narrowRejects": false
+    },
+    {
+      "name": "trailer naming another tool",
+      "message": "feat: x\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "strictRejects": true,
+      "narrowRejects": true
+    },
+    {
+      "name": "generated with another tool",
+      "message": "feat: x\n\nGenerated with Cursor",
+      "strictRejects": true,
+      "narrowRejects": true
+    },
+    {
+      "name": "signed-off-by a tool",
+      "message": "feat: x\n\nSigned-off-by: Copilot <copilot@github.com>",
+      "strictRejects": true,
+      "narrowRejects": true
+    },
+    {
+      "name": "noreply address of a vendor",
+      "message": "chore: x\n\nnoreply@claude.com",
+      "strictRejects": true,
+      "narrowRejects": true
+    },
+    {
+      "name": "quoted trailer with spacing",
+      "message": "feat: x\n\n> Co-Authored-By : Claude <a@b.c>",
+      "strictRejects": true,
+      "narrowRejects": true
     }
   ]
 }
