@@ -24,7 +24,10 @@ export function build(lists) {
   const tools = alternation([...lists.tools, ...lists.toolSpellings])
   // What may stand between a connector and the tool: marks of emphasis, quotes, brackets or a handle, and words that
   // are not the tool (an article, a vendor, an adjective).
-  const marks = `[\\s:*_\`"'\\[(@-]`
+  // A tool name ends where a letter or a digit does not continue it: an underscore of emphasis closes it too.
+  const before = `(^|[^a-z0-9])`
+  const after = `([^a-z0-9]|$)`
+  const marks = `[\\s:*_\`"'\\[(@<>{}~|“”‘’-]`
   const gap = `${marks}+((${alternation(lists.fillers)})${marks}+)*`
   const subject = alternation(lists.subjectVerbs)
   const nouns = alternation(lists.nounsBy)
@@ -32,28 +35,28 @@ export function build(lists) {
   const lineStart = `^[ \\t>*_\`(\\[-]*(\\d+[.)][ \\t]*)?`
   const common = [
     // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
-    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:([^\\n]*\\b(${tools})\\b|[ \\t]*(ai|llm)[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
+    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:([^\\n]*${before}(${tools})${after}|[ \\t]*(ai|llm)[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
     `noreply@(anthropic|openai|claude)\\.`,
-    `\\b(${tools})\\[bot\\]`,
+    `${before}(${tools})\\[bot\\]`,
     `^[ \\t>*_-]*(${tools})[ -]bot[ \\t.]*\\r?$`,
-    `🤖[^\\n]*\\b(${tools})\\b`,
-    `\\b(made|built|crafted)\\s+with\\s+[^\\n]{1,12}\\s+and\\s+(${tools})\\b`,
-    `\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(${tools})\\b`,
-    `\\b(thanks\\s+to|courtesy\\s+of|powered\\s+by)\\s+(${tools})\\b`,
-    `\\bpair[- ]programm(ed|ing)\\s+with\\s+(${tools})\\b`,
-    `\\b(${tools})\\s+(${subject})\\s+(this|it|these|the\\s+(change|commit|pr|patch|code))\\b`,
-    `\\b(${nouns})\\s+(by|from)\\s+(the\\s+)?(${tools})\\b`,
+    `🤖[^\\n]*${before}(${tools})${after}`,
+    `\\b(made|built|crafted)\\s+with\\s+[^\\n]{1,12}\\s+and\\s+(${tools})${after}`,
+    `\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(${tools})${after}`,
+    `\\b(thanks\\s+to|courtesy\\s+of|powered\\s+by)\\s+(${tools})${after}`,
+    `\\bpair[- ]programm(ed|ing)\\s+with\\s+(${tools})${after}`,
+    `${before}(${tools})\\s+(${subject})\\s+(this|it|these|the\\s+(change|commit|pr|patch|code))\\b`,
+    `\\b(${nouns})\\s+(by|from)\\s+(the\\s+)?(${tools})${after}`,
     // A signature line that says only that an AI wrote it; a sentence about AI-generated content is not one.
     `^[ \\t>*_-]*[\\[(]?(ai[- ](generated|assisted|authored|written)|(generated|assisted|authored|written|created|made)\\s+(with|by)\\s+ai)[\\])]?[ \\t.]*\\r?$`,
   ]
   const production = `(${alternation(lists.productionVerbs)})\\s+(with|by|using|via|through)`
   const judgement = `(${alternation(lists.judgementVerbs)})\\s+by`
   const strictBy = `(${alternation(lists.strictByVerbs)})\\s+by`
-  const phrase = `(${production}|${judgement})${gap}(${tools})\\b`
+  const phrase = `(${production}|${judgement})${gap}(${tools})${after}`
   const strict = [
     ...common,
-    `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})\\b`,
-    `\\b(${tools})[ -](agent|assistant)\\b`,
+    `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})${after}`,
+    `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     `\\bclaude([^.]|$)`,
   ]
