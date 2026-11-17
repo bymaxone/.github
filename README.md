@@ -541,6 +541,13 @@ A scan that could not fetch its rules (a registry outage or a mistyped pack) is 
 is reported on its own: the summary says **NOT SCANNED**, `warn` annotates
 `semgrep unavailable` and stays green, and `enforce` fails closed with the same title.
 
+A scan that finished is read through its report, and two more cases are reported on their own. A rule that failed
+to load or parse (ours or a pack's) is a **RULE ERROR**: the scan did not apply every rule, `warn` annotates
+`semgrep rule error` and stays green, `enforce` fails. A file the scan skipped or only partly parsed (too big,
+a parse problem, a timeout) is **PARTIAL**: the summary lists it and a `semgrep partial` warning says how many,
+and a clean scan says "no findings in what was scanned" and not that it covered the whole tree. A file the
+target's ignore rules leave out is not counted, and a partial scan never turns `enforce` red by itself.
+
 The rules come from two places. The registry packs are not vendored (their licence forbids
 redistribution): a caller names them in `semgrep-config`, validated against `p/<name>` and `r/<path>`
 before use. The rules in [`.github/semgrep/rules`](.github/semgrep/rules) are always applied, read at

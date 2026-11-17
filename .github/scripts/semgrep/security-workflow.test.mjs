@@ -213,13 +213,15 @@ test('the closing fence of the summary is a line of its own when the output has 
 // The step runs as `bash -e {0}`, the Actions default when a step names no shell, so a non-zero exit of the
 // scan must not stop it before the verdict is read. The step body is executed under `bash -e` with a docker
 // that exits with a chosen status, once per status and mode.
-function runScan(exitCode, mode) {
+const CLEAN_REPORT = JSON.stringify({ errors: [], paths: { skipped: [] } });
+function runScan(exitCode, mode, report = CLEAN_REPORT) {
   const dir = mkdtempSync(join(tmpdir(), 'semgrep-scan-'));
   mkdirSync(join(dir, 'bin'));
   mkdirSync(join(dir, 'tmp'));
   mkdirSync(join(dir, 'ws'));
   mkdirSync(join(dir, 'rules'));
-  writeFileSync(join(dir, 'bin', 'docker'), `#!/bin/sh\necho "scan output"\necho "scan error" >&2\nexit ${exitCode}\n`);
+  // The stub finds the directory mounted at /out and leaves the report there, as the image does.
+  writeFileSync(join(dir, 'bin', 'docker'), `#!/bin/sh\nout=""\nfor a in "$@"; do case "$a" in *:/out) out="\${a%:/out}";; esac; done\n[ -z "$out" ] || [ -z "$STUB_REPORT" ] || printf '%s' "$STUB_REPORT" > "$out/semgrep.json"\necho "scan output"\necho "scan error" >&2\nexit ${exitCode}\n`);
   chmodSync(join(dir, 'bin', 'docker'), 0o755);
   writeFileSync(join(dir, 'tmp', 'semgrep-config.txt'), '');
   const result = spawnSync('bash', ['-e', '-c', scan], {
@@ -231,6 +233,7 @@ function runScan(exitCode, mode) {
       SEMGREP_IMAGE: 'semgrep/semgrep:test',
       SEMGREP_MODE: mode,
       GITHUB_STEP_SUMMARY: join(dir, 'summary'),
+      STUB_REPORT: report,
     },
     encoding: 'utf8',
   });
@@ -282,5 +285,84 @@ test('every exit status of the scan has one verdict in each mode, under bash -e'
         assert.doesNotMatch(r.out, /::(warning|error)/, `exit ${code} in ${mode}`);
       }
     }
+  }
+});
+
+// What the report adds to the exit status: a rule that failed to load or parse is a RULE ERROR (red in enforce mode, never
+// silent), a file the scan skipped or could not parse is PARTIAL (a warning and a summary, never red by itself), and a scan with
+// no readable report did not complete.
+const PARTIAL_REPORT = JSON.stringify({
+  errors: [{ type: ['PartialParsing', []], level: 'warn', path: 'src/broken.ts' }],
+  paths: { skipped: [{ path: 'src/big.js', reason: 'exceeded_size_limit' }, { path: 'node_modules/x.js', reason: 'excluded_by_ignore' }] },
+});
+const RULE_ERROR_REPORT = JSON.stringify({ errors: [{ type: 'Rule parse error', level: 'error', path: '/rules/broken.yml' }], paths: { skipped: [] } });
+const BOTH_REPORT = JSON.stringify({
+  errors: [{ type: 'InvalidRuleSchemaError', level: 'error' }, { type: 'Timeout', level: 'warn', path: 'src/slow.ts' }],
+  paths: { skipped: [] },
+});
+
+test('a partial scan says PARTIAL with the list and a warning, and is not red by itself', () => {
+  for (const mode of ['warn', 'enforce']) {
+    const r = runScan(0, mode, PARTIAL_REPORT);
+    assert.equal(r.status, 0, `${mode}: ${r.out}`);
+    assert.match(r.out, /::warning title=semgrep partial::2 files or rules not scanned/, mode);
+    assert.match(r.summary, /PARTIAL: 2 files or rules not scanned\./, mode);
+    assert.match(r.summary, /src\/broken\.ts: PartialParsing/, 'the list names the file');
+    assert.match(r.summary, /src\/big\.js: exceeded_size_limit/, 'the list names a skipped file');
+    assert.doesNotMatch(r.summary, /excluded_by_ignore/, 'a file the ignore rules leave out is not a failure to scan');
+    assert.match(r.summary, /No findings in what was scanned: 2 files or rules were not\./, 'a partial scan never reads as the whole tree');
+    assert.doesNotMatch(r.summary, /Scanned the whole tree/);
+  }
+});
+
+test('a rule that failed to load is a RULE ERROR: a warning in warn mode, red in enforce mode, with or without findings', () => {
+  const warn = runScan(0, 'warn', RULE_ERROR_REPORT);
+  assert.equal(warn.status, 0, warn.out);
+  assert.match(warn.out, /::warning title=semgrep rule error::1 rule\(s\) failed to load or parse/);
+  assert.match(warn.summary, /RULE ERROR: 1 rule\(s\) failed to load or parse/);
+  assert.match(warn.summary, /\/rules\/broken\.yml: Rule parse error/);
+
+  const enforce = runScan(0, 'enforce', RULE_ERROR_REPORT);
+  assert.equal(enforce.status, 1, enforce.out);
+  assert.match(enforce.out, /::error title=semgrep rule error::1 rule\(s\) failed to load or parse/);
+  assert.doesNotMatch(enforce.summary, /Scanned the whole tree/);
+  assert.match(enforce.summary, /No findings from the rules that ran: 1 rule\(s\) did not run\./, 'a scan that skipped a rule never reads as clean');
+
+  const findingsWarn = runScan(1, 'warn', RULE_ERROR_REPORT);
+  assert.equal(findingsWarn.status, 0, findingsWarn.out);
+  assert.match(findingsWarn.out, /semgrep rule error/);
+  assert.match(findingsWarn.out, /::warning title=semgrep::/);
+  const findingsEnforce = runScan(1, 'enforce', RULE_ERROR_REPORT);
+  assert.equal(findingsEnforce.status, 1, findingsEnforce.out);
+  assert.match(findingsEnforce.out, /semgrep rule error/);
+});
+
+test('findings with a partial scan keep the findings verdict and add the PARTIAL note', () => {
+  const warn = runScan(1, 'warn', PARTIAL_REPORT);
+  assert.equal(warn.status, 0, warn.out);
+  assert.match(warn.out, /semgrep partial/);
+  assert.match(warn.out, /::warning title=semgrep::/);
+  const enforce = runScan(1, 'enforce', PARTIAL_REPORT);
+  assert.equal(enforce.status, 1, enforce.out);
+  assert.match(enforce.summary, /PARTIAL: 2 files/);
+});
+
+test('a rule error and a partial scan together are both reported, and only the rule error turns enforce mode red', () => {
+  const r = runScan(0, 'enforce', BOTH_REPORT);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.summary, /RULE ERROR: 1 rule/);
+  assert.match(r.summary, /PARTIAL: 1 files/);
+  assert.match(r.summary, /src\/slow\.ts: Timeout/);
+});
+
+test('a finished scan with no readable report is NOT SCANNED, not clean', () => {
+  for (const report of ['', 'not json', '{"errors": ']) {
+    const warn = runScan(0, 'warn', report);
+    assert.equal(warn.status, 0, warn.out);
+    assert.match(warn.out, /::warning title=semgrep unavailable::/);
+    assert.match(warn.summary, /NOT SCANNED: semgrep finished but left no readable report/);
+    const enforce = runScan(1, 'enforce', report);
+    assert.equal(enforce.status, 1, enforce.out);
+    assert.match(enforce.out, /::error title=semgrep unavailable::/);
   }
 });
