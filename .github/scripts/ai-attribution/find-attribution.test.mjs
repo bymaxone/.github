@@ -64,6 +64,12 @@ test('the command exits 0 on clean text, 1 on an offender and 2 on input it cann
   assert.equal(spawnSync(process.execPath, [SCRIPT], { input: '[]', encoding: 'utf8' }).status, 2, 'no patterns file');
 });
 
+test('a merge commit that names a branch for a tool is refused, and the message says to rename the branch', () => {
+  const result = run([{ where: 'commit abc1234', text: "Merge branch 'main' into claude/x" }], '--repo', 'bymaxone/nest-auth');
+  assert.equal(result.status, 1);
+  assert.match(result.out, /rename the branch/);
+});
+
 test('the text of a pull request never starts a workflow command in the output', () => {
   const hostile = '::error::injected\n::set-output name=x::y\r\n%0A Co-authored-by: Claude';
   const result = run([{ where: 'body', text: hostile }], '--repo', 'bymaxone/nest-auth');

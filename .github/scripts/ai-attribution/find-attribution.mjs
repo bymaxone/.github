@@ -96,7 +96,7 @@ function main() {
       console.log(`  | ${oneLine(text)}`);
     }
     if (found.length > 0) {
-      console.log(`${found.length} place(s) name an AI tool (profile ${profile}). Reword them; no commit, title, body or comment does this.`);
+      console.log(`${found.length} place(s) name an AI tool (profile ${profile}). Reword them; no commit, title, body or comment does this. If the match is a branch name in a merge commit, rename the branch and merge again.`);
       return 1;
     }
     console.log(`No AI attribution in ${items.length} place(s) (profile ${profile}).`);

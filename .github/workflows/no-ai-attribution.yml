@@ -77,7 +77,7 @@ jobs:
           items="$RUNNER_TEMP/ai-attribution-items.json"
           commits="$RUNNER_TEMP/ai-attribution-commits.json"
           gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/commits?per_page=100" \
-            --jq '.[] | {where: ("commit " + .sha[0:7]), text: .commit.message, merge: (.parents | length > 1)}' | jq -s '.' > "$commits"
+            --jq '.[] | {where: ("commit " + .sha[0:7]), text: .commit.message}' | jq -s '.' > "$commits"
           # The endpoint lists 250 commits at most. A shorter list than the pull request's own count is a part of
           # the history, and reading a part would pass what it did not read.
           listed=$(jq 'length' "$commits")
@@ -86,14 +86,10 @@ jobs:
             echo "::error title=no-ai-attribution::This pull request has $PR_COMMITS commits and the API lists $listed, so the commit messages cannot all be read. Split the pull request."
             exit 1
           fi
-          # The first line of a merge commit written by `git merge` or by the web merge button names its branches,
-          # and a branch may be named for a tool, so exactly those forms are not read. Every other first line, and
-          # everything a person added below it, is read, as is every commit that is not a merge.
-          jq -n --arg title "$PR_TITLE" --arg body "$PR_BODY" --slurpfile commits "$commits" '
-            def generated: test("^Merge (?:(?:remote-tracking )?branch(?:es)? \u0027[A-Za-z0-9._/+#-]+\u0027(?:(?:, | and |, and )\u0027[A-Za-z0-9._/+#-]+\u0027)*(?: of (?:[a-z][a-z0-9+.-]*://[A-Za-z0-9._/:@+~%#-]+|(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9-]+(?:[.][A-Za-z0-9-]+)+:[A-Za-z0-9._/+-]+))?(?: into [A-Za-z0-9._/+#-]+)?|tag \u0027[A-Za-z0-9._/+#-]+\u0027(?: of (?:[a-z][a-z0-9+.-]*://[A-Za-z0-9._/:@+~%#-]+|(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9-]+(?:[.][A-Za-z0-9-]+)+:[A-Za-z0-9._/+-]+))?(?: into [A-Za-z0-9._/+#-]+)?|commit \u0027[A-Za-z0-9._/+#-]+\u0027(?: into [A-Za-z0-9._/+#-]+)?|pull request #[0-9]+ from [A-Za-z0-9._/+#-]+)\r?$");
-            def lines: split("\n");
-            [{where: "title", text: $title}, {where: "body", text: $body}]
-              + ($commits[0] | map({where, text: (if .merge and (.text | lines | .[0] | generated) then (.text | lines | .[1:] | join("\n")) else .text end)}))' > "$items"
+          # Every line of every commit is read, a merge commit's first line included: a branch name is text a
+          # person chose, and a branch named for a tool is renamed.
+          jq -n --arg title "$PR_TITLE" --arg body "$PR_BODY" --slurpfile commits "$commits" \
+            '[{where: "title", text: $title}, {where: "body", text: $body}] + $commits[0]' > "$items"
           echo "AI_ATTRIBUTION_ITEMS=$items" >> "$GITHUB_ENV"
 
       - name: Look for an AI attribution

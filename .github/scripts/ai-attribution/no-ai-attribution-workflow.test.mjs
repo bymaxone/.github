@@ -128,64 +128,20 @@ test('a commit count that is missing or not a number fails the step', () => {
   }
 });
 
-/** The text the step puts in the list for each of `messages`, the ones in `merges` being merge commits. */
-function texts(messages, merges = []) {
+test('every line of every commit is read, a merge commit and its generated first line included', () => {
+  const messages = [
+    "Merge branch 'main' into claude/feature",
+    'Merge pull request #12 from o/claude-md-update',
+    "Merge branch 'main' into feature\n\nCo-Authored-By: Someone <a@b.c>",
+    'Revert "feat: x"\n\nThis reverts commit abc.',
+    'fixup! feat: one',
+  ];
   const result = collect({
-    pages: [messages.map((message, i) => commit(`c${i}`, message, merges.includes(i) ? 2 : 1))],
+    pages: [messages.map((message, i) => commit(`c${i}`, message, i < 3 ? 2 : 1))],
     count: messages.length,
   });
   assert.equal(result.status, 0, result.out);
-  return result.items.slice(2).map((item) => item.text);
-}
-
-test('the first line of a merge written by git or by the web merge button names refs only, so it is not read', () => {
-  const generated = [
-    "Merge branch 'main' into claude/feature",
-    "Merge branch 'claude/x' of github.com:o/r into main",
-    "Merge remote-tracking branch 'origin/main' into feature",
-    "Merge branches 'a' and 'claude-b'",
-    "Merge tag 'v1.2.3' into release",
-    'Merge pull request #12 from o/claude-md-update',
-    "Merge branches 'a', 'claude-b' and 'c'",
-    "Merge tag 'v1' of https://github.com/o/r into main",
-    "Merge branch 'x' of git@github.com:o/r into claude/y",
-    "Merge commit 'abc1234'",
-    "Merge branch 'x' of https://github.com/o/r into claude/y",
-    "Merge branch 'main' into claude/feature\r",
-  ];
-  assert.deepEqual(texts(generated, generated.map((_, i) => i)), generated.map(() => ''));
-});
-
-test('everything else in a merge commit is read: a hand-written first line, a line below the generated one', () => {
-  const handWritten = [
-    "Merge branch 'main' into feature: Co-Authored-By: Claude <a@b.c>",
-    "Merge branch 'main' into x y",
-    'Merge: the reviewer said so',
-    'Merge pull request #12 from o/branch and a note',
-    "Reviewed by the reviewer. Merge branch 'main' into x",
-    "Merge branch 'Co-Authored-By: Claude <n@x.com>'",
-    'Merge pull request #1 from noreply@anthropic.com',
-    "Merge branch 'a' into x\tGenerated with Claude",
-    "Merge branch 'a' of noreply@anthropic.com",
-    "Merge branch 'a' into noreply@anthropic.com",
-    "Merge tag 'v1' into noreply@anthropic.com",
-    "Merge commit 'abc' into noreply@anthropic.com",
-    "Merge branch 'a' into x, Co-authored-by: Claude",
-  ];
-  assert.deepEqual(texts(handWritten, handWritten.map((_, i) => i)), handWritten);
-  const below = ["Merge branch 'main' into feature\n\nCo-Authored-By: Someone <a@b.c>"];
-  assert.equal(texts(below, [0])[0], '\nCo-Authored-By: Someone <a@b.c>');
-});
-
-test('a commit that is not a merge is read whole, whatever its first line looks like', () => {
-  const same = ["Merge branch 'main' into claude/feature", 'Revert "feat: x"\n\nThis reverts commit abc.', 'fixup! feat: one', 'squash! fix: two'];
-  assert.deepEqual(texts(same), same);
-});
-
-test('an octopus merge and a merge with a blank first line are read by the same rule', () => {
-  assert.deepEqual(texts([`Merge branches 'a', 'b' and 'c'\n\nnote`], [0]), ['\nnote']);
-  assert.deepEqual(texts([`Merge octopus of a, b and c\n\nnote`], [0]), [`Merge octopus of a, b and c\n\nnote`]);
-  assert.deepEqual(texts(['\n\nbody only'], [0]), ['\n\nbody only']);
+  assert.deepEqual(result.items.slice(2).map((i) => i.text), messages);
 });
 
 test('a pull request with no commits and a body with quotes and line breaks still gives a valid list', () => {
