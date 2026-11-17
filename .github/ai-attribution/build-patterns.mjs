@@ -34,17 +34,17 @@ export function build(lists) {
   // "reviewed by the AI team" and a product sentence about AI-generated plans are not attributions.
   const generic = alternation(lists.genericAgents)
   const descriptors = alternation(lists.genericDescriptors)
-  const genericEnd = `([ \\t]+(${descriptors}))*[ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$)`
+  const genericEnd = `([ \\t]+(${descriptors}))*[ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$|[ \\t]+(and|&)[ \\t])`
   const pt = alternation(lists.ptAgents)
   const ptVerbs = alternation(lists.ptVerbs)
   const ptConnectors = alternation(lists.ptConnectors)
-  // A past participle: a word ending in -ed, -t, -de or -en, or an irregular one.
-  const participle = `([a-z]+(ed|t|de|en)|${alternation(lists.irregularParticiples)})`
-  const credit = `${participle}\\s+(with|by|using|via|from|through)(\\s+the\\s+help\\s+of)?`
+  // A past participle: a word ending in -ed, or an irregular one, with an optional prefix (co-, auto-).
+  const participle = `([a-z]+-)*([a-z]+ed|${alternation(lists.irregularParticiples)})`
+  const credit = `${participle}\\s+(with|by|using|via|through)(\\s+the\\s+help\\s+of)?`
   const subject = alternation(lists.subjectVerbs)
   const nouns = alternation(lists.nounsBy)
   // The start of a line, with the marks a list item, a quote, a heading or an emphasis puts before the text.
-  const lineStart = `^[ \\t>*_\`(\\[-]*(\\d+[.)][ \\t]*)?`
+  const lineStart = `^[ \\t>*_#\`(\\[-]*(\\d+[.)][ \\t]*)?`
   const common = [
     // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
     `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:(([^\\n]*[^a-z0-9])?(${tools})${after}|[ \\t*_\`]*((an?|the)[ \\t]+)?(${generic})([ \\t]+(${descriptors}))*[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
@@ -60,16 +60,17 @@ export function build(lists) {
     `\\b(${nouns})\\s+(by|from)\\s+(the\\s+)?(${tools})${after}`,
     // A credit verb (a past participle) and a connector, then a tool or a generic agent, in a position that is an
     // attribution: a line that starts with it, or a sentence whose subject is the change itself.
-    `${lineStart}${credit}${gap}(${tools})${after}`,
     `${lineStart}${credit}${gap}(${generic})${genericEnd}`,
-    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gap}((${tools})${after}|(${generic})${genericEnd})`,
+    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gap}(${generic})${genericEnd}`,
     `${lineStart}(thanks\\s+to|courtesy\\s+of|with\\s+(the\\s+)?help\\s+(of|from))${gap}(${generic})${genericEnd}`,
-    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+(ai[- ](generated|assisted|authored|written)|${credit}${gap}((${tools})${after}|(${generic})${genericEnd}))`,
+    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+((${generic})[- ](generated|assisted|authored|written)|${credit}${gap}(${generic})${genericEnd})`,
     // The robot-emoji line, and a tag that stands alone or sits in brackets, in English and in Portuguese.
     `🤖([^\\n]*[^a-z0-9])?(${generic})${genericEnd}`,
-    `^[ \\t>*_-]*[\\[(]?(ai[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]?[ \\t.]*\\r?$`,
-    `[\\[(](ai[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]`,
+    `^[ \\t>*_-]*[\\[(]?((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]?[ \\t.]*\\r?$`,
+    `[\\[(]${credit}${gap}(${generic})${genericEnd}`,
+    `[\\[(]((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]`,
     `${lineStart}(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
+    `${lineStart}(${alternation(lists.ptChangeNouns)})\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
     `\\b(${alternation(lists.ptDeterminers)})\\s+(${alternation(lists.ptChangeNouns)})\\s+(foi|é|e|foram)\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
   ]
   const production = `(${alternation(lists.productionVerbs)})\\s+(with|by|using|via|through)`
@@ -82,6 +83,10 @@ export function build(lists) {
     ...common,
     `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})${after}`,
     `${lineStart}${lineStart2}${gap}(${tools})${after}`,
+    // A credit verb before a tool is read only in the strict profile: the narrow one lets a vendor be cited.
+    `${lineStart}${credit}${gap}(${tools})${after}`,
+    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gap}(${tools})${after}`,
+    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gap}(${tools})${after}`,
     `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     `\\bclaude([^.]|$)`,

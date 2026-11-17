@@ -119,17 +119,21 @@
     "as"
   ],
   "lineStartVerbs": [
-    "written",
-    "built",
-    "made",
-    "crafted"
+    "written"
   ],
   "genericAgents": [
     "ai",
     "llm",
     "language model",
     "large language model",
-    "artificial intelligence"
+    "artificial intelligence",
+    "a.i.",
+    "genai",
+    "generative ai",
+    "chatbot",
+    "chat bot",
+    "coding agent",
+    "language-model"
   ],
   "genericDescriptors": [
     "coding",
@@ -143,12 +147,19 @@
     "model",
     "programmer",
     "system",
-    "helper"
+    "helper",
+    "tools",
+    "agents",
+    "assistants",
+    "bots",
+    "models"
   ],
   "ptAgents": [
     "ia",
     "intelig\u00eancia artificial",
-    "inteligencia artificial"
+    "inteligencia artificial",
+    "llm",
+    "i.a."
   ],
   "ptVerbs": [
     "gerado",
@@ -162,14 +173,20 @@
     "assistido",
     "assistida",
     "feito",
-    "feita"
+    "feita",
+    "desenvolvido",
+    "desenvolvida"
   ],
   "ptConnectors": [
     "por",
     "com",
     "pela",
     "pelo",
-    "usando"
+    "usando",
+    "via",
+    "utilizando",
+    "com ajuda de",
+    "com a ajuda de"
   ],
   "changeNouns": [
     "pr",
@@ -200,7 +217,10 @@
     "altera\u00e7\u00e3o",
     "alteracao",
     "corre\u00e7\u00e3o",
-    "correcao"
+    "correcao",
+    "texto",
+    "descri\u00e7\u00e3o",
+    "descricao"
   ],
   "ptDeterminers": [
     "este",
@@ -208,7 +228,9 @@
     "o",
     "a",
     "os",
-    "as"
+    "as",
+    "esse",
+    "essa"
   ],
   "irregularParticiples": [
     "made",
