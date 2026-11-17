@@ -41,9 +41,7 @@ with no dependencies; its test is a `node:test` file that builds throwaway git r
 `"check:suppressions": "node scripts/check-suppressions-baseline.mjs"` and run it in the CI job that runs the other
 `check:*` scripts with `--base origin/<default branch>` on pull requests, and the test with
 `node --test scripts/check-suppressions-baseline.test.mjs`. A base revision without the file imposes nothing, which is
-the change that introduces it. The template is formatted with `trailingComma: "all"`; a library whose Prettier says `"none"` copies it byte for byte and
-adds a Prettier override for these two files, or the family check reads its reformatted copy as differing. No exempt entry is needed: the test is under
-`scripts/`, not a `src/` spec, so the mutation inventory does not list it.
+the change that introduces it. A library copies the template byte for byte.
 
 ## published-surface-links
 
@@ -129,3 +127,4 @@ reads the `file` of each entry; the reason is the line below.
 | `check-function-length` | `src/check-function-length.spec.ts`, `src/check-function-length.baseline.spec.ts`, `src/check-function-length.key.spec.ts` | Runs `scripts/check-function-length.mjs` (or `scripts/function-length-key.mjs`) as a child process and imports nothing from `src/`, so it judges no mutant. |
 | `check-spec-headers` | `src/check-spec-headers.spec.ts` | Runs `scripts/check-spec-headers.mjs` as a child process and imports nothing from `src/`, so it judges no mutant. |
 | `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
+| `check-suppressions-baseline` | none | Its test is `scripts/check-suppressions-baseline.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
