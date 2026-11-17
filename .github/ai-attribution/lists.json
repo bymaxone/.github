@@ -309,17 +309,24 @@
     "em parte"
   ],
   "andVerbs": [
+    "adjusted",
     "approved",
     "assisted",
     "audited",
     "authored",
     "checked",
+    "cleaned",
     "co-authored",
     "corrected",
     "created",
     "drafted",
     "edited",
+    "finalized",
+    "finished",
+    "fixed",
     "generated",
+    "improved",
+    "modified",
     "polished",
     "produced",
     "proofread",
@@ -327,10 +334,31 @@
     "refined",
     "reviewed",
     "revised",
+    "rewritten",
+    "rewrote",
     "suggested",
     "tested",
+    "tuned",
+    "updated",
     "validated",
     "verified",
     "written"
+  ],
+  "andAdverbs": [
+    "then",
+    "also",
+    "later",
+    "lightly",
+    "heavily",
+    "manually",
+    "finally",
+    "afterwards",
+    "subsequently"
+  ],
+  "ptAndAdverbs": [
+    "depois",
+    "tamb\u00e9m",
+    "tambem",
+    "manualmente"
   ]
 }

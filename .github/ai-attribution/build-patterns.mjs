@@ -38,15 +38,20 @@ export function build(lists) {
   const participle = `([a-z]+-)*([a-z]+ed|(re|over|hand|ghost|mis|under|out)?(${alternation(lists.irregularParticiples)}))`
   // Where a phrase that names an agent ends: a mark, a spaced dash or slash or plus, an opening parenthesis, the end
   // of the line, or an and that goes on with another participle. Anything else is a sentence about the agent.
-  const stop = `[.,;:!?)\\]*_\`"”’]+|[ \\t]+[-–—|/+(]|[–—]|\\r?$`
-  const genericEnd = `([ \\t]+(${descriptors}))*[ \\t]*(${stop}|[ \\t]+(and|&)[ \\t]+(${alternation(lists.andVerbs)})([ \\t]|\\r?$))`
+  // The alternatives that end a phrase naming an agent. Each one starts by itself, so a run of blanks is read once:
+  // a mark, a spaced dash or opening parenthesis, a dash, the end of the line, or an and that goes on with an
+  // authorship verb, an adverb and a verb, or another tool.
+  const andWords = `((${alternation(lists.andAdverbs)})[ \\t]+)?((${alternation(lists.adverbs)})[ \\t]+)?`
+  const andNext = `[ \\t]+(and|&)[ \\t]+${andWords}((${alternation(lists.andVerbs)})([ \\t]|\\r?$)|(${tools})${after})`
+  const stop = `[ \\t]*[.,;:!?)\\]*_\`"”’]+|[ \\t]*\\r?$|[ \\t]+[-–—|(]|[ \\t]*[–—]|${andNext}`
+  const genericEnd = `([ \\t]+(${descriptors}))*(${stop})`
   const pt = alternation(lists.ptAgents)
   const ptVerbs = `(${alternation(lists.ptVerbs)})([ \\t]+(${alternation(lists.ptAdverbs)}))?`
   const ptConnectors = alternation(lists.ptConnectors)
   // The end of a phrase that names an agent and a noun: a mark, the end of the line, or an and.
-  const phraseEnd = `[ \\t]*(${stop}|[ \\t]+(and|&)[ \\t]+(${alternation(lists.andVerbs)})([ \\t]|\\r?$))`
+  const phraseEnd = `(${stop})`
   // One end for every phrase that names an agent: the phrase must end there, in English and in Portuguese.
-  const ptEnd = `[ \\t]*(${stop}|[ \\t]+(e|&)[ \\t]+(${alternation(lists.ptVerbs)})([ \\t]|\\r?$))`
+  const ptEnd = `([ \\t]*[.,;:!?)\\]*_\`"”’]+|[ \\t]*\\r?$|[ \\t]+[-–—|(]|[ \\t]*[–—]|[ \\t]+(e|&)[ \\t]+((${alternation(lists.ptAndAdverbs)})[ \\t]+)?((${alternation(lists.ptVerbs)})([ \\t]|\\r?$)|(${tools})${after}))`
   const adverb = `((${alternation(lists.adverbs)})[ \\t]+)?`
   const credit = `${adverb}${participle}([ \\t]+and[ \\t]+${participle})?([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
   // The gap that stays on one line, so a participle at the end of a line never joins the next line.
