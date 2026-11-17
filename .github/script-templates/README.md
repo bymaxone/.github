@@ -32,6 +32,17 @@ in document order and a function within the limit is not counted, so adding a sm
 while an offender that drops to the limit renumbers the same-named offenders after it. Wire it as
 `"check:function-length": "node scripts/check-function-length.mjs"`, with `--base origin/<default branch>` on pull requests.
 
+## check-suppressions-baseline
+
+Fails when `eslint-suppressions.json` (ESLint's bulk suppressions) holds a count above the base revision's, or an
+entry the base does not have: ESLint fails on what a change adds, but nothing stops the file from being
+regenerated with `--suppress-rule` after a new violation, which turns that violation into inherited debt. Plain Node
+with no dependencies; its test is a `node:test` file that builds throwaway git repositories. Wire it as
+`"check:suppressions": "node scripts/check-suppressions-baseline.mjs"` and run it in the CI job that runs the other
+`check:*` scripts with `--base origin/<default branch>` on pull requests, and the test with
+`node --test scripts/check-suppressions-baseline.test.mjs`. A base revision without the file imposes nothing, which is
+the change that introduces it. A library copies the template byte for byte.
+
 ## published-surface-links
 
 The link check of a library's published-surface gate, as a module of its own that exports exactly
@@ -116,3 +127,4 @@ reads the `file` of each entry; the reason is the line below.
 | `check-function-length` | `src/check-function-length.spec.ts`, `src/check-function-length.baseline.spec.ts`, `src/check-function-length.key.spec.ts` | Runs `scripts/check-function-length.mjs` (or `scripts/function-length-key.mjs`) as a child process and imports nothing from `src/`, so it judges no mutant. |
 | `check-spec-headers` | `src/check-spec-headers.spec.ts` | Runs `scripts/check-spec-headers.mjs` as a child process and imports nothing from `src/`, so it judges no mutant. |
 | `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
+| `check-suppressions-baseline` | none | Its test is `scripts/check-suppressions-baseline.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |

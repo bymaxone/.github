@@ -1,0 +1,6 @@
+{
+  "files": [
+    { "source": "check-suppressions-baseline.mjs", "target": "scripts/check-suppressions-baseline.mjs" },
+    { "source": "check-suppressions-baseline.test.mjs", "target": "scripts/check-suppressions-baseline.test.mjs" }
+  ]
+}
