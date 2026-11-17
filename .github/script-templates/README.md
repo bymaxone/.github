@@ -54,6 +54,18 @@ scripts, with `--base origin/<default branch>` on pull requests, and the test wi
 `node --test scripts/check-test-comments.test.mjs`. Not handled, on purpose: `xit`/`fit`, a test call wrapped in
 `await`, `void` or parentheses, a locally shadowed `it`, and whether the comment states a scenario and a rule.
 
+## commitlint-no-ai-attribution
+
+A commitlint plugin with one rule, `no-ai-attribution`, that refuses a commit message naming an AI tool as its author or its
+reviewer at commit time. Copy it to
+`scripts/commitlint-no-ai-attribution.cjs` and wire it in the commitlint configuration:
+`plugins: [require('./scripts/commitlint-no-ai-attribution.cjs')]` and `rules: { 'no-ai-attribution': [2, 'always'] }`. A repository
+on the narrow profile uses `require('./scripts/commitlint-no-ai-attribution.cjs').build('narrow')` in `plugins` instead. The
+patterns are embedded in the file, so a change to them reaches an adopter only when it re-copies the file.
+In an ESM or flat configuration, `import plugin, { build } from './scripts/commitlint-no-ai-attribution.cjs'` gives the same plugin and
+`build`. The rule reads the header, body and footer commitlint gives it, and the raw text up to the scissors line when it gives none. A line starting with `#` given with `git commit -m` or `-F` stays in the commit, but the local hook does not read it; the pull-request job and the organisation ruleset read every line and refuse it. The rule has an
+`always` form only; any other form throws. commitlint keeps only one inline plugin object, so merge the `rules` maps of any other inline plugin into one.
+
 ## published-surface-links
 
 The link check of a library's published-surface gate, as a module of its own that exports exactly
@@ -140,3 +152,4 @@ reads the `file` of each entry; the reason is the line below.
 | `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
 | `check-suppressions-baseline` | none | Its test is `scripts/check-suppressions-baseline.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
 | `check-test-comments` | none | Its test is `scripts/check-test-comments.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
+| `commitlint-no-ai-attribution` | none | It ships a plugin and no spec, so the mutation inventory lists nothing for it. |
