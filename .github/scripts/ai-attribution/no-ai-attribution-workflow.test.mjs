@@ -67,13 +67,19 @@ function stepScript(name) {
 }
 
 /**
- * Runs the collect step with a stand-in `gh` that prints `commits` (one JSON object per commit, as the step asks
- * for), and returns the exit status, the output and the items file it wrote.
+ * Runs the collect step with a stand-in `gh` that serves `pages` (each a list of commits as the API shapes them)
+ * and applies the step's own `--jq` expression to each page with `jq`, as `gh --paginate --jq` does. Returns the
+ * exit status, the output and the items file the step wrote.
  */
-function collect({ commits, count, title = 'feat: x', body = 'a body' }) {
+function collect({ pages, count, title = 'feat: x', body = 'a body' }) {
   const dir = mkdtempSync(join(tmpdir(), 'collect-'));
   mkdirSync(join(dir, 'bin'));
-  writeFileSync(join(dir, 'bin', 'gh'), `#!/bin/sh\ncat <<'EOF'\n${commits.map((c) => JSON.stringify(c)).join('\n')}\nEOF\n`, { mode: 0o755 });
+  pages.forEach((page, index) => writeFileSync(join(dir, `page-${index}.json`), JSON.stringify(page)));
+  writeFileSync(
+    join(dir, 'bin', 'gh'),
+    `#!/bin/sh\nwhile [ "$#" -gt 0 ]; do [ "$1" = --jq ] && expr="$2"; shift; done\nfor page in "${dir}"/page-*.json; do jq -c "$expr" "$page"; done\n`,
+    { mode: 0o755 },
+  );
   writeFileSync(join(dir, 'env'), '');
   const result = spawnSync('bash', ['-c', stepScript('Collect the title, the body and the commit messages')], {
     encoding: 'utf8',
@@ -95,31 +101,53 @@ function collect({ commits, count, title = 'feat: x', body = 'a body' }) {
   return { status: result.status, out: `${result.stdout}${result.stderr}`, items };
 }
 
-const commit = (sha, text, merge = false) => ({ where: `commit ${sha}`, text, merge });
+/** A commit as the pull-request commits endpoint shapes it. */
+const commit = (sha, message, parents = 1) => ({
+  sha: sha.padEnd(40, '0'),
+  commit: { message },
+  parents: Array.from({ length: parents }, (_, i) => ({ sha: String(i).padEnd(40, '0') })),
+});
 
-test('the collect step builds the list from the title, the body and each commit, and counts them against the pull request', () => {
-  const result = collect({ commits: [commit('aaaaaaa', 'feat: one'), commit('bbbbbbb', 'fix: two')], count: 2 });
+test('the collect step builds the list from the title, the body and each commit, over every page', () => {
+  const result = collect({ pages: [[commit('aaaaaaa', 'feat: one')], [commit('bbbbbbb', 'fix: two')], []], count: 2 });
   assert.equal(result.status, 0, result.out);
   assert.deepEqual(result.items.map((i) => i.where), ['title', 'body', 'commit aaaaaaa', 'commit bbbbbbb']);
+  assert.equal(result.items[3].text, 'fix: two');
 });
 
 test('a pull request with more commits than the list holds fails the step instead of reading part of it', () => {
-  const result = collect({ commits: [commit('aaaaaaa', 'feat: one')], count: 300 });
+  const result = collect({ pages: [[commit('aaaaaaa', 'feat: one')]], count: 300 });
   assert.notEqual(result.status, 0);
   assert.match(result.out, /300 commits.*1/s);
 });
 
-test('a merge commit is counted but not read: its message is made by the merge, not written by anyone', () => {
+test('a commit count that is missing or not a number fails the step', () => {
+  for (const count of ['', 'many', '-1']) {
+    const result = collect({ pages: [[commit('aaaaaaa', 'feat: one')]], count });
+    assert.notEqual(result.status, 0, `count "${count}"`);
+  }
+});
+
+test('a merge commit is read without its first line, which the merge writes from the names of the branches', () => {
   const result = collect({
-    commits: [commit('aaaaaaa', 'feat: one'), commit('ccccccc', "Merge branch 'main' into feature", true)],
-    count: 2,
+    pages: [
+      [
+        commit('aaaaaaa', 'feat: one'),
+        commit('ccccccc', "Merge branch 'main' into claude/feature", 2),
+        commit('ddddddd', 'Merge branch main into feature\n\nCo-Authored-By: Someone <a@b.c>', 2),
+      ],
+    ],
+    count: 3,
   });
   assert.equal(result.status, 0, result.out);
-  assert.deepEqual(result.items.map((i) => i.where), ['title', 'body', 'commit aaaaaaa']);
+  const byWhere = Object.fromEntries(result.items.map((i) => [i.where, i.text]));
+  assert.equal(byWhere['commit ccccccc'], '');
+  assert.match(byWhere['commit ddddddd'], /Co-Authored-By: Someone/);
+  assert.doesNotMatch(byWhere['commit ddddddd'], /Merge branch/);
 });
 
 test('a pull request with no commits and a body with quotes and line breaks still gives a valid list', () => {
-  const result = collect({ commits: [], count: 0, body: 'says "hi"\nand \\ more\n' });
+  const result = collect({ pages: [[]], count: 0, body: 'says "hi"\nand \\ more\n' });
   assert.equal(result.status, 0, result.out);
   assert.equal(result.items[1].text, 'says "hi"\nand \\ more\n');
 });
