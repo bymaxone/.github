@@ -9,3 +9,8 @@
 id = "GHSA-gcqx-w48m-w2h4"
 ignoreUntil = 2027-01-27T00:00:00Z
 reason = "deepmerge <=4.3.1 (prototype poisoning in mergeObject) has no patched release. Reached only through jest-config (test tooling, devDependency). Remove when a fixed deepmerge ships or jest drops it."
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2027-01-17T00:00:00Z
+reason = "picomatch <=4.0.7 (ReDoS) has no patched release. Reached only through jest and Stryker (test tooling, devDependencies); `pnpm why picomatch --prod` is empty. Remove when a fixed picomatch ships."
