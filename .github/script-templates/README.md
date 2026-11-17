@@ -18,3 +18,19 @@ that can only shrink (`scripts/double-assertion-baseline.json`, written with `--
 the script against throwaway git repositories under the library's own jest, so it needs `typescript` and a jest
 that matches `src/**/*.spec.ts`. Wire it as `"check:double-assertions": "node scripts/check-double-assertions.mjs"`
 and run it in the CI job that runs the other `check:*` scripts, with `--base origin/<default branch>` on pull requests.
+
+## check-function-length
+
+Fails when a function, a method or a test body in a tracked `src/` or `test/` TypeScript file spans more than 50
+lines and is not on a baseline that can only shrink (`scripts/function-length-baseline.json`, written with
+`--write-baseline`). A setup or teardown hook (`beforeEach`, `afterEach`, `beforeAll`, `afterAll`) is measured like
+a test body; only the callback of a `describe`-style grouping is a container. Wire it as
+`"check:function-length": "node scripts/check-function-length.mjs"`, with `--base origin/<default branch>` on pull requests.
+
+## check-spec-headers
+
+Fails when a tracked spec does not open with a `/** */` block comment that says what it tests in at least a few
+words and names its layer (`@layer <layer>` opening its own line, or `Layer: <layer>.`), unless the spec is on a
+baseline that can only shrink (`scripts/spec-header-baseline.json`). A shebang line ahead of the comment is skipped.
+It is plain Node with no dependencies; the spec needs a jest that matches `src/**/*.spec.ts`. Wire it as
+`"check:spec-headers": "node scripts/check-spec-headers.mjs"`.

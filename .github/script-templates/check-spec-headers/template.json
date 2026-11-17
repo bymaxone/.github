@@ -1,0 +1,6 @@
+{
+  "files": [
+    { "source": "check-spec-headers.mjs", "target": "scripts/check-spec-headers.mjs" },
+    { "source": "check-spec-headers.spec.ts", "target": "src/check-spec-headers.spec.ts" }
+  ]
+}
