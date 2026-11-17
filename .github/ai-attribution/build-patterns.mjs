@@ -110,8 +110,10 @@ export function build(lists) {
     `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gapL}(${tools})${after}`,
     `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
-    `\\bclaude([^.]|$)`,
+    // A name that only begins with the tool's (a person called Claudette) is not the tool; the dot keeps a file name out.
+    `\\bclaude([^.a-z0-9]|$)`,
   ]
+  const toolEnd = `[ \\t]*[.!]+|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
   const near = alternation(lists.narrowNear)
   const nearWords = alternation(lists.narrowNearWords)
   const narrow = [
@@ -119,6 +121,10 @@ export function build(lists) {
     // A verb phrase counts only at the start of a line: a sentence that cites a vendor's documents or says what its
     // models generate is not an attribution.
     `${lineStart}${phrase}`,
+    // A credit verb and a tool where the tool ends the phrase (the end of the line, a full stop, a dash or an opening
+    // parenthesis, with no noun after it) is an attribution even where a vendor may be cited: `Built with <tool>.`
+    // A comma or a noun after the tool is a sentence about the vendor, so `Made by <vendor>, priced per token` passes.
+    `${lineStart}${credit}${gapL}(${tools})(${toolEnd})`,
     `\\b(${near})\\s*(\\+|and|&|/|,)\\s*(${near})\\b`,
     `\\b(${near})\\b[^\\n]{0,20}\\b(${nearWords})\\b`,
   ]
