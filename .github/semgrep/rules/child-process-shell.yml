@@ -19,7 +19,7 @@ rules:
                   ...
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: $CP.exec($CMD, ...)
@@ -29,7 +29,7 @@ rules:
                   ...
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: $CP.exec($CMD, ...)
@@ -39,7 +39,7 @@ rules:
                   ...
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: $CP.default.exec($CMD, ...)
@@ -49,14 +49,14 @@ rules:
                   ...
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: require($MOD).exec($CMD, ...)
                   - pattern: require($MOD).execSync($CMD, ...)
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: $F($CMD, ...)
@@ -68,7 +68,7 @@ rules:
                   regex: ^(exec|execSync)$
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: $F($CMD, ...)
@@ -80,7 +80,7 @@ rules:
                   regex: ^(exec|execSync)$
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: $CP.exec($CMD, ...)
@@ -90,7 +90,7 @@ rules:
                   ...
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern: $F($CMD, ...)
               - pattern-inside: |
@@ -101,18 +101,14 @@ rules:
                   regex: ^(exec|execSync)$
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
+                  regex: ^['"`]?(node:)?child_process['"`]?$
           - patterns:
               - pattern-either:
                   - pattern: (await import($MOD)).exec($CMD, ...)
                   - pattern: (await import($MOD)).execSync($CMD, ...)
               - metavariable-regex:
                   metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
-          - pattern: '$CP.spawn($CMD, ..., { ..., shell: true, ... })'
-          - pattern: '$CP.spawnSync($CMD, ..., { ..., shell: true, ... })'
-          - pattern: 'spawn($CMD, ..., { ..., shell: true, ... })'
-          - pattern: 'spawnSync($CMD, ..., { ..., shell: true, ... })'
+                  regex: ^['"`]?(node:)?child_process['"`]?$
       - metavariable-pattern:
           metavariable: $CMD
           patterns:

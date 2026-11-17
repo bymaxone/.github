@@ -20,3 +20,6 @@ require('some-other-module').exec(name);
 re.exec(text);
 // ok: bymax.js.child-process-shell-non-literal
 db.exec(query);
+
+// ruleid: bymax.js.child-process-shell-non-literal
+require(`child_process`).exec(name);

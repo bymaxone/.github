@@ -13,3 +13,8 @@ export async function otherModule(): Promise<void> {
   // ok: bymax.js.child-process-shell-non-literal
   (await import('child_process')).exec('ls -la');
 }
+
+export async function templateLiteralModuleName(): Promise<void> {
+  // ruleid: bymax.js.child-process-shell-non-literal
+  (await import(`child_process`)).exec(name);
+}
