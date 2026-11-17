@@ -203,7 +203,7 @@ export async function checkLinks({ readme, root, fail }) {
   const internal = new Set([
     ...[...README_PROSE.matchAll(/\[[^\]]*\]\((#[^)\s]+)\)/g)].map((m) => m[1].toLowerCase()),
     ...rawHrefs(README_PROSE)
-      .filter((href) => /^#./.test(href))
+      .filter((href) => /^#[\s\S]/.test(href))
       .map((href) => href.toLowerCase())
   ])
 

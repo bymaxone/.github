@@ -198,7 +198,7 @@ const kindOfFailures = (failures) => {
 };
 const VALUES = [
   'https://10.0.0.1/p', 'http://10.0.0.1/p', '#nohead', '#Mixed-Case', '#', 'mailto:a@b.c', 'missing.md', ' spaced.md ',
-  'sub/missing.md#frag', '../outside.md', 'HTTPS://10.0.0.1/p', ''
+  'sub/missing.md#frag', '../outside.md', 'HTTPS://10.0.0.1/p', '', '#\nmissing', 'a\nb.md'
 ];
 const SHAPES = [
   (q, v) => `<a href=${q}${v}${q}>x</a>`,
@@ -207,7 +207,8 @@ const SHAPES = [
   (q, v) => `<a class="c" href=${q}${v}${q}>x</a>`,
   (q, v) => `<A HREF=${q}${v}${q}>x</A>`,
   (q, v) => `<a href = ${q}${v}${q}>x</a>`,
-  (q, v) => `<a href=${v}>x</a>`
+  (q, v) => `<a href=${v}>x</a>`,
+  (q, v) => `<a\nhref=${q}${v}${q}>x</a>`
 ];
 const TABLE = SHAPES.flatMap((shape) => VALUES.flatMap((value) => ['"', "'"].map((quote) => ({ html: shape(quote, value), quote, value }))));
 
@@ -242,7 +243,8 @@ test('the table notices each decision of the href readers once it is removed', a
   const dir = mkdtempSync(join(tmpdir(), 'links-mutants-'));
   const mutants = [
     ['no single quotes', String.raw`|'([^']+)')`, ')'],
-    ['a bare # is an anchor', String.raw`/^#./.test(href)`, String.raw`href.startsWith('#')`],
+    ['a bare # is an anchor', String.raw`/^#[\s\S]/.test(href)`, String.raw`href.startsWith('#')`],
+    ['a # before a line break is no anchor', String.raw`/^#[\s\S]/.test(href)`, String.raw`/^#./.test(href)`],
     ['mailto is relative', String.raw`!/^(?:https?:|#|mailto:)/.test(href)`, String.raw`!/^(?:https?:|#)/.test(href)`],
     ['only https is external', String.raw`/^https?:\/\//.test(href)`, String.raw`/^https:\/\//.test(href)`],
     ['every other href is relative', String.raw`!/^(?:https?:|#|mailto:)/.test(href)`, 'true'],
