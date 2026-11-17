@@ -446,7 +446,7 @@ describe('the gate', () => {
     ]) {
       const result = run(repo({ [path]: `// x\nconst a = 1\n${BAD}` }))
       assert.equal(result.status, 1, path)
-      assert.match(result.output, new RegExp(`✖ ${path.replace(/\./g, '\\.')}:3: `))
+      assert.ok(result.output.includes(`✖ ${path}:3: `), path)
     }
   })
 
