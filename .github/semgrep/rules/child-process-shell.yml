@@ -15,16 +15,6 @@ rules:
                   - pattern: $CP.exec($CMD, ...)
                   - pattern: $CP.execSync($CMD, ...)
               - pattern-inside: |
-                  const $CP = require($MOD);
-                  ...
-              - metavariable-regex:
-                  metavariable: $MOD
-                  regex: ^['"]?(node:)?child_process['"]?$
-          - patterns:
-              - pattern-either:
-                  - pattern: $CP.exec($CMD, ...)
-                  - pattern: $CP.execSync($CMD, ...)
-              - pattern-inside: |
                   $CP = require($MOD);
                   ...
               - metavariable-regex:
@@ -47,6 +37,23 @@ rules:
               - pattern-inside: |
                   import $CP from $MOD;
                   ...
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: $CP.default.exec($CMD, ...)
+                  - pattern: $CP.default.execSync($CMD, ...)
+              - pattern-inside: |
+                  import * as $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"]?(node:)?child_process['"]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: require($MOD).exec($CMD, ...)
+                  - pattern: require($MOD).execSync($CMD, ...)
               - metavariable-regex:
                   metavariable: $MOD
                   regex: ^['"]?(node:)?child_process['"]?$

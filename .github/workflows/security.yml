@@ -247,7 +247,7 @@ jobs:
           summary() {
             local fence lines
             fence=$(awk '{ while (match($0, /`+/)) { if (RLENGTH > n) n = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } } END { s = "```"; for (i = 3; i <= n; i++) s = s "`"; print s }' "$2")
-            lines=$(wc -l < "$2" | tr -d ' ')
+            lines=$(awk 'END { print NR }' "$2")
             cut=0
             [ "$lines" -le "$limit" ] || cut=$((lines - limit))
             {

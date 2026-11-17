@@ -180,3 +180,9 @@ test('symlinks and other non-regular entries are removed before the non-yml file
   assert.ok(others > links, 'it precedes the non-yml deletion');
   assert.ok(fetch.indexOf("-name '*.yml' -print -quit") > others, 'the non-empty check stays last');
 });
+
+test('a last line without a trailing newline is counted, so the cut count is exact', () => {
+  const r = summarize(Array.from({ length: 201 }, (_, i) => `line ${i + 1}`).join('\n'));
+  assert.match(r.summary, /Only the first 200 of 201 lines are shown; 1 lines were cut\./);
+  assert.ok(r.summary.includes('line 200\n') && !r.summary.includes('line 201\n'));
+});
