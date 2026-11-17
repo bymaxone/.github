@@ -307,5 +307,30 @@
     "parcialmente",
     "inteiramente",
     "em parte"
+  ],
+  "andVerbs": [
+    "approved",
+    "assisted",
+    "audited",
+    "authored",
+    "checked",
+    "co-authored",
+    "corrected",
+    "created",
+    "drafted",
+    "edited",
+    "generated",
+    "polished",
+    "produced",
+    "proofread",
+    "proposed",
+    "refined",
+    "reviewed",
+    "revised",
+    "suggested",
+    "tested",
+    "validated",
+    "verified",
+    "written"
   ]
 }

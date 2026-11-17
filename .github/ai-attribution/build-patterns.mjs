@@ -34,16 +34,19 @@ export function build(lists) {
   // "reviewed by the AI team" and a product sentence about AI-generated plans are not attributions.
   const generic = alternation(lists.genericAgents)
   const descriptors = alternation(lists.genericDescriptors)
-  const genericEnd = `([ \\t]+(${descriptors}))*[ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$|[ \\t]+(and|&)[ \\t])`
+  // A past participle: a word ending in -ed, or an irregular one, with an optional prefix (co-, auto-).
+  const participle = `([a-z]+-)*([a-z]+ed|(re|over|hand|ghost|mis|under|out)?(${alternation(lists.irregularParticiples)}))`
+  // Where a phrase that names an agent ends: a mark, a spaced dash or slash or plus, an opening parenthesis, the end
+  // of the line, or an and that goes on with another participle. Anything else is a sentence about the agent.
+  const stop = `[.,;:!?)\\]*_\`"”’]+|[ \\t]+[-–—|/+(]|[–—]|\\r?$`
+  const genericEnd = `([ \\t]+(${descriptors}))*[ \\t]*(${stop}|[ \\t]+(and|&)[ \\t]+(${alternation(lists.andVerbs)})([ \\t]|\\r?$))`
   const pt = alternation(lists.ptAgents)
   const ptVerbs = `(${alternation(lists.ptVerbs)})([ \\t]+(${alternation(lists.ptAdverbs)}))?`
   const ptConnectors = alternation(lists.ptConnectors)
-  // A past participle: a word ending in -ed, or an irregular one, with an optional prefix (co-, auto-).
-  const participle = `([a-z]+-)*([a-z]+ed|(re|over|hand|ghost|mis|under|out)?(${alternation(lists.irregularParticiples)}))`
   // The end of a phrase that names an agent and a noun: a mark, the end of the line, or an and.
-  const phraseEnd = `([ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$)|[ \\t]+(and|&)[ \\t])`
+  const phraseEnd = `[ \\t]*(${stop}|[ \\t]+(and|&)[ \\t]+(${alternation(lists.andVerbs)})([ \\t]|\\r?$))`
   // One end for every phrase that names an agent: the phrase must end there, in English and in Portuguese.
-  const ptEnd = `([ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$)|[ \\t]+(e|&)[ \\t])`
+  const ptEnd = `[ \\t]*(${stop}|[ \\t]+(e|&)[ \\t]+(${alternation(lists.ptVerbs)})([ \\t]|\\r?$))`
   const adverb = `((${alternation(lists.adverbs)})[ \\t]+)?`
   const credit = `${adverb}${participle}([ \\t]+and[ \\t]+${participle})?([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
   // The gap that stays on one line, so a participle at the end of a line never joins the next line.
@@ -73,7 +76,7 @@ export function build(lists) {
     `${lineStart}((this|the|these)[ \\t]+)?((${alternation(lists.changeNouns)})[ \\t]+((is|was|were|are)[ \\t]+)?)?${adverb}${participle}([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+with([ \\t]+the)?[ \\t]+(${alternation(lists.assistanceNouns)})[ \\t]+(of|from)${gapL}(${generic})${genericEnd}`,
     `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gapL}(${generic})${genericEnd}`,
     `${lineStart}(thanks\\s+to|courtesy\\s+of|with\\s+(the\\s+)?help\\s+(of|from))${gap}(${generic})${genericEnd}`,
-    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+((${generic})[- ](generated|assisted|authored|written)|${credit}${gapL}(${generic})${genericEnd})`,
+    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+((${generic})[- ](generated|assisted|authored|written)${phraseEnd}|${credit}${gapL}(${generic})${genericEnd})`,
     // The robot-emoji line, and a tag that stands alone or sits in brackets, in English and in Portuguese.
     `🤖([^\\n]*[^a-z0-9])?(${generic})${genericEnd}`,
     `^[ \\t>*_-]*[\\[(]?((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]?[ \\t.]*\\r?$`,
