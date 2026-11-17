@@ -406,6 +406,22 @@ The job refuses to run on any ref but the default branch, before it reads the ke
 That stops a dispatch on the wrong ref. Keeping the key from a workflow someone pushes to another
 branch is the job of scoping the secret to an environment, which is a repository setting.
 
+### 🚫 `no-ai-attribution` inputs (pull request text and commits)
+
+Fails a pull request whose title, body or any commit message names an AI tool as its author or reviewer. It reads the
+patterns and its script from the tarball at the workflow's own commit, so a change to the patterns reaches a caller on
+`@v1` at the next release; nothing is run from the pull request's branch. A squash merge builds the commit message from
+the title and the body, which is why the check runs on `edited` as well as `synchronize`.
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `profile` | `auto` | `strict`, `narrow` or `auto`. `auto` reads the repository name: the repositories in `narrowRepos` of [`patterns.json`](.github/ai-attribution/patterns.json) get the narrow profile, every other repository the strict one |
+
+No secrets, no outputs. The calling job needs `contents: read` and `pull-requests: read`, and the caller's file is the
+[starter](.github/workflow-templates/no-ai-attribution.yml) (events `opened`, `edited`, `synchronize`, `reopened`).
+The two profiles, the limits and how a repository moves to the narrow list are in
+[`.github/ai-attribution/README.md`](.github/ai-attribution/README.md).
+
 ### 🏷️ Versioning
 
 Point callers at **`@v1`** (a moving major alias): a deliberate `v1.x` release propagates
