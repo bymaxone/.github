@@ -275,5 +275,30 @@
     "let",
     "kept",
     "left"
+  ],
+  "adverbs": [
+    "automatically",
+    "entirely",
+    "partially",
+    "fully",
+    "mostly",
+    "largely",
+    "partly",
+    "manually",
+    "originally",
+    "initially"
+  ],
+  "assistanceNouns": [
+    "assistance",
+    "help",
+    "support",
+    "guidance"
+  ],
+  "ptAdverbs": [
+    "automaticamente",
+    "totalmente",
+    "parcialmente",
+    "inteiramente",
+    "em parte"
   ]
 }
