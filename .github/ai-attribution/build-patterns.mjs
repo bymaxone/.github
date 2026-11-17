@@ -63,9 +63,16 @@ export function build(lists) {
   const nouns = alternation(lists.nounsBy)
   // The start of a line, with the marks a list item, a quote, a heading or an emphasis puts before the text.
   const lineStart = `^[ \\t>*_#\`(\\[-]*(\\d+[.)][ \\t]*)?`
+  // A trailer value that is only words that name an agent (autonomous coding agent, assistant, bot, model), with an
+  // optional address: a value with any other word is a name.
+  // One word list, each word once, so a word is matched one way and a long run of them is read in linear time.
+  const trailerWords = alternation([
+    ...new Set([...lists.trailerAdjectives, ...lists.trailerAgentNouns]),
+  ])
+  const trailerValue = `((${trailerWords})[ \\t]+)*(${alternation(lists.trailerAgentNouns)})`
   const common = [
     // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
-    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:(([^\\n]*[^a-z0-9])?(${tools})${after}|[ \\t*_\`]*((an?|the)[ \\t]+)?(${generic})([ \\t]+(${descriptors}))*[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
+    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:(([^\\n]*[^a-z0-9])?(${tools})${after}|[ \\t*_\`]*((an?|the)[ \\t]+)?(${generic})([ \\t]+(${descriptors}))*[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$|[ \\t*_\`]*${trailerValue}([ \\t]*<[^>\\n]*>)?[ \\t]*\\r?$)`,
     `noreply@(anthropic|openai|claude)\\.`,
     `${before}(${tools})\\[bot\\]`,
     `^[ \\t>*_-]*(${tools})[ -]bot[ \\t.]*\\r?$`,
@@ -110,8 +117,11 @@ export function build(lists) {
     `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gapL}(${tools})${after}`,
     `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
-    `\\bclaude([^.]|$)`,
+    // A name that only begins with the tool's (a person called Claudette) is not the tool; the dot keeps a file name out.
+    `\\bclaude([^.a-z]|$)`,
   ]
+  const narrowCredit = `${adverb}([a-z]+-)*(${alternation(lists.narrowCreditVerbs)})([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
+  const toolEnd = `[ \\t]*[.!]+|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
   const near = alternation(lists.narrowNear)
   const nearWords = alternation(lists.narrowNearWords)
   const narrow = [
@@ -119,6 +129,10 @@ export function build(lists) {
     // A verb phrase counts only at the start of a line: a sentence that cites a vendor's documents or says what its
     // models generate is not an attribution.
     `${lineStart}${phrase}`,
+    // A credit verb and a tool where the tool ends the phrase (the end of the line, a full stop, a dash or an opening
+    // parenthesis, with no noun after it) is an attribution even where a vendor may be cited: `Built with <tool>.`
+    // A comma or a noun after the tool is a sentence about the vendor, so `Made by <vendor>, priced per token` passes.
+    `${lineStart}${narrowCredit}${gapL}(${tools})([ \\t]+(${alternation(lists.toolWords)}))*[*_\`\\])}>"'”’]*(${toolEnd})`,
     `\\b(${near})\\s*(\\+|and|&|/|,)\\s*(${near})\\b`,
     `\\b(${near})\\b[^\\n]{0,20}\\b(${nearWords})\\b`,
   ]

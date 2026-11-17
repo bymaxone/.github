@@ -94,7 +94,9 @@
     "github copilot",
     "github-copilot",
     "google gemini",
-    "microsoft copilot"
+    "microsoft copilot",
+    "openai codex",
+    "claude code"
   ],
   "fillers": [
     "the",
@@ -116,7 +118,11 @@
     "uma",
     "o",
     "os",
-    "as"
+    "as",
+    "generic",
+    "autonomous",
+    "helpful",
+    "automated"
   ],
   "lineStartVerbs": [
     "written"
@@ -138,7 +144,11 @@
     "ais",
     "language models",
     "large language models",
-    "artificial intelligences"
+    "artificial intelligences",
+    "autonomous agent",
+    "autonomous coding agent",
+    "coding assistant",
+    "ai coding assistant"
   ],
   "genericDescriptors": [
     "coding",
@@ -281,7 +291,10 @@
     "cut",
     "let",
     "kept",
-    "left"
+    "left",
+    "caught",
+    "found",
+    "taught"
   ],
   "adverbs": [
     "automatically",
@@ -360,5 +373,69 @@
     "tamb\u00e9m",
     "tambem",
     "manualmente"
+  ],
+  "narrowCreditVerbs": [
+    "generated",
+    "authored",
+    "co-authored",
+    "written",
+    "built",
+    "made",
+    "crafted",
+    "created",
+    "produced",
+    "drafted",
+    "assisted",
+    "raised",
+    "caught",
+    "found",
+    "flagged",
+    "suggested",
+    "proposed",
+    "reviewed",
+    "approved",
+    "verified",
+    "checked",
+    "designed",
+    "developed",
+    "implemented",
+    "coded",
+    "refactored",
+    "fixed",
+    "rewritten",
+    "reported"
+  ],
+  "toolWords": [
+    "code",
+    "cli",
+    "agent",
+    "assistant",
+    "bot"
+  ],
+  "trailerAgentNouns": [
+    "agent",
+    "assistant",
+    "bot",
+    "model",
+    "llm",
+    "ai",
+    "chatbot",
+    "copilot agent"
+  ],
+  "trailerAdjectives": [
+    "generic",
+    "autonomous",
+    "coding",
+    "helpful",
+    "automated",
+    "virtual",
+    "ai",
+    "code",
+    "software",
+    "language",
+    "large",
+    "an",
+    "a",
+    "the"
   ]
 }
