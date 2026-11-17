@@ -1,0 +1,7 @@
+{
+  "name": "Bymax no AI attribution",
+  "description": "Fails a pull request whose title, body or commit messages name an AI tool as their author or reviewer, with the patterns the organisation rulesets carry.",
+  "iconName": "octicon-shield-check",
+  "categories": ["Continuous integration"],
+  "filePatterns": [".*"]
+}
