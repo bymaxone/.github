@@ -530,7 +530,7 @@ security:
 ### Semgrep (opt-in)
 
 `semgrep: warn` (or `enforce`) runs Semgrep in a pinned, non-root image
-(`semgrep/semgrep:1.184.0-nonroot`, by digest) over the **whole** checkout. The workspace is mounted
+(pinned by digest in the workflow) over the **whole** checkout. The workspace is mounted
 read-only, which rules out the diff-aware `--baseline-commit` mode (it writes to `.git`), so every run
 scans everything. The job holds `contents: read` only and uses no secret; it uploads no SARIF, which
 would need `security-events: write`. The verdict is the job's exit code, and the findings are in the
@@ -545,9 +545,9 @@ The rules come from two places. The registry packs are not vendored (their licen
 redistribution): a caller names them in `semgrep-config`, validated against `p/<name>` and `r/<path>`
 before use. The rules in [`.github/semgrep/rules`](.github/semgrep/rules) are always applied, read at
 the commit of the workflow itself, so they move with `v1` and a caller changes nothing to get a new
-rule. Each has a rule test beside it, run on every pull request by `repo-guards`.
+rule. Each has a rule test beside it.
 
-To reproduce the coverage of the `bymax-one` template's `sast` job, pass all eight of its packs:
+Example with registry packs:
 
 ```yaml
 security:
@@ -556,18 +556,6 @@ security:
     semgrep: warn
     semgrep-config: p/typescript p/nodejs p/expressjs p/jwt p/secrets p/dockerfile p/docker-compose p/github-actions
 ```
-
-Vendored rules (JavaScript and TypeScript):
-
-- `bymax.js.code-evaluation-non-literal` (error): `eval`, `new Function`, or a timer given a string.
-- `bymax.js.child-process-shell-non-literal` (error): `exec`/`execSync`, or `spawn` with `shell: true`, on a non-literal command.
-- `bymax.js.dynamic-module-load-non-literal` (warning): `require` or `import()` of a non-literal.
-- `bymax.js.html-injection-non-literal` (warning): `innerHTML`, `outerHTML` or `document.write` with a non-literal.
-- `bymax.js.dangerously-set-inner-html-non-literal` (warning): `dangerouslySetInnerHTML` with a non-literal.
-- `bymax.js.sql-text-built-by-interpolation` (error): concatenated or interpolated SQL passed to `.query(`, `.execute(`, `$queryRawUnsafe(` or `$executeRawUnsafe(`.
-- `bymax.js.weak-hash-md5-sha1` (warning): `createHash('md5')` or `createHash('sha1')`.
-- `bymax.js.math-random-secret` (warning): `Math.random()` building a token, secret, id, password or nonce.
-- `bymax.js.tls-verification-disabled` (error): `rejectUnauthorized: false` or `NODE_TLS_REJECT_UNAUTHORIZED = '0'`.
 
 ### Publishing a change — never move `@v1` by hand
 
