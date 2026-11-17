@@ -57,12 +57,11 @@ scripts, with `--base origin/<default branch>` on pull requests, and the test wi
 ## commitlint-no-ai-attribution
 
 A commitlint plugin with one rule, `no-ai-attribution`, that refuses a commit message naming an AI tool as its author or its
-reviewer at commit time, with the same patterns the organisation rulesets and the pull-request job carry. Copy it to
+reviewer at commit time. Copy it to
 `scripts/commitlint-no-ai-attribution.cjs` and wire it in the commitlint configuration:
 `plugins: [require('./scripts/commitlint-no-ai-attribution.cjs')]` and `rules: { 'no-ai-attribution': [2, 'always'] }`. A repository
 on the narrow profile uses `require('./scripts/commitlint-no-ai-attribution.cjs').build('narrow')` in `plugins` instead. The
-patterns are embedded; a test in this repository keeps them equal to `.github/ai-attribution/patterns.json`, so a change to
-the patterns is a change to this file and every adopter re-copies it. No exempt entry is needed: it ships no spec.
+patterns are embedded in the file, so a change to them reaches an adopter only when it re-copies the file.
 
 ## published-surface-links
 

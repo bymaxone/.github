@@ -7,8 +7,7 @@
  *   plugins: [require('./scripts/commitlint-no-ai-attribution.cjs')],
  *   rules: { 'no-ai-attribution': [2, 'always'] },
  *
- * A repository on the narrow profile builds the plugin with `require(...).build('narrow')` instead. The patterns are
- * the strings of `patterns.json` in the shared repository; the shared repository's tests keep them equal.
+ * A repository on the narrow profile builds the plugin with `require(...).build('narrow')` instead.
  */
 'use strict'
 
