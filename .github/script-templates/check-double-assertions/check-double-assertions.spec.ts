@@ -161,6 +161,19 @@ describe('check-double-assertions', () => {
       )
     })
 
+    it('refuses an option that has no value instead of skipping the base comparison', () => {
+      const root = repo({ 'src/a.ts': SITE + SITE }, { files: { 'src/a.ts': 1 } })
+      commitBase(root)
+      setBaseline(root, { files: { 'src/a.ts': 2 } })
+
+      for (const option of ['--base', '--baseline']) {
+        const result = run(root, option)
+
+        expect(result.status).toBe(2)
+        expect(result.output).toContain(`${option} needs a value.`)
+      }
+    })
+
     it('passes an entry unchanged from the base revision, and fails on an unknown revision', () => {
       const root = repo({ 'src/a.ts': SITE }, { files: { 'src/a.ts': 1 } })
       commitBase(root)

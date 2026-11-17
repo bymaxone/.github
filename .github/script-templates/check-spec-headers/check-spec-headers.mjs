@@ -124,7 +124,13 @@ export function problemsOf(offenders, baseline, base) {
  */
 function option(name, fallback) {
   const index = process.argv.indexOf(name)
-  return index === -1 ? fallback : (process.argv[index + 1] ?? fallback)
+  if (index === -1) return fallback
+  const value = process.argv[index + 1]
+  if (value === undefined || value.startsWith('--')) {
+    console.error(`${name} needs a value.`)
+    process.exit(2)
+  }
+  return value
 }
 
 /**
