@@ -51,23 +51,17 @@ function messageOf(parsed) {
   return (end === -1 ? lines : lines.slice(0, end)).join('\n')
 }
 
-/** The longest run of blanks, or of marks, the rule reads; a longer one is read as this many. */
-const RUN = 4
+/** The longest run of blank-like or mark characters a message may carry before the rule reads it. */
+const PADDING = 300
 
 /**
- * The text with every long run of blanks, and every long run of marks, cut to a short one. The patterns read a run as
- * "one or more" of it, so a message means the same after it; and a regular expression engine that backtracks, which
- * is what runs here, no longer reads a run of tens of thousands of blanks once per start. GitHub reads the same
- * patterns in a linear-time engine and is not affected.
- *
- * @param {string} text The text of the message.
- * @returns {string} The text with the runs cut.
+ * A run of blank-like characters (any space, a tab, a carriage return, a line break) and marks, in any mix, of at least
+ * `PADDING` characters. No commit message has one; padding does, and the engine that runs here backtracks: such a run
+ * after a credit verb took seconds to minutes, once per start of the run. It is refused instead of read, which leaves
+ * every pattern meaning what it means and hides nothing. GitHub reads the same patterns in a linear-time engine and is
+ * not affected.
  */
-function compact(text) {
-  return text
-    .replace(/[ \t]{5,}/g, ' '.repeat(RUN))
-    .replace(/[*_`>~.:|"'<@{}()[\]\u201c\u201d\u2018\u2019-]{5,}/g, (run) => run.slice(0, RUN))
-}
+const PADDED = new RegExp(`[\\s>*_\`~.:|"'<@{}()[\\]\u201c\u201d\u2018\u2019-]{${PADDING},}`)
 
 /**
  * The text shown to the committer on one line: a control character or a line or paragraph separator becomes a space.
@@ -103,7 +97,13 @@ function build(profile = 'strict') {
           throw new Error(
             "no-ai-attribution has an always form only: configure it as [2, 'always']",
           )
-        const match = pattern.exec(compact(messageOf(parsed)))
+        const text = messageOf(parsed)
+        if (PADDED.test(text))
+          return [
+            false,
+            `the message has a run of ${PADDING} or more blank or mark characters; padding stalls the check, shorten it`,
+          ]
+        const match = pattern.exec(text)
         if (match === null) return [true]
         const found = oneLine(match[0])
         return [
@@ -118,4 +118,3 @@ function build(profile = 'strict') {
 module.exports = build()
 module.exports.build = build
 module.exports.patterns = { strict: STRICT, narrow: NARROW }
-module.exports.compact = compact
