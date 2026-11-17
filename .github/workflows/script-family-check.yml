@@ -60,6 +60,18 @@ jobs:
           set -euo pipefail
           node .github/scripts/script-family/check-family.mjs --list .github/script-adopters.txt --templates .github/script-templates
 
+      # A reminder, never a gate: the `ignoreUntil` dates of the osv-scanner.toml of every adopter's repository and of
+      # this one, from the default branch. An ignore that ends within 21 days, or already has, is a warning with its
+      # date, so a dependency audit does not go red on the day an ignored advisory comes back. A repository without
+      # the file, or one that cannot be read, is a note.
+      - name: Warn before an advisory ignore ends
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/script-family/osv-expiry.mjs --list .github/script-adopters.txt --days 21
+
       # A reminder, never a gate: the comments and review replies of the last week in every public repository of the
       # organisation are read with the patterns of the attribution rulesets, and a hit is a warning with its link.
       # A comment written by a bot is not read. Private repositories are not readable with this job's token, so
