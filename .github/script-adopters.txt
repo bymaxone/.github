@@ -3,3 +3,14 @@
 # byte-identical in the repository at the commit its default branch points to (script-family-check.yml).
 # The per-repository data a template reads (its baseline) is not part of the template and is not compared.
 bymaxone/nest-auth check-double-assertions
+bymaxone/nest-ai-tokens check-function-length
+bymaxone/nest-auth check-function-length
+bymaxone/nest-cache check-function-length
+bymaxone/nest-config check-function-length
+bymaxone/nest-core check-function-length
+bymaxone/nest-logger check-function-length
+bymaxone/nest-notification check-function-length
+bymaxone/nest-queue check-function-length
+bymaxone/nest-realtime check-function-length
+bymaxone/nest-storage check-function-length
+bymaxone/nest-telemetry check-function-length
