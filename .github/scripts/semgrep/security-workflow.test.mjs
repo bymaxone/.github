@@ -6,7 +6,7 @@
 // release-family checks do, so these tests need `ruby`.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -208,4 +208,57 @@ test('the closing fence of the summary is a line of its own when the output has 
   const close = lines.lastIndexOf('```');
   assert.ok(close > lines.indexOf('c'), r.summary);
   assert.equal(lines[close - 1], 'c', 'the last output line is followed by a newline, then the fence');
+});
+
+// The step runs as `bash -e {0}`, the Actions default when a step names no shell, so a non-zero exit of the
+// scan must not stop it before the verdict is read. The step body is executed under `bash -e` with a docker
+// that exits with a chosen status, once per status and mode.
+function runScan(exitCode, mode) {
+  const dir = mkdtempSync(join(tmpdir(), 'semgrep-scan-'));
+  mkdirSync(join(dir, 'bin'));
+  mkdirSync(join(dir, 'tmp'));
+  mkdirSync(join(dir, 'ws'));
+  mkdirSync(join(dir, 'rules'));
+  writeFileSync(join(dir, 'bin', 'docker'), `#!/bin/sh\necho "scan output"\necho "scan error" >&2\nexit ${exitCode}\n`);
+  chmodSync(join(dir, 'bin', 'docker'), 0o755);
+  writeFileSync(join(dir, 'tmp', 'semgrep-config.txt'), '');
+  const result = spawnSync('bash', ['-e', '-c', scan], {
+    env: {
+      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      RUNNER_TEMP: join(dir, 'tmp'),
+      GITHUB_WORKSPACE: join(dir, 'ws'),
+      SEMGREP_RULES: join(dir, 'rules'),
+      SEMGREP_IMAGE: 'semgrep/semgrep:test',
+      SEMGREP_MODE: mode,
+      GITHUB_STEP_SUMMARY: join(dir, 'summary'),
+    },
+    encoding: 'utf8',
+  });
+  const summary = existsSync(join(dir, 'summary')) ? readFileSync(join(dir, 'summary'), 'utf8') : '';
+  rmSync(dir, { recursive: true, force: true });
+  return { status: result.status, out: `${result.stdout}${result.stderr}`, summary };
+}
+
+test('under bash -e a clean scan passes, findings are a warning or an error, an unavailable scan is its own annotation', () => {
+  const clean = runScan(0, 'enforce');
+  assert.equal(clean.status, 0, clean.out);
+  assert.match(clean.summary, /no findings/);
+
+  const warnFindings = runScan(1, 'warn');
+  assert.equal(warnFindings.status, 0, warnFindings.out);
+  assert.match(warnFindings.out, /::warning title=semgrep::/);
+
+  const enforceFindings = runScan(1, 'enforce');
+  assert.equal(enforceFindings.status, 1, enforceFindings.out);
+  assert.match(enforceFindings.out, /::error title=semgrep::Semgrep reported findings/);
+
+  const warnDown = runScan(7, 'warn');
+  assert.equal(warnDown.status, 0, warnDown.out);
+  assert.match(warnDown.out, /::warning title=semgrep unavailable::/);
+  assert.match(warnDown.summary, /NOT SCANNED/);
+
+  const enforceDown = runScan(7, 'enforce');
+  assert.equal(enforceDown.status, 1, enforceDown.out);
+  assert.match(enforceDown.out, /::error title=semgrep unavailable::/);
+  assert.match(enforceDown.summary, /NOT SCANNED/);
 });

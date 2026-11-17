@@ -259,10 +259,12 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           }
 
+          # The step runs as `bash -e` and a non-zero exit of the scan is a result, not a failure of the step:
+          # the status is read here and the verdict is decided below.
+          status=0
           docker run --rm --volume "${GITHUB_WORKSPACE}:/src:ro" --volume "${SEMGREP_RULES}:/rules:ro" --workdir /src "${SEMGREP_IMAGE}" \
             semgrep scan --metrics=off --error --disable-version-check --config /rules ${config_args[@]+"${config_args[@]}"} \
-            >"$out" 2>"$err"
-          status=$?
+            >"$out" 2>"$err" || status=$?
 
           case "$status" in
             0)
