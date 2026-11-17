@@ -153,8 +153,228 @@ const MINIMUM = {
     'open',
     'our own',
     'ai',
+    'um',
+    'uma',
+    'o',
+    'os',
+    'as',
   ],
   lineStartVerbs: ['written'],
+  genericAgents: [
+    'ai',
+    'llm',
+    'language model',
+    'large language model',
+    'artificial intelligence',
+    'a.i.',
+    'genai',
+    'generative ai',
+    'chatbot',
+    'chat bot',
+    'coding agent',
+    'language-model',
+    'llms',
+    'ais',
+    'language models',
+    'large language models',
+    'artificial intelligences',
+  ],
+  genericDescriptors: [
+    'coding',
+    'code',
+    'pair',
+    'programming',
+    'assistant',
+    'agent',
+    'tool',
+    'bot',
+    'model',
+    'programmer',
+    'system',
+    'helper',
+    'tools',
+    'agents',
+    'assistants',
+    'bots',
+    'models',
+  ],
+  ptAgents: [
+    'ia',
+    'intelig\u00eancia artificial',
+    'inteligencia artificial',
+    'llm',
+    'i.a.',
+    'ias',
+    'agente de ia',
+    'agentes de ia',
+    'agente de intelig\u00eancia artificial',
+  ],
+  ptVerbs: [
+    'gerado',
+    'gerada',
+    'escrito',
+    'escrita',
+    'criado',
+    'criada',
+    'revisado',
+    'revisada',
+    'assistido',
+    'assistida',
+    'feito',
+    'feita',
+    'desenvolvido',
+    'desenvolvida',
+    'redigido',
+    'redigida',
+    'elaborado',
+    'elaborada',
+    'implementado',
+    'implementada',
+    'produzido',
+    'produzida',
+    'programado',
+    'programada',
+  ],
+  ptConnectors: [
+    'por',
+    'com',
+    'pela',
+    'pelo',
+    'usando',
+    'via',
+    'utilizando',
+    'com ajuda de',
+    'com a ajuda de',
+    'com assist\u00eancia de',
+    'com a assist\u00eancia de',
+    'com assistencia de',
+    'com aux\u00edlio de',
+    'com o aux\u00edlio de',
+    'com suporte de',
+    'com o suporte de',
+  ],
+  changeNouns: [
+    'pr',
+    'pull request',
+    'commit',
+    'change',
+    'changes',
+    'patch',
+    'diff',
+    'code',
+    'fix',
+    'implementation',
+    'message',
+    'text',
+    'documentation',
+    'content',
+    'summary',
+    'docs',
+    'tests',
+  ],
+  ptChangeNouns: [
+    'pr',
+    'commit',
+    'c\u00f3digo',
+    'codigo',
+    'mudan\u00e7a',
+    'mudanca',
+    'altera\u00e7\u00e3o',
+    'alteracao',
+    'corre\u00e7\u00e3o',
+    'correcao',
+    'texto',
+    'descri\u00e7\u00e3o',
+    'descricao',
+    'patch',
+    'diff',
+  ],
+  ptDeterminers: ['este', 'esta', 'o', 'a', 'os', 'as', 'esse', 'essa'],
+  irregularParticiples: [
+    'made',
+    'built',
+    'done',
+    'written',
+    'drawn',
+    'run',
+    'brought',
+    'begun',
+    'given',
+    'shown',
+    'taken',
+    'sent',
+    'spent',
+    'led',
+    'fed',
+    'set',
+    'put',
+    'cut',
+    'let',
+    'kept',
+    'left',
+  ],
+  adverbs: [
+    'automatically',
+    'entirely',
+    'partially',
+    'fully',
+    'mostly',
+    'largely',
+    'partly',
+    'manually',
+    'originally',
+    'initially',
+  ],
+  assistanceNouns: ['assistance', 'help', 'support', 'guidance'],
+  ptAdverbs: ['automaticamente', 'totalmente', 'parcialmente', 'inteiramente', 'em parte'],
+  andVerbs: [
+    'adjusted',
+    'approved',
+    'assisted',
+    'audited',
+    'authored',
+    'checked',
+    'cleaned',
+    'co-authored',
+    'corrected',
+    'created',
+    'drafted',
+    'edited',
+    'finalized',
+    'finished',
+    'fixed',
+    'generated',
+    'improved',
+    'modified',
+    'polished',
+    'produced',
+    'proofread',
+    'proposed',
+    'refined',
+    'reviewed',
+    'revised',
+    'rewritten',
+    'rewrote',
+    'suggested',
+    'tested',
+    'tuned',
+    'updated',
+    'validated',
+    'verified',
+    'written',
+  ],
+  andAdverbs: [
+    'then',
+    'also',
+    'later',
+    'lightly',
+    'heavily',
+    'manually',
+    'finally',
+    'afterwards',
+    'subsequently',
+  ],
+  ptAndAdverbs: ['depois', 'tamb\u00e9m', 'tambem', 'manualmente'],
 }
 
 test('the lists keep every entry they hold today: they may grow and never shrink', () => {
@@ -350,6 +570,435 @@ test('a tool name inside a longer word is not the tool, after a trailer or a ver
   }
 })
 
+test('a credit verb, any past participle or an irregular one, then a connector, then a tool: refused at the start of a line', () => {
+  const misses = []
+  const participles = [
+    'made',
+    'built',
+    'crafted',
+    'done',
+    'written',
+    'drawn',
+    'run',
+    'brought',
+    'powered',
+    'fixed',
+    'tested',
+    'drafted',
+
+    'kept',
+    'given',
+    'shown',
+  ]
+  for (const tool of [...lists.tools, ...lists.toolSpellings]) {
+    const T = cap(tool)
+    for (const participle of participles) {
+      for (const connector of ['with', 'by', 'using', 'via', 'through', 'with the help of']) {
+        for (const message of [
+          `${cap(participle)} ${connector} ${T}`,
+          `fix: x\n\n${cap(participle)} ${connector} **${T}**`,
+          `- ${cap(participle)} ${connector} _${T}_`,
+          `## ${cap(participle)} ${connector} ${T}`,
+          `Co-${participle} ${connector} ${T}`,
+        ]) {
+          if (!strict.test(message)) misses.push(`strict: ${message}`)
+        }
+      }
+    }
+    for (const message of [
+      `This PR was written by ${T}`,
+      `the commit was generated with ${T}`,
+      `these changes were drafted using ${T}`,
+      `Code generated with ${T}`,
+      `Tests written by ${T}`,
+      `Docs written with the help of ${T}`,
+    ]) {
+      if (!strict.test(message)) misses.push(`strict: ${message}`)
+    }
+  }
+  assert.deepEqual(misses, [])
+})
+
+test('a generic agent (an AI, an LLM, a language model) is refused in the position of an attribution, in both profiles', () => {
+  const misses = []
+  const agents = [
+    'AI',
+    'an AI',
+    'the AI',
+    'AI assistant',
+    'an AI assistant',
+    'an AI coding agent',
+    'AI agent',
+    'LLM',
+    'an LLM',
+    'a language model',
+    'a large language model',
+    'artificial intelligence',
+  ]
+  for (const agent of agents) {
+    for (const message of [
+      `Generated with ${agent}`,
+      `Written by ${agent}.`,
+      `Created using ${agent}`,
+      `Assisted by ${agent}`,
+      `Reviewed by ${agent}`,
+      `Code generated with ${agent}`,
+      `Written with the help of ${agent}`,
+      `This PR is generated by ${agent}.`,
+      `The commit was written with ${agent}`,
+      `feat: x\n\nCo-Authored-By: ${agent} <ai@example.com>`,
+      `feat: x\n\nReviewed-by: ${agent}`,
+    ]) {
+      if (!strict.test(message)) misses.push(`strict: ${message}`)
+      if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+    }
+  }
+  for (const message of [
+    'This PR is AI-generated.',
+    '(AI-generated)',
+    '[AI-generated]',
+    'AI-generated',
+    'feat: x (AI-assisted)',
+    '\u{1F916} Generated with AI',
+    'Gerado por IA',
+    'gerado por IA',
+    'Gerada por IA.',
+    '[gerado por IA]',
+    '(escrito por inteligência artificial)',
+    'Este PR foi gerado por IA',
+    'O código foi escrito por IA',
+    'Criado com IA',
+    'Revisado por IA',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+})
+
+test('the review round: no verb check on the word before a connector, no vendor wording in narrow, more attribution forms', () => {
+  for (const message of [
+    'Chat with an LLM.',
+    'Code with AI.',
+    'Open with Cursor',
+    'Connect with Gemini',
+    'Guide by AI',
+    'Migrated from Cursor',
+    'Imported from Copilot',
+    'Switched from Cursor',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+  }
+  for (const message of [
+    'Tested with Gemini 2.5 Flash on 200 prompts',
+    'Made by Anthropic, priced per token',
+    'Migrated from Gemini 1.5 to 2.5',
+    'Replaced by Gemini 2.5 Flash',
+    'Billed by OpenAI per 1M tokens',
+    'Limited by OpenAI rate limits',
+    'Cached by Gemini',
+  ]) {
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  const misses = []
+  for (const message of [
+    'Co-authored with AI',
+    'Co-authored by an AI',
+    'Auto-generated by AI',
+    'Machine-generated by an LLM',
+    '## Generated by AI',
+    '### Generated with an LLM',
+    '(LLM-generated)',
+    '[LLM generated]',
+    'LLM-assisted',
+    '(language-model-written)',
+    'fix: stuff (generated by AI)',
+    'fix: stuff (written by an LLM)',
+    'Written by AI tools',
+    'Written by AI agents',
+    'Generated by AI and reviewed by a human',
+    'Generated by A.I.',
+    'Generated by GenAI',
+    'Generated by generative AI',
+    'Assisted by a coding agent',
+    'Generated by a chatbot',
+    'Código gerado por IA',
+    'Commit gerado por IA',
+    'Descrição gerada por IA',
+    'Esse commit foi escrito por IA',
+    'Gerado por LLM',
+    'Gerado via IA',
+    'Gerado utilizando IA',
+    'Escrito com ajuda de IA',
+    'Desenvolvido com IA',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+})
+
+test('the second review round: closed compounds, an and continuation, plurals, Portuguese verbs, one line only', () => {
+  const misses = []
+  for (const message of [
+    'Rewritten by AI',
+    'Handwritten by AI',
+    'Rebuilt by AI',
+    'Generated and reviewed by AI',
+    'Written and tested by an LLM',
+    'Generated by LLMs',
+    'Generated by language models',
+    'Generated by large language models',
+    'Generated by AIs',
+    'Redigido por IA',
+    'Elaborado por IA',
+    'Este patch foi gerado por IA',
+    'Gerado por agentes de IA',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  for (const message of ['Gerado pelo Copilot', 'Criado com Cursor', 'Rewritten with Claude']) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+  for (const message of ['Resolved\nby AI', 'Merged\nwith the\nAI', 'Updated\n\nBy AI']) {
+    assert.equal(strict.test(message), false, `strict: ${JSON.stringify(message)}`)
+    assert.equal(narrow.test(message), false, `narrow: ${JSON.stringify(message)}`)
+  }
+})
+
+test('the third review round: an adverb, and a credit that says with AI assistance', () => {
+  const misses = []
+  for (const message of [
+    'Automatically generated by AI',
+    'Entirely written by AI',
+    'Partially generated by an LLM',
+    'Generated automatically by AI',
+    'Gerado automaticamente por IA',
+    'Written with AI assistance',
+    'Developed with AI assistance',
+    'This PR was written with AI assistance',
+    'Written with the assistance of AI',
+    'Written with LLM help',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+  for (const message of [
+    'docs: help with AI assistance in the sidebar',
+    'feat: fully configured with AI support in settings',
+    'feat: the settings page, with AI help text',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+})
+
+test('the fourth review round: an assistance credit ends where the phrase ends, takes an adverb, and has Portuguese forms', () => {
+  for (const message of [
+    'Implemented with AI support for streaming',
+    'Refactored with AI guidance docs',
+    'Generated with AI help command output',
+    'Tested with AI support enabled',
+    'Generated with AI assistance for each athlete',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  const misses = []
+  for (const message of [
+    'This PR was largely written with AI assistance',
+    'The commit was mostly generated with AI help',
+    'Written with AI assistance.',
+    'Written with AI assistance and reviewed by a human',
+    'Este PR foi escrito com assistência de IA',
+    'Este commit foi gerado com auxílio de IA',
+    'Escrito com suporte de IA',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+})
+
+test('every branch that names a generic agent ends the phrase there: a continuation is not an attribution', () => {
+  const agents = ['AI', 'an AI', 'the AI', 'LLM', 'an LLM', 'AI assistant', 'a language model']
+  const forms = [
+    (a) => `Generated by ${a}`,
+    (a) => `Written with ${a}`,
+    (a) => `Co-authored with ${a}`,
+    (a) => `Automatically generated by ${a}`,
+    (a) => `This PR was written by ${a}`,
+    (a) => `Code generated with ${a}`,
+    (a) => `Thanks to ${a}`,
+    (a) => `With the help of ${a}`,
+    (a) => `(generated by ${a})`,
+    (a) => `\u{1F916} ${a}`,
+    (a) => `Written with ${a} assistance`,
+  ]
+  const continuations = [' for each athlete', ' to rank the results', ' support enabled']
+  const ends = ['', '.', ' and reviewed by a human']
+  const wrong = []
+  for (const agent of agents) {
+    for (const form of forms) {
+      const base = form(agent)
+      for (const end of ends) {
+        const message = `fix: x\n\n${base}${end}`
+        if (
+          /assistant|assistance/.test(message) &&
+          !/AI assistance/.test(message) &&
+          /assistance/.test(message)
+        )
+          continue
+        if (!strict.test(message)) wrong.push(`strict should refuse: ${message}`)
+      }
+      for (const cont of continuations) {
+        if (/\u{1F916}/u.test(base) && false) continue
+        const message = `fix: x\n\n${base}${cont}`
+        if (/assistance/.test(base) || /\)$/.test(base)) continue
+        if (strict.test(message)) wrong.push(`strict should pass: ${message}`)
+        if (narrow.test(message)) wrong.push(`narrow should pass: ${message}`)
+      }
+    }
+  }
+  const pt = ['Gerado por IA', 'Escrito por IA', 'Criado com IA']
+  for (const base of pt) {
+    for (const cont of [' para cada atleta', ' para ranquear os resultados']) {
+      const message = `fix: x\n\n${base}${cont}`
+      assert.equal(strict.test(message), false, `strict: ${message}`)
+      assert.equal(narrow.test(message), false, `narrow: ${message}`)
+    }
+    assert.equal(strict.test(`fix: x\n\n${base}.`), true, base)
+  }
+  assert.deepEqual(wrong, [])
+})
+
+test('one end for every phrase that names an agent: a dash, a slash or a parenthesis ends it, a predicate does not', () => {
+  const misses = []
+  for (const message of [
+    'Gerado por IA - revisado por humano',
+    'Escrito com IA - revisado',
+    'Gerado por IA (revisado)',
+    'Este PR foi gerado por IA (ver abaixo)',
+    'Gerado por IA e revisado',
+    'Written with AI assistance - reviewed',
+    'Written with AI assistance (see below)',
+    'Generated by AI - reviewed by a human',
+    'Generated by AI \u2014 reviewed',
+    'Written with AI and reviewed by a human',
+    'Generated and reviewed by AI',
+    'This PR is AI-generated.',
+    'The summary is AI-generated.',
+    'This change is AI-assisted - see the notes',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+  for (const message of [
+    'The content is AI-generated recommendations for each athlete',
+    'This change is AI-assisted code review for pull requests',
+    'The summary is AI-generated and may be inaccurate',
+    'Summary generated by AI and stored per athlete',
+    'Text generated by an LLM and sent to the client',
+    'Code generated by an LLM and executed in a sandbox',
+    'Message generated by AI and delivered by queue',
+    'Gerado por IA para cada atleta',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+})
+
+test('the sixth review round: an and before a tool or an adverb and a verb, no slash or plus, linear on a blank run', () => {
+  const misses = []
+  for (const message of [
+    'Generated by AI and Copilot',
+    'Generated by AI & Claude',
+    'Generated by AI and then reviewed',
+    'Generated by AI and lightly edited',
+    'Written by an AI assistant and improved by me',
+    'Gerado por IA e depois revisado',
+    'Gerado por IA e Copilot',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+  for (const message of [
+    'Built with AI / ML pipelines for athletes',
+    'Evaluated with an LLM / rubric scoring',
+    'Built with AI + ML pipelines',
+    '(AI-generated recommendations for each athlete)',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  // The commitlint plugin runs these patterns in V8, where a nested blank run is read once per length.
+  for (const head of [
+    'This PR is AI-generated',
+    'Written with AI assistance',
+    'Generated by AI',
+    'Gerado por IA',
+  ]) {
+    for (const pattern of [strict, narrow]) {
+      const started = Date.now()
+      pattern.test(`${head}${' '.repeat(60000)}x`)
+      assert.ok(Date.now() - started < 500, `${head}: a long blank run must be read in linear time`)
+    }
+  }
+})
+
+test('the seventh review round: marks may stand between the and and the verb or tool', () => {
+  const misses = []
+  for (const message of [
+    'Generated by AI and **Claude**',
+    'Generated by AI and _Claude_',
+    'Generated by AI and @claude',
+    'Generated by AI and (Claude)',
+    'Generated by AI and then **reviewed**',
+    'Generated by AI and `Copilot`',
+    'Gerado por IA e **revisado**',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
+  const started = Date.now()
+  strict.test(`Generated by AI and${' '.repeat(60000)}x`)
+  narrow.test(`Generated by AI and ${'*'.repeat(60000)}x`)
+  strict.test(`Generated by AI and ${'*_ '.repeat(20000)}x`)
+  narrow.test(`Gerado por IA e ${'*_'.repeat(30000)}x`)
+  assert.ok(Date.now() - started < 500)
+})
+
+test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
+  for (const message of [
+    'fix: guard the AI provider timeout',
+    'feat: add AI usage metering',
+    'feat: the AI module',
+    'Co-authored-by: Ai Lin <a@b.c>',
+    'docs: reviewed by the AI team',
+    'feat: plans generated by AI for each athlete',
+    'docs: spec for AI-guided training with AI-generated plans',
+    'feat: the AI-generated summary card',
+    'feat: a summary generated by AI for each athlete',
+    'feat: built with Gemini bindings',
+    'feat: written with cursor pagination',
+    'feat: paginated with cursor-based offsets',
+    'feat: Gemini pricing table',
+    'feat: code generated by the tokenizer',
+    'feat: tests written with jest',
+    'docs: text rendered by cursor',
+    'feat: ele ia para a tela inicial',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+})
+
 test('a factual mention of a pull request bot is not an attribution', () => {
   for (const message of [
     'fix: address review feedback from Copilot bot',
@@ -371,7 +1020,6 @@ test('the narrow profile reads a verb phrase only at the start of a line: a vend
     'fix: price checked by OpenAI docs',
     'docs: the models generated by Anthropic are priced per token',
     'docs: tokens approved by Mistral for the tier',
-    'Made by Anthropic, priced per token',
     'feat: the Claude Agent SDK client',
     'chore: bump claude-agent-sdk',
     'docs: OpenAI assistant api prices',
@@ -433,14 +1081,29 @@ for (const [file, profile, repos] of RULESETS) {
 }
 
 test('the caller template the family check compares equals the starter workflow, byte for byte', () => {
-  const starter = readFileSync(new URL('../../workflow-templates/no-ai-attribution.yml', import.meta.url), 'utf8');
-  const copy = readFileSync(new URL('../../script-templates/no-ai-attribution-caller/no-ai-attribution.yml', import.meta.url), 'utf8');
-  assert.equal(copy, starter);
-});
+  const starter = readFileSync(
+    new URL('../../workflow-templates/no-ai-attribution.yml', import.meta.url),
+    'utf8',
+  )
+  const copy = readFileSync(
+    new URL(
+      '../../script-templates/no-ai-attribution-caller/no-ai-attribution.yml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.equal(copy, starter)
+})
 
 test('the caller template names the reusable workflow at @v1 and carries the four pull_request types', () => {
-  const copy = readFileSync(new URL('../../script-templates/no-ai-attribution-caller/no-ai-attribution.yml', import.meta.url), 'utf8');
-  assert.match(copy, /uses: bymaxone\/\.github\/\.github\/workflows\/no-ai-attribution\.yml@v1/);
-  assert.match(copy, /types: \[opened, edited, synchronize, reopened\]/);
-  assert.match(copy, /pull-requests: read/);
-});
+  const copy = readFileSync(
+    new URL(
+      '../../script-templates/no-ai-attribution-caller/no-ai-attribution.yml',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(copy, /uses: bymaxone\/\.github\/\.github\/workflows\/no-ai-attribution\.yml@v1/)
+  assert.match(copy, /types: \[opened, edited, synchronize, reopened\]/)
+  assert.match(copy, /pull-requests: read/)
+})
