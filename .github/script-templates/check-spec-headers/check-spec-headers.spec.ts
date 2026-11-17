@@ -7,12 +7,12 @@
  * Layer: repository tooling, tests.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 const SCRIPT = resolve(__dirname, '..', 'scripts', 'check-spec-headers.mjs')
-const SHIPPED_BASELINE = resolve(__dirname, '..', 'scripts', 'spec-header-baseline.json')
+const REPO_ROOT = resolve(__dirname, '..')
 
 interface Result {
   readonly status: number | null
@@ -179,17 +179,26 @@ describe('check-spec-headers', () => {
   })
 
   describe('the baseline', () => {
-    // Scenario: the baseline the repository ships. Expected: it lists no file. Why: every tracked spec
-    // must have a valid header, so a spec without one is a new offender and fails.
-    it('ships empty, so a spec without a header fails', () => {
-      const shipped = JSON.parse(readFileSync(SHIPPED_BASELINE, 'utf8')) as { files: string[] }
+    // Scenario: an empty baseline and a headerless spec. Expected: it fails, naming the spec. Why: a spec without
+    // a valid header and not on the baseline is a new offender.
+    it('fails a headerless spec that is not on it', () => {
       const root = scratch({ 'src/new.spec.ts': HEADERLESS })
 
-      const result = run(root, readFileSync(SHIPPED_BASELINE, 'utf8'))
+      const result = run(root, '{"files":[]}')
 
-      expect(shipped.files).toEqual([])
       expect(result.status).toBe(1)
       expect(result.output).toContain('src/new.spec.ts: does not open with a /** */ block comment.')
+    })
+
+    // Scenario: this repository's own tracked specs against the baseline it ships. Expected: pass. Why: the
+    // baseline is the repository's own inherited list, whatever it holds, and it must stay exactly current.
+    it('holds for this repository against its own shipped baseline', () => {
+      const result = spawnSync(process.execPath, [SCRIPT, '--root', REPO_ROOT], { encoding: 'utf8' })
+
+      expect({ status: result.status, output: `${result.stdout}${result.stderr}` }).toEqual({
+        status: 0,
+        output: expect.any(String)
+      })
     })
 
     // Scenario: a headerless spec that the baseline lists, beside one with a header. Expected: pass.
