@@ -62,10 +62,9 @@ reviewer at commit time. Copy it to
 `plugins: [require('./scripts/commitlint-no-ai-attribution.cjs')]` and `rules: { 'no-ai-attribution': [2, 'always'] }`. A repository
 on the narrow profile uses `require('./scripts/commitlint-no-ai-attribution.cjs').build('narrow')` in `plugins` instead. The
 patterns are embedded in the file, so a change to them reaches an adopter only when it re-copies the file.
-In an ESM or flat configuration, `import plugin, { build } from './scripts/commitlint-no-ai-attribution.cjs'` gives the same two
-plugins. Only the message is read: the comment lines git adds and the diff under the scissors line are not. The rule has an
-`always` form only; any other form throws. commitlint keeps one inline plugin object, so a configuration that already passes
-another one has to merge the two `rules` maps.
+In an ESM or flat configuration, `import plugin, { build } from './scripts/commitlint-no-ai-attribution.cjs'` gives the same plugin and
+`build`. Only the message is read: the comment lines git adds and the diff under the scissors line are not. The rule has an
+`always` form only; any other form throws. commitlint keeps only one inline plugin object, so merge the `rules` maps of any other inline plugin into one.
 
 ## published-surface-links
 
