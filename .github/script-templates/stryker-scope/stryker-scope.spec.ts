@@ -453,7 +453,7 @@ describe('mutation scope', () => {
   })
 
   /** An end-to-end-owned file is only excused while an end-to-end suite exercises its subpath. */
-  it('keeps every end-to-end-owned file exercised by an end-to-end suite', () => {
+  it('keeps an end-to-end suite that exercises the subpath of the end-to-end-owned files', () => {
     if (E2E_OWNED === null) {
       expect(listedOfKind('e2e-owned')).toEqual([])
       return

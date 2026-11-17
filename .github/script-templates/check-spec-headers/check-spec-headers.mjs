@@ -48,6 +48,9 @@ const MIN_PURPOSE_WORDS = 3
  */
 const LAYER_MARKER = /^\s*@layer[ \t]+([A-Za-z0-9-]+)|\bLayer:[ \t]+([A-Za-z0-9-]+)/i
 
+/** Every layer marker of a line: the purpose of a header is what is left once all of them are taken out. */
+const EVERY_LAYER_MARKER = new RegExp(LAYER_MARKER.source, 'gi')
+
 /** A shebang line ahead of the header, as an executable script carries. */
 const SHEBANG = /^#![^\n]*\n/
 
@@ -71,7 +74,7 @@ export function headerProblem(source) {
   const at = lines.findIndex((line) => LAYER_MARKER.test(line))
   if (at === -1) return 'header has no layer marker (`@layer <layer>` or `Layer: <layer>.`)'
   const purpose = lines
-    .map((line, i) => (i === at ? line.replace(LAYER_MARKER, '') : line))
+    .map((line) => line.replace(EVERY_LAYER_MARKER, ''))
     .join(' ')
     .replace(/@fileoverview/gi, '')
     .trim()
