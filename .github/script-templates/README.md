@@ -45,7 +45,7 @@ and needs `typescript`, a jest that matches `src/**/*.spec.ts`, a `tsup.config.t
 
 The spec holds the engine and every generic check. What differs between libraries lives in a sibling file,
 `src/stryker-scope.data.ts`, which the library owns and the family check does not compare (it is not in
-`template.json`). The spec imports these four exports from `./stryker-scope.data`:
+`template.json`). The spec imports these exports from `./stryker-scope.data`:
 
 | Export          | Type                                                                          | Meaning                                                                                                             |
 | --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -65,34 +65,14 @@ Kinds, each checked against the files it covers:
 
 - `barrel`: re-exports only (a leading `'use client'` is allowed).
 - `types`: the compiler emits no statement for the file.
-- `constants`: no logic construct, runtime global or non-literal arithmetic (an optional `ownedBy` names the package
+- `constants`: no logic (an optional `ownedBy` names the package
   script and the file that judge the table instead of Stryker, and both must exist).
-- `const-table`: only type declarations and exported `as const` literals of strings, numbers and plain objects.
+- `const-table`: only type declarations and exported `as const` literals.
 - `e2e-owned`: judged by an end-to-end suite; `E2E_OWNED` must name suites that mention the subpath.
-
-`ownedBy` is the one addition to `{ kind, reason, files }`, and is optional.
-
-Per-check mapping (variants: AT = nest-ai-tokens, Q = nest-queue, RT = nest-realtime):
-
-| Check in the variants                                                                         | In the template                                                                                       |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| finds the shipped source (AT, Q, RT): entry count, `arrayContaining`, minimum closure size    | generic, numbers from `EXPECTED`                                                                      |
-| mutates every shipped file not listed with a reason (AT, Q, RT)                               | generic                                                                                               |
-| lists no file that `mutate` still selects (AT, Q, RT)                                         | generic                                                                                               |
-| lists no pattern matching nothing, and each reason longer than 20 characters (AT, Q, RT)      | generic                                                                                               |
-| barrels hold re-exports only (AT, Q, RT); RT also tolerates `'use client'`                    | generic, with the `'use client'` allowance for every library                                          |
-| types files emit no runtime code (AT, Q, RT), and its detector self-test (AT, Q, RT)          | generic                                                                                               |
-| resolver tries `.ts` and `/index.ts` (AT, Q); RT also `.tsx`                                  | generic, tries all three                                                                              |
-| constants files free of logic (Q), and its detector self-test (Q)                             | generic for kind `constants`; the self-test runs in every library                                     |
-| the const-table mutation script and its package entry exist (Q)                               | data-driven: `ownedBy` on the exclusion, check `keeps the script that owns an exclusion`              |
-| const-table files hold `as const` tables and types only (RT), and its detector self-test (RT) | generic for kind `const-table`; the self-test runs in every library                                   |
-| e2e-owned files exercised by an e2e suite, at least one e2e-owned file listed (AT)            | data-driven: `E2E_OWNED`; with `null`, the check instead fails if any exclusion is `e2e-owned`       |
-| shipped data files exist and the build copies them (AT)                                       | data-driven: `SHIPPED_DATA`, each `tsupNeedle` must appear quoted in `tsup.config.ts`                 |
 
 Notes. The self-tests of the constants and const-table detectors run in every library, because the detectors are part
 of the byte-identical file; they are cheap and need no library data. A library that gains a kind it did not use before
-(for example its first `const-table`) needs only a data edit. Libraries that carry checks beyond this scope, such as
-nest-realtime's `src/stryker-jest-inventory.spec.ts` and `test/setup/stryker-*.ts`, keep them per library.
+(for example its first `const-table`) needs only a data edit.
 
 To adopt: copy `stryker-scope.spec.ts` to `src/`, write `src/stryker-scope.data.ts` from the library's current
 exclusions, delete the old spec, run `jest src/stryker-scope.spec.ts`, and add the library to `script-adopters.txt` here.
