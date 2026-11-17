@@ -1,0 +1,46 @@
+{
+  "description": "The hosts a library release is expected to reach, so a harden-runner report is read against a list instead of from memory. Documentation only: nothing reads this file in CI, and a host that is not listed is a question to answer, not a failure. Written from the harden-runner report of a library's 1.4.14 release. A host with a star is a family: the numbered or hashed part varies from run to run.",
+  "jobs": {
+    "publish": {
+      "description": "The credentialed job: nothing from the package runs while the token exists.",
+      "hosts": [
+        "registry.npmjs.org",
+        "fulcio.sigstore.dev",
+        "rekor.sigstore.dev",
+        "api.github.com",
+        "results-receiver.actions.githubusercontent.com",
+        "run-actions-*.actions.githubusercontent.com",
+        "productionresultssa*.blob.core.windows.net",
+        "hosted-compute-watchdog-*.githubapp.com",
+        "prod.app-api.stepsecurity.io"
+      ]
+    },
+    "build": {
+      "description": "The publish families without the two signing hosts, plus the following.",
+      "hosts": [
+        "registry.npmjs.org",
+        "api.github.com",
+        "github.com",
+        "results-receiver.actions.githubusercontent.com",
+        "run-actions-*.actions.githubusercontent.com",
+        "productionresultssa*.blob.core.windows.net",
+        "hosted-compute-watchdog-*.githubapp.com",
+        "hosted-compute-request-orchestrator-*.githubapp.com",
+        "prod.app-api.stepsecurity.io",
+        "agent.api.stepsecurity.io"
+      ],
+      "whenTheRepositoryHas": {
+        "Testcontainers": [
+          "registry-1.docker.io",
+          "auth.docker.io",
+          "production.cloudflare.docker.com"
+        ]
+      },
+      "perRepository": "The link hosts of the repository's README, reached by the published-surface link check (check:published); they differ per repository and are not listed here."
+    }
+  },
+  "notes": {
+    "prod.app-api.stepsecurity.io": "The harden-runner agent's own API, resolved when the agent starts, so it appears in every job that runs it.",
+    "agent.api.stepsecurity.io": "Tried by the agent before the host above; a build that cannot reach it can time out at the first step."
+  }
+}
