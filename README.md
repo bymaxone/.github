@@ -297,9 +297,7 @@ worker grows to several GiB over a long run, and a lost runner reports no error)
 
 Two caller choices need a measurement, not a guess. `timeout-minutes` should be at least 1.5
 times the wall time of the last cold run (the slowest shard, when sharded), with the run and its
-minutes in a comment beside the value: nest-auth's slowest shard took 110 min in run
-43540212734, nest-logger's 46.4 min. And "two workers fit 16 GB" holds only with out-of-memory
-restarts on nest-logger, so size `concurrency` from the shard's peak memory, not from that sentence.
+minutes in a comment beside the value. Size `concurrency` from the shard's peak memory.
 
 | Input             | Default                    | What it does                                                                      |
 | ----------------- | -------------------------- | --------------------------------------------------------------------------------- |
