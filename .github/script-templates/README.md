@@ -24,9 +24,9 @@ and run it in the CI job that runs the other `check:*` scripts, with `--base ori
 Fails when a function, a method or a test body in a tracked `src/` or `test/` TypeScript file spans more than 50
 lines and is not on a baseline that can only shrink (`scripts/function-length-baseline.json`, written with
 `--write-baseline`). A setup or teardown hook (`beforeEach`, `afterEach`, `beforeAll`, `afterAll`) is measured like
-a test body; only the callback of a `describe`-style grouping is a container. The baseline numbers only the offenders that share a name, so adding a small function with the same
-name never renames an entry; the reverse holds too: reducing the earlier of two same-named offenders renames the
-later one, so that change rewrites both entries. Wire it as
+a test body; only the callback of a `describe`-style grouping is a container. Same-named offenders are numbered
+in document order and a function within the limit is not counted, so adding a small function never renames an entry,
+while an offender that drops to the limit renumbers the same-named offenders after it. Wire it as
 `"check:function-length": "node scripts/check-function-length.mjs"`, with `--base origin/<default branch>` on pull requests.
 
 ## check-spec-headers
