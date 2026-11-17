@@ -460,6 +460,31 @@ const MINIMUM = {
     'deepseek',
     'gpt',
   ],
+  productWords: [
+    'ide',
+    'editor',
+    'pro',
+    'flash',
+    'ultra',
+    'composer',
+    'cascade',
+    'chat',
+    'mini',
+    'turbo',
+    'plus',
+    'studio',
+    'desktop',
+    'app',
+    'extension',
+    'plugin',
+    'max',
+    'tab',
+    'nano',
+    'lite',
+    'preview',
+    'advanced',
+    'free',
+  ],
 }
 
 test('the lists keep every entry they hold today: they may grow and never shrink', () => {
@@ -1229,6 +1254,14 @@ test('a name that is also an ordinary word is the tool after a credit verb only 
     'Built with **Cursor** Agent',
     'Built with [Cursor] Code',
     'Built with Cursor \u{1F916}',
+    'Made with GPT-5',
+    'Built with Cursor-2.0',
+    'Made with Gemini-2',
+    'Built with Cursor IDE',
+    'Made with Gemini Pro',
+    'Built with Cursor Composer',
+    'Made with Gemini Flash',
+    'Built with Windsurf Cascade',
   ]) {
     assert.equal(strict.test(message), true, `strict: ${message}`)
   }
