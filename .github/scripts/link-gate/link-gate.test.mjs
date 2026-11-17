@@ -192,3 +192,18 @@ test('the link-check template checks raw HTML hrefs in single quotes as it does 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// A link to the page itself ("back to top") has no fragment to resolve: it is not an anchor of the README.
+test('the link-check template does not read a bare # href as an anchor', async () => {
+  const { checkLinks } = await import(new URL('../../script-templates/published-surface-links/published-surface-links.mjs', import.meta.url));
+  const root = mkdtempSync(join(tmpdir(), 'links-bare-hash-'));
+  try {
+    for (const quote of ['"', "'"]) {
+      const failures = [];
+      await checkLinks({ readme: `# Title\n\n<a href=${quote}#${quote}>top</a>\n[top](#)\n`, root, fail: (...args) => failures.push(args.join(' ')) });
+      assert.deepEqual(failures, [], `${quote}: a bare # is not an anchor`);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
