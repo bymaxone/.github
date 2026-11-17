@@ -54,6 +54,16 @@ scripts, with `--base origin/<default branch>` on pull requests, and the test wi
 `node --test scripts/check-test-comments.test.mjs`. Not handled, on purpose: `xit`/`fit`, a test call wrapped in
 `await`, `void` or parentheses, a locally shadowed `it`, and whether the comment states a scenario and a rule.
 
+## commitlint-no-ai-attribution
+
+A commitlint plugin with one rule, `no-ai-attribution`, that refuses a commit message naming an AI tool as its author or its
+reviewer at commit time, with the same patterns the organisation rulesets and the pull-request job carry. Copy it to
+`scripts/commitlint-no-ai-attribution.cjs` and wire it in the commitlint configuration:
+`plugins: [require('./scripts/commitlint-no-ai-attribution.cjs')]` and `rules: { 'no-ai-attribution': [2, 'always'] }`. A repository
+on the narrow profile uses `require('./scripts/commitlint-no-ai-attribution.cjs').build('narrow')` in `plugins` instead. The
+patterns are embedded; a test in this repository keeps them equal to `.github/ai-attribution/patterns.json`, so a change to
+the patterns is a change to this file and every adopter re-copies it. No exempt entry is needed: it ships no spec.
+
 ## published-surface-links
 
 The link check of a library's published-surface gate, as a module of its own that exports exactly
@@ -140,3 +150,4 @@ reads the `file` of each entry; the reason is the line below.
 | `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
 | `check-suppressions-baseline` | none | Its test is `scripts/check-suppressions-baseline.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
 | `check-test-comments` | none | Its test is `scripts/check-test-comments.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
+| `commitlint-no-ai-attribution` | none | It ships a plugin and no spec, so the mutation inventory lists nothing for it. |

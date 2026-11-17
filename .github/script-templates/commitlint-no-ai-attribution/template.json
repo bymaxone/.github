@@ -1,0 +1,5 @@
+{
+  "files": [
+    { "source": "commitlint-no-ai-attribution.cjs", "target": "scripts/commitlint-no-ai-attribution.cjs" }
+  ]
+}
