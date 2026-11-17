@@ -11,9 +11,8 @@ A script or a spec that every library copies, kept here once so that a copy that
 - To change a template, change it here, then update each adopter's copy. The check is red for an adopter
   until it has.
 - Every spec a template carries judges no mutant, so an adopter lists each one in
-  `scripts/mutation-inventory.exempt.json` (see the table at the end). The cold mutation run fails a spec that is
-  not listed, and the per-push job does not run that check, so an unlisted copy fails only at the adopter's next
-  release; the family check reports it with the repository's name.
+  `scripts/mutation-inventory.exempt.json` (see the table at the end); the family check reports an unlisted
+  spec with the repository's name.
 
 ## check-double-assertions
 
@@ -113,7 +112,7 @@ reads the `file` of each entry; the reason is the line below.
 
 | Template | Spec files | Reason |
 | --- | --- | --- |
-| `check-double-assertions` | `src/check-double-assertions.spec.ts` | Runs `scripts/check-double-assertions.mjs` as a child process on fixture directories and imports nothing from `src/`, so it judges no mutant. |
-| `check-function-length` | `src/check-function-length.spec.ts`, `src/check-function-length.baseline.spec.ts`, `src/check-function-length.key.spec.ts` | Runs `scripts/check-function-length.mjs` (or `scripts/function-length-key.mjs`) as a child process on fixture directories and imports nothing from `src/`, so it judges no mutant. |
-| `check-spec-headers` | `src/check-spec-headers.spec.ts` | Runs `scripts/check-spec-headers.mjs` as a child process on fixture directories and imports nothing from `src/`, so it judges no mutant. |
+| `check-double-assertions` | `src/check-double-assertions.spec.ts` | Runs `scripts/check-double-assertions.mjs` as a child process and imports nothing from `src/`, so it judges no mutant. |
+| `check-function-length` | `src/check-function-length.spec.ts`, `src/check-function-length.baseline.spec.ts`, `src/check-function-length.key.spec.ts` | Runs `scripts/check-function-length.mjs` (or `scripts/function-length-key.mjs`) as a child process and imports nothing from `src/`, so it judges no mutant. |
+| `check-spec-headers` | `src/check-spec-headers.spec.ts` | Runs `scripts/check-spec-headers.mjs` as a child process and imports nothing from `src/`, so it judges no mutant. |
 | `stryker-scope` | `src/stryker-scope.spec.ts` | Reads the repository's tsup and Stryker configuration and its source closure as files and imports nothing it mutates, so it judges no mutant. |
