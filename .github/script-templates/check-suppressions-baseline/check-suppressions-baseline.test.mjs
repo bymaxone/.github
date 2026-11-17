@@ -145,6 +145,17 @@ describe('the command', () => {
     }
   })
 
+  it('refuses an option that has no value instead of skipping the base comparison', () => {
+    const root = repository(baseline({ 'a.ts': 1 }), baseline({ 'a.ts': 3 }))
+    try {
+      const result = run(root, '--base')
+      assert.equal(result.status, 2)
+      assert.match(result.stderr, /--base needs a value\./)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('exits non-zero for a base that is not a revision', () => {
     const root = repository(baseline({ 'a.ts': 1 }), baseline({ 'a.ts': 1 }))
     try {

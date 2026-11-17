@@ -296,6 +296,17 @@ describe('check-spec-headers', () => {
       expect(run(root, '{"files":["src/old.spec.ts"]}', '--base', 'HEAD').status).toBe(0)
     })
 
+    // Scenario: `--base` is the last argument, so it has no value. Expected: exit 2 naming the
+    // option. Why: a truncated invocation must not read as "no base revision" and skip the widening check.
+    it('refuses an option that has no value', () => {
+      const root = scratch({ 'src/ok.spec.ts': GOOD })
+
+      const result = run(root, '{"files":[]}', '--base')
+
+      expect(result.status).toBe(2)
+      expect(result.output).toContain('--base needs a value.')
+    })
+
     // Scenario: a base that is not a revision. Expected: a non-zero exit that says so. Why: a
     // comparison that cannot be made must not pass as if it had been.
     it('fails for a base that is not a revision', () => {
