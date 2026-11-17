@@ -2,6 +2,14 @@
   "files": [
     { "source": "check-function-length.mjs", "target": "scripts/check-function-length.mjs" },
     { "source": "function-length-key.mjs", "target": "scripts/function-length-key.mjs" },
-    { "source": "check-function-length.spec.ts", "target": "src/check-function-length.spec.ts" }
+    { "source": "check-function-length.spec.ts", "target": "src/check-function-length.spec.ts" },
+    {
+      "source": "check-function-length.baseline.spec.ts",
+      "target": "src/check-function-length.baseline.spec.ts"
+    },
+    {
+      "source": "check-function-length.key.spec.ts",
+      "target": "src/check-function-length.key.spec.ts"
+    }
   ]
 }

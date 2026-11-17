@@ -202,10 +202,11 @@ function measure(path, text) {
   })
   const offenders = []
   for (const [index, entry] of found.entries()) {
-    if (keys[index] === null) continue
+    const key = keys.at(index)
+    if (key === null) continue
     const owners = []
-    for (let up = entry.container; up !== -1; up = found[up].container) owners.push(keys[up])
-    offenders.push({ key: keys[index], lines: entry.lines, owners })
+    for (let up = entry.container; up !== -1; up = found.at(up).container) owners.push(keys.at(up))
+    offenders.push({ key, lines: entry.lines, owners })
   }
   return { offenders, longest: found }
 }

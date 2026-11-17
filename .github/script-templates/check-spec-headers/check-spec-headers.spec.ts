@@ -195,9 +195,8 @@ describe('check-spec-headers', () => {
     it('holds for this repository against its own shipped baseline', () => {
       const result = spawnSync(process.execPath, [SCRIPT, '--root', REPO_ROOT], { encoding: 'utf8' })
 
-      expect({ status: result.status, output: `${result.stdout}${result.stderr}` }).toEqual({
-        status: 0,
-        output: expect.any(String)
+      expect({ status: result.status, output: `${result.stdout}${result.stderr}` }).toMatchObject({
+        status: 0
       })
     })
 
