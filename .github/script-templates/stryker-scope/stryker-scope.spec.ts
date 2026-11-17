@@ -1,5 +1,5 @@
 /**
- * Pins the mutation-testing scope to the code that ships. The shipped source is the closure of the relative imports
+ * @fileoverview Pins the mutation-testing scope to the code that ships. The shipped source is the closure of the relative imports
  * of the package entries in `tsup.config.ts`; every file in it must either be matched by `mutate` in
  * `stryker.config.json` or be listed in `./stryker-scope.data` with the reason it is not. A file that is neither, a
  * listed file that no longer exists, a listed file that `mutate` still matches, and a listed file whose kind no
@@ -8,7 +8,7 @@
  * This file is a template of the shared CI repository and is copied byte for byte. Everything that differs between
  * libraries lives in `./stryker-scope.data`, which is not compared.
  *
- * Layer: repository tooling, tests.
+ * @layer tests
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join, posix, resolve } from 'node:path'

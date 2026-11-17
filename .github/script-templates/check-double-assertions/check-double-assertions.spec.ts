@@ -1,9 +1,9 @@
 /**
- * Pins `scripts/check-double-assertions.mjs`, the gate for `as unknown as`. It is plain Node, so
+ * @fileoverview Pins `scripts/check-double-assertions.mjs`, the gate for `as unknown as`. It is plain Node, so
  * each case runs it the way CI does, as a child process against a throwaway git repository, and
  * asserts the exit code and the printed problems.
  *
- * Layer: repository tooling, tests.
+ * @layer tests
  */
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'

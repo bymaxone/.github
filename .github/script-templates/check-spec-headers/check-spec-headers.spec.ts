@@ -1,10 +1,10 @@
 /**
- * Pins `scripts/check-spec-headers.mjs`, the gate that makes every spec open with a block comment
+ * @fileoverview Pins `scripts/check-spec-headers.mjs`, the gate that makes every spec open with a block comment
  * stating a purpose and a layer. It is plain Node, so each case runs it the way CI does, as a child
  * process against a throwaway git repository whose tracked files are the specs under test, and asserts
  * the exit code and the printed problems.
  *
- * Layer: repository tooling, tests.
+ * @layer tests
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
