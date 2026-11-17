@@ -157,6 +157,12 @@
       "message": "feat: x\n\n> Co-Authored-By : Claude <a@b.c>",
       "strictRejects": true,
       "narrowRejects": true
+    },
+    {
+      "name": "merge of a branch named for a tool",
+      "message": "Merge branch 'main' into claude/x",
+      "strictRejects": true,
+      "narrowRejects": false
     }
   ]
 }
