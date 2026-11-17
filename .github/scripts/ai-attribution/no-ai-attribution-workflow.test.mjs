@@ -2,7 +2,10 @@
 // pull request is ever written into a script body.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const text = readFileSync(fileURLToPath(new URL('../../workflows/no-ai-attribution.yml', import.meta.url)), 'utf8');
@@ -49,4 +52,74 @@ test('the title and the body are read from the environment into a JSON file by j
   assert.match(text, /PR_TITLE: \$\{\{ github\.event\.pull_request\.title \}\}/);
   assert.match(text, /PR_BODY: \$\{\{ github\.event\.pull_request\.body \}\}/);
   assert.match(text, /--arg title "\$PR_TITLE" --arg body "\$PR_BODY"/);
+});
+
+/** The `run` block of the step named `name`, as a script text. */
+function stepScript(name) {
+  const start = lines.findIndex((line) => line.includes(`- name: ${name}`));
+  assert.notEqual(start, -1, name);
+  const blocks = runBlocks();
+  const at = lines.findIndex((line, i) => i > start && /^\s*run: \|\s*$/.test(line));
+  const block = blocks.find((b) => b[0][0] === at + 2);
+  assert.ok(block, `the run block of ${name}`);
+  const indent = block[0][1].search(/\S/);
+  return block.map(([, line]) => line.slice(indent)).join('\n');
+}
+
+/**
+ * Runs the collect step with a stand-in `gh` that prints `commits` (one JSON object per commit, as the step asks
+ * for), and returns the exit status, the output and the items file it wrote.
+ */
+function collect({ commits, count, title = 'feat: x', body = 'a body' }) {
+  const dir = mkdtempSync(join(tmpdir(), 'collect-'));
+  mkdirSync(join(dir, 'bin'));
+  writeFileSync(join(dir, 'bin', 'gh'), `#!/bin/sh\ncat <<'EOF'\n${commits.map((c) => JSON.stringify(c)).join('\n')}\nEOF\n`, { mode: 0o755 });
+  writeFileSync(join(dir, 'env'), '');
+  const result = spawnSync('bash', ['-c', stepScript('Collect the title, the body and the commit messages')], {
+    encoding: 'utf8',
+    env: {
+      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      RUNNER_TEMP: dir,
+      GITHUB_ENV: join(dir, 'env'),
+      GH_TOKEN: 'x',
+      REPOSITORY: 'o/r',
+      PR_NUMBER: '1',
+      PR_TITLE: title,
+      PR_BODY: body,
+      PR_COMMITS: String(count),
+    },
+  });
+  const itemsPath = join(dir, 'ai-attribution-items.json');
+  const items = existsSync(itemsPath) ? JSON.parse(readFileSync(itemsPath, 'utf8')) : null;
+  rmSync(dir, { recursive: true, force: true });
+  return { status: result.status, out: `${result.stdout}${result.stderr}`, items };
+}
+
+const commit = (sha, text, merge = false) => ({ where: `commit ${sha}`, text, merge });
+
+test('the collect step builds the list from the title, the body and each commit, and counts them against the pull request', () => {
+  const result = collect({ commits: [commit('aaaaaaa', 'feat: one'), commit('bbbbbbb', 'fix: two')], count: 2 });
+  assert.equal(result.status, 0, result.out);
+  assert.deepEqual(result.items.map((i) => i.where), ['title', 'body', 'commit aaaaaaa', 'commit bbbbbbb']);
+});
+
+test('a pull request with more commits than the list holds fails the step instead of reading part of it', () => {
+  const result = collect({ commits: [commit('aaaaaaa', 'feat: one')], count: 300 });
+  assert.notEqual(result.status, 0);
+  assert.match(result.out, /300 commits.*1/s);
+});
+
+test('a merge commit is counted but not read: its message is made by the merge, not written by anyone', () => {
+  const result = collect({
+    commits: [commit('aaaaaaa', 'feat: one'), commit('ccccccc', "Merge branch 'main' into feature", true)],
+    count: 2,
+  });
+  assert.equal(result.status, 0, result.out);
+  assert.deepEqual(result.items.map((i) => i.where), ['title', 'body', 'commit aaaaaaa']);
+});
+
+test('a pull request with no commits and a body with quotes and line breaks still gives a valid list', () => {
+  const result = collect({ commits: [], count: 0, body: 'says "hi"\nand \\ more\n' });
+  assert.equal(result.status, 0, result.out);
+  assert.equal(result.items[1].text, 'says "hi"\nand \\ more\n');
 });

@@ -71,14 +71,24 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_COMMITS: ${{ github.event.pull_request.commits }}
         run: |
           set -euo pipefail
           items="$RUNNER_TEMP/ai-attribution-items.json"
           commits="$RUNNER_TEMP/ai-attribution-commits.json"
           gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/commits?per_page=100" \
-            --jq '.[] | {where: ("commit " + .sha[0:7]), text: .commit.message}' | jq -s '.' > "$commits"
+            --jq '.[] | {where: ("commit " + .sha[0:7]), text: .commit.message, merge: (.parents | length > 1)}' | jq -s '.' > "$commits"
+          # The endpoint lists 250 commits at most. A shorter list than the pull request's own count is a part of
+          # the history, and reading a part would pass what it did not read.
+          listed=$(jq 'length' "$commits")
+          if [ "$listed" -ne "$PR_COMMITS" ]; then
+            echo "::error title=no-ai-attribution::This pull request has $PR_COMMITS commits and the API lists $listed, so the commit messages cannot all be read. Split the pull request."
+            exit 1
+          fi
+          # A merge commit's message is made by the merge from the names of the branches, and a squash merge
+          # does not carry it; the commits a person wrote are the ones read.
           jq -n --arg title "$PR_TITLE" --arg body "$PR_BODY" --slurpfile commits "$commits" \
-            '[{where: "title", text: $title}, {where: "body", text: $body}] + $commits[0]' > "$items"
+            '[{where: "title", text: $title}, {where: "body", text: $body}] + ($commits[0] | map(select(.merge | not) | {where, text}))' > "$items"
           echo "AI_ATTRIBUTION_ITEMS=$items" >> "$GITHUB_ENV"
 
       - name: Look for an AI attribution
