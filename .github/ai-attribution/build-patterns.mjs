@@ -22,6 +22,19 @@ const alternation = (words) =>
  */
 export function build(lists) {
   const tools = alternation([...lists.tools, ...lists.toolSpellings])
+  const toolEnd = `[ \\t]*[.!]+|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
+  // A name that is also an ordinary word (cursor, gemini, aider, mistral) is read as the tool after a credit verb only
+  // where it ends the phrase: `Built with <tool>.`, not `Paginated with cursor-based offsets`.
+  const ambiguous = new Set(lists.ambiguousTools)
+  const clearTools = alternation(
+    [...lists.tools, ...lists.toolSpellings].filter((w) => !ambiguous.has(w)),
+  )
+  const ambiguousTools = alternation(lists.tools.filter((w) => ambiguous.has(w)))
+  // After an ambiguous name the tool is NOT meant when a hyphen and a letter follow (cursor-based) or an ordinary
+  // noun does (cursor pagination); any other next character leaves it the tool: a mark, a comma, a colon, a slash, an
+  // emoji, a number, the end of the line, `ai`, a product word, an and, or a spaced dash.
+  const ambiguousEnd = `([^a-z0-9 \\t-]|-([^a-z]|$)|[ \\t]*\\r?$|[ \\t]+([^a-z0-9 \\t]|[0-9]|(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|${ambiguousTools}|and|or|[a-z]?[0-9]+)([^a-z0-9]|$)))`
+  const creditTool = `((${clearTools})([^a-z0-9]|$)|(${ambiguousTools})${ambiguousEnd})`
   // What may stand between a connector and the tool: marks of emphasis, quotes, brackets or a handle, and words that
   // are not the tool (an article, a vendor, an adjective).
   // A tool name ends where a letter or a digit does not continue it: an underscore of emphasis closes it too.
@@ -111,17 +124,16 @@ export function build(lists) {
     `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})${after}`,
     `${lineStart}${lineStart2}${gap}(${tools})${after}`,
     // A credit verb before a tool is read only in the strict profile: the narrow one lets a vendor be cited.
-    `${lineStart}${credit}${gapL}(${tools})${after}`,
-    `${lineStart}(${ptVerbs})[ \\t]+(${ptConnectors})${gapL}(${tools})${after}`,
-    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gapL}(${tools})${after}`,
-    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gapL}(${tools})${after}`,
+    `${lineStart}${credit}${gapL}${creditTool}`,
+    `${lineStart}(${ptVerbs})[ \\t]+(${ptConnectors})${gapL}${creditTool}`,
+    `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gapL}${creditTool}`,
+    `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+${credit}${gapL}${creditTool}`,
     `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     // A name that only begins with the tool's (a person called Claudette) is not the tool; the dot keeps a file name out.
     `\\bclaude([^.a-z]|$)`,
   ]
   const narrowCredit = `${adverb}([a-z]+-)*(${alternation(lists.narrowCreditVerbs)})([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
-  const toolEnd = `[ \\t]*[.!]+|[ \\t]*\\r?$|[ \\t]+[-–—(]|[ \\t]*[–—]`
   const near = alternation(lists.narrowNear)
   const nearWords = alternation(lists.narrowNearWords)
   const narrow = [

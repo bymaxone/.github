@@ -443,6 +443,48 @@ const MINIMUM = {
     'a',
     'the',
   ],
+  ambiguousTools: [
+    'cursor',
+    'gemini',
+    'bard',
+    'aider',
+    'windsurf',
+    'mistral',
+    'grok',
+    'devin',
+    'perplexity',
+    'kiro',
+    'codex',
+    'codeium',
+    'tabnine',
+    'deepseek',
+    'gpt',
+  ],
+  productWords: [
+    'ide',
+    'editor',
+    'pro',
+    'flash',
+    'ultra',
+    'composer',
+    'cascade',
+    'chat',
+    'mini',
+    'turbo',
+    'plus',
+    'studio',
+    'desktop',
+    'app',
+    'extension',
+    'plugin',
+    'max',
+    'tab',
+    'nano',
+    'lite',
+    'preview',
+    'advanced',
+    'free',
+  ],
 }
 
 test('the lists keep every entry they hold today: they may grow and never shrink', () => {
@@ -1181,6 +1223,59 @@ test('every word of every list, repeated, is read in linear time after each kind
     }
   }
   assert.deepEqual(slow, [])
+})
+
+test('a name that is also an ordinary word is the tool after a credit verb only where it ends the phrase', () => {
+  for (const message of [
+    'Paginated with cursor-based offsets',
+    'Filtered using cursor pagination',
+    'Sorted with gemini-style routing',
+    'Rendered by aider-like diffs',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  for (const message of [
+    'Built with Cursor',
+    'Made with Gemini',
+    'Crafted with Cursor.',
+    'Raised by Codex',
+    'Written with Cursor Agent',
+    'Built with **Cursor**',
+    'Generated with Cursor - see notes',
+    '## Built with Cursor',
+    'This PR was written by Cursor',
+    'Built with Cursor AI',
+    'Made with Gemini AI',
+    'Built with GPT 5',
+    'Made with Gemini: notes',
+    'Built with Cursor, an AI editor',
+    'Built with Cursor & friends',
+    'Built with **Cursor** Agent',
+    'Built with [Cursor] Code',
+    'Built with Cursor \u{1F916}',
+    'Made with GPT-5',
+    'Built with Cursor-2.0',
+    'Made with Gemini-2',
+    'Built with Cursor IDE',
+    'Made with Gemini Pro',
+    'Built with Cursor Composer',
+    'Made with Gemini Flash',
+    'Built with Windsurf Cascade',
+    'Built with Kiro Spec',
+    'Built with Mistral Large',
+    'Made with DeepSeek Coder',
+    'Built with Aider Architect',
+    'Built with Gemini Live',
+    'Built with Cursor Bugbot',
+    'Built with Grok Heavy',
+    'Made with Perplexity Sonar',
+    'Built with Tabnine Enterprise',
+    'Made with DeepSeek R1',
+    'Built with Codeium Windsurf',
+  ]) {
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+  }
 })
 
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
