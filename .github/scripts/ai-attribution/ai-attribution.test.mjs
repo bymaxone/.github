@@ -1220,6 +1220,15 @@ test('a name that is also an ordinary word is the tool after a credit verb only 
     'Generated with Cursor - see notes',
     '## Built with Cursor',
     'This PR was written by Cursor',
+    'Built with Cursor AI',
+    'Made with Gemini AI',
+    'Built with GPT 5',
+    'Made with Gemini: notes',
+    'Built with Cursor, an AI editor',
+    'Built with Cursor & friends',
+    'Built with **Cursor** Agent',
+    'Built with [Cursor] Code',
+    'Built with Cursor \u{1F916}',
   ]) {
     assert.equal(strict.test(message), true, `strict: ${message}`)
   }

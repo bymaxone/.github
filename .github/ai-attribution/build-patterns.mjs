@@ -30,7 +30,11 @@ export function build(lists) {
     [...lists.tools, ...lists.toolSpellings].filter((w) => !ambiguous.has(w)),
   )
   const ambiguousTools = alternation(lists.tools.filter((w) => ambiguous.has(w)))
-  const creditTool = `((${clearTools})([^a-z0-9]|$)|(${ambiguousTools})([ \\t]+(${alternation(lists.toolWords)}))*[*_\`\\])}>"'”’]*(${toolEnd}))`
+  // After an ambiguous name the tool is NOT meant when a hyphen and a letter follow (cursor-based) or an ordinary
+  // noun does (cursor pagination); any other next character leaves it the tool: a mark, a comma, a colon, a slash, an
+  // emoji, a number, the end of the line, `ai`, a product word, an and, or a spaced dash.
+  const ambiguousEnd = `([^a-z0-9 \\t-]|-([^a-z0-9]|$)|[ \\t]*\\r?$|[ \\t]+([^a-z0-9 \\t]|[0-9]|(ai|${alternation(lists.toolWords)}|and|or|v[0-9])([^a-z0-9]|$)))`
+  const creditTool = `((${clearTools})([^a-z0-9]|$)|(${ambiguousTools})${ambiguousEnd})`
   // What may stand between a connector and the tool: marks of emphasis, quotes, brackets or a handle, and words that
   // are not the tool (an article, a vendor, an adjective).
   // A tool name ends where a letter or a digit does not continue it: an underscore of emphasis closes it too.
