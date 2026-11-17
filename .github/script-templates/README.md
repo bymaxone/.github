@@ -32,6 +32,19 @@ in document order and a function within the limit is not counted, so adding a sm
 while an offender that drops to the limit renumbers the same-named offenders after it. Wire it as
 `"check:function-length": "node scripts/check-function-length.mjs"`, with `--base origin/<default branch>` on pull requests.
 
+## check-suppressions-baseline
+
+Fails when `eslint-suppressions.json` (ESLint's bulk suppressions) holds a count above the base revision's, or an
+entry the base does not have: ESLint fails on what a change adds, but nothing stops the file from being
+regenerated with `--suppress-rule` after a new violation, which turns that violation into inherited debt. Plain Node
+with no dependencies; its test is a `node:test` file that builds throwaway git repositories. Wire it as
+`"check:suppressions": "node scripts/check-suppressions-baseline.mjs"` and run it in the CI job that runs the other
+`check:*` scripts with `--base origin/<default branch>` on pull requests, and the test with
+`node --test scripts/check-suppressions-baseline.test.mjs`. A base revision without the file imposes nothing, which is
+the change that introduces it. The template is formatted with `trailingComma: "all"`; a library whose Prettier says `"none"` copies it byte for byte and
+adds a Prettier override for these two files, or the family check reads its reformatted copy as differing. No exempt entry is needed: the test is under
+`scripts/`, not a `src/` spec, so the mutation inventory does not list it.
+
 ## published-surface-links
 
 The link check of a library's published-surface gate, as a module of its own that exports exactly
