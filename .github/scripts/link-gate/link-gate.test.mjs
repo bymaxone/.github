@@ -3,7 +3,7 @@
 // nothing: no token, no real network, a timeout, and (on Linux) no network namespace and another identity.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -173,37 +173,90 @@ test('the link-check template is not accepted once a decision is removed from it
   assert.deepEqual(priv, ['https://10.0.0.1/private: wanted fail, got ok']);
 });
 
-// A raw HTML link is a link in either quote style. Each case needs no network: a relative target that does not
-// exist, an anchor with no heading, and a private IPv4 literal, which is refused before anything is requested.
-test('the link-check template checks raw HTML hrefs in single quotes as it does in double quotes', async () => {
-  const { checkLinks } = await import(new URL('../../script-templates/published-surface-links/published-surface-links.mjs', import.meta.url));
-  const root = mkdtempSync(join(tmpdir(), 'links-quotes-'));
+// Which raw HTML anchors the link check reads, as one table. The reference is a frozen copy of the three readers
+// the libraries carried (double quotes only): for each row the kind they give it is computed, and the template
+// must give the same kind to the double-quoted spelling and to the single-quoted one, which is the only change.
+// A kind is what an anchor is checked as: an external link, an anchor of the page, a relative path, or nothing.
+const OLD_READERS = {
+  external: /<a\s+href="(https?:\/\/[^"]+)"/g,
+  internal: /<a\s+href="(#[^"]+)"/g,
+  relative: /<a\s+href="(?!https?:|#|mailto:)([^"]+)"/g
+};
+const oldKind = (html) => {
+  const kinds = Object.keys(OLD_READERS).filter((kind) => [...html.matchAll(OLD_READERS[kind])].length > 0);
+  assert.ok(kinds.length <= 1, `a row falls in one kind at most: ${html}`);
+  return kinds[0] ?? null;
+};
+// The kind the template gave an anchor, read from the one failure it reports: every row is a README with no
+// heading, no file and no network, so an external link can only fail as a private literal.
+const kindOfFailures = (failures) => {
+  if (failures.length === 0) return null;
+  if (failures.length > 1) return `several (${failures.join(' | ')})`;
+  if (/matches no heading/.test(failures[0])) return 'internal';
+  if (/does not exist|outside the repository/.test(failures[0])) return 'relative';
+  return 'external';
+};
+const VALUES = [
+  'https://10.0.0.1/p', 'http://10.0.0.1/p', '#nohead', '#Mixed-Case', '#', 'mailto:a@b.c', 'missing.md', ' spaced.md ',
+  'sub/missing.md#frag', '../outside.md', 'HTTPS://10.0.0.1/p', ''
+];
+const SHAPES = [
+  (q, v) => `<a href=${q}${v}${q}>x</a>`,
+  (q, v) => `<a  href=${q}${v}${q}>x</a>`,
+  (q, v) => `<a\thref=${q}${v}${q}>x</a>`,
+  (q, v) => `<a class="c" href=${q}${v}${q}>x</a>`,
+  (q, v) => `<A HREF=${q}${v}${q}>x</A>`,
+  (q, v) => `<a href = ${q}${v}${q}>x</a>`,
+  (q, v) => `<a href=${v}>x</a>`
+];
+const TABLE = SHAPES.flatMap((shape) => VALUES.flatMap((value) => ['"', "'"].map((quote) => ({ html: shape(quote, value), quote, value }))));
+
+/** The rows on which the module at `path` disagrees with the reference, as `html: wanted X, got Y` lines. */
+async function tableMismatches(path) {
+  const { checkLinks } = await import(`${path}?table=${Math.random()}`);
+  const root = mkdtempSync(join(tmpdir(), 'links-table-'));
+  const bad = [];
   try {
-    for (const quote of ['"', "'"]) {
+    for (const row of TABLE) {
+      // The reference reads double quotes only, so a single-quoted row is judged as its double-quoted twin.
+      const wanted = oldKind(row.quote === "'" ? row.html.replaceAll("'", '"') : row.html);
       const failures = [];
-      const readme = `# Title\n\n<a href=${quote}missing.md${quote}>a</a> <a href=${quote}#no-such-heading${quote}>b</a> <a href=${quote}https://10.0.0.1/x${quote}>c</a>\n`;
-      await checkLinks({ readme, root, fail: (...args) => failures.push(args.join(' ')) });
-      assert.equal(failures.length, 3, `${quote}: ${JSON.stringify(failures)}`);
-      assert.ok(failures.some((f) => f.includes('missing.md does not exist')), failures.join('|'));
-      assert.ok(failures.some((f) => f.includes('#no-such-heading matches no heading')), failures.join('|'));
-      assert.ok(failures.some((f) => f.includes('https://10.0.0.1/x')), failures.join('|'));
+      await checkLinks({ readme: `# T\n\n${row.html}\n`, root, fail: (...args) => failures.push(args.join(' ')) });
+      const got = kindOfFailures(failures);
+      if (got !== wanted) bad.push(`${row.html}: wanted ${wanted}, got ${got}`);
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+  return bad;
+}
+const TEMPLATE_PATH = new URL('../../script-templates/published-surface-links/published-surface-links.mjs', import.meta.url);
+
+test('the link-check template reads raw HTML anchors as the double-quote readers did, in either quote style', async () => {
+  assert.ok(TABLE.length > 100);
+  assert.ok(new Set(TABLE.map((row) => oldKind(row.quote === "'" ? row.html.replaceAll("'", '"') : row.html))).size === 4, 'the table covers all four kinds');
+  assert.deepEqual(await tableMismatches(TEMPLATE_PATH.pathname), []);
 });
 
-// A link to the page itself ("back to top") has no fragment to resolve: it is not an anchor of the README.
-test('the link-check template does not read a bare # href as an anchor', async () => {
-  const { checkLinks } = await import(new URL('../../script-templates/published-surface-links/published-surface-links.mjs', import.meta.url));
-  const root = mkdtempSync(join(tmpdir(), 'links-bare-hash-'));
+test('the table notices each decision of the href readers once it is removed', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'links-mutants-'));
+  const mutants = [
+    ['no single quotes', String.raw`|'([^']+)')`, ')'],
+    ['a bare # is an anchor', String.raw`/^#./.test(href)`, String.raw`href.startsWith('#')`],
+    ['mailto is relative', String.raw`!/^(?:https?:|#|mailto:)/.test(href)`, String.raw`!/^(?:https?:|#)/.test(href)`],
+    ['only https is external', String.raw`/^https?:\/\//.test(href)`, String.raw`/^https:\/\//.test(href)`],
+    ['every other href is relative', String.raw`!/^(?:https?:|#|mailto:)/.test(href)`, 'true'],
+    ['case is ignored', String.raw`/<a\s+href=(?:"([^"]+)"|'([^']+)')/g`, String.raw`/<a\s+href=(?:"([^"]+)"|'([^']+)')/gi`]
+  ];
   try {
-    for (const quote of ['"', "'"]) {
-      const failures = [];
-      await checkLinks({ readme: `# Title\n\n<a href=${quote}#${quote}>top</a>\n[top](#)\n`, root, fail: (...args) => failures.push(args.join(' ')) });
-      assert.deepEqual(failures, [], `${quote}: a bare # is not an anchor`);
+    for (const [name, from, to] of mutants) {
+      const text = readFileSync(TEMPLATE_PATH, 'utf8');
+      assert.equal(text.split(from).length, 2, `the anchor of the mutant is unique in the template: ${name}`);
+      const file = join(dir, 'mutant.mjs');
+      writeFileSync(file, text.replace(from, () => to));
+      assert.notDeepEqual(await tableMismatches(file), [], `the table notices: ${name}`);
     }
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
   }
 });
