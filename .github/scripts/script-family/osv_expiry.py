@@ -146,7 +146,7 @@ def option(argv, name, default=None):
 
 
 def run(days, now, one, listing, directory, summary):
-    """The reading and the printing, for arguments that are already checked; every file is read inside `scan`'s guard."""
+    """The reading and the printing, for arguments that are already checked; every repository's file is read inside `scan`'s guard."""
     def read_file(path):
         with open(path, encoding="utf-8") as handle:
             return handle.read()
