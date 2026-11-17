@@ -1311,6 +1311,23 @@ test('narrow: a product word, a number or a comma and ends the credit phrase aft
   }
 })
 
+test('the text the agents-sync workflow writes into a pull request and a commit names no tool', () => {
+  // It becomes the squash message of a synchronisation pull request in every repository, so the rule that refuses an
+  // attribution would refuse it there: a sentence about the reader of the file must not name the reader.
+  const workflow = readFileSync(new URL('../../workflows/agents-sync.yml', import.meta.url), 'utf8')
+  const start = workflow.indexOf('body="')
+  const end = workflow.indexOf('_Opened by the', start)
+  assert.ok(start > 0 && end > start, 'the pull request body is found in the workflow')
+  const written = [
+    workflow.slice(start, end),
+    workflow.slice(workflow.indexOf('git commit -m'), workflow.indexOf('git commit -m') + 300),
+  ]
+  for (const text of written) {
+    assert.equal(strict.test(text), false, text.slice(0, 80))
+    assert.equal(narrow.test(text), false, text.slice(0, 80))
+  }
+})
+
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
   for (const message of [
     'fix: guard the AI provider timeout',

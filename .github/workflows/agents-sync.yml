@@ -342,7 +342,7 @@ jobs:
 
           That includes an edit nobody made on purpose. A repository whose commit hooks format Markdown — \`prettier --write\` through lint-staged, for example — can reformat the block on commit, and the next run reverts the churn silently in a file nobody watches. The canonical copy is kept stable against prettier's **defaults**, so this bites where a repository's own formatter configuration differs from them. If yours does, check the block against the canonical copy after any commit that touches this file.
 
-          Codex reads this file up to \`project_doc_max_bytes\`, 32 KiB by default, and **truncates the rest silently** — no error, no failed check. The block is spliced above this repository's own rules, so what a repository loses when it goes over is its own material, from the end of the file backwards. Keep the rules that invert a reviewer's default near the top: without one of those a reviewer does not merely miss something, it files the finding the rule exists to prevent.
+          The review bot that reads this file reads it up to \`project_doc_max_bytes\`, 32 KiB by default, and **truncates the rest silently** — no error, no failed check. The block is spliced above this repository's own rules, so what a repository loses when it goes over is its own material, from the end of the file backwards. Keep the rules that invert a reviewer's default near the top: without one of those a reviewer does not merely miss something, it files the finding the rule exists to prevent.
 
           _Opened by the \`agents-sync\` reusable workflow._"
 
