@@ -1,0 +1,3 @@
+{
+  "files": [{ "source": "no-ai-attribution.yml", "target": ".github/workflows/no-ai-attribution.yml" }]
+}
