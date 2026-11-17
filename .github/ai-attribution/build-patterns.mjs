@@ -42,6 +42,8 @@ export function build(lists) {
   const participle = `([a-z]+-)*([a-z]+ed|(re|over|hand|ghost|mis|under|out)?(${alternation(lists.irregularParticiples)}))`
   // The end of a phrase that names an agent and a noun: a mark, the end of the line, or an and.
   const phraseEnd = `([ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$)|[ \\t]+(and|&)[ \\t])`
+  // One end for every phrase that names an agent: the phrase must end there, in English and in Portuguese.
+  const ptEnd = `([ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$)|[ \\t]+(e|&)[ \\t])`
   const adverb = `((${alternation(lists.adverbs)})[ \\t]+)?`
   const credit = `${adverb}${participle}([ \\t]+and[ \\t]+${participle})?([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
   // The gap that stays on one line, so a participle at the end of a line never joins the next line.
@@ -77,9 +79,9 @@ export function build(lists) {
     `^[ \\t>*_-]*[\\[(]?((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]?[ \\t.]*\\r?$`,
     `[\\[(]${credit}${gapL}(${generic})${genericEnd}`,
     `[\\[(]((${generic})[- ](generated|assisted|authored|written)|(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt}))[\\])]`,
-    `${lineStart}(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
-    `${lineStart}(${alternation(lists.ptChangeNouns)})\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
-    `\\b(${alternation(lists.ptDeterminers)})\\s+(${alternation(lists.ptChangeNouns)})\\s+(foi|é|e|foram)\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${after}`,
+    `${lineStart}(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${ptEnd}`,
+    `${lineStart}(${alternation(lists.ptChangeNouns)})\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${ptEnd}`,
+    `\\b(${alternation(lists.ptDeterminers)})\\s+(${alternation(lists.ptChangeNouns)})\\s+(foi|é|e|foram)\\s+(${ptVerbs})\\s+(${ptConnectors})${gap}(${pt})${ptEnd}`,
   ]
   const production = `(${alternation(lists.productionVerbs)})\\s+(with|by|using|via|through)`
   const judgement = `(${alternation(lists.judgementVerbs)})\\s+by`
