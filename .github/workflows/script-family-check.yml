@@ -73,7 +73,11 @@ jobs:
           since=$(node -e "console.log(new Date(Date.now() - 8 * 864e5).toISOString().replace(/\\.\\d+Z$/, 'Z'))")
           lines="$RUNNER_TEMP/comments.ndjson"
           : > "$lines"
-          for repo in $(gh api --paginate 'orgs/bymaxone/repos?type=public&per_page=100' --jq '.[] | select(.archived | not) | .full_name'); do
+          repos=$(gh api --paginate 'orgs/bymaxone/repos?type=public&per_page=100' --jq '.[] | select(.archived | not) | .full_name') || {
+            echo "::warning title=attribution-scan::could not list the repositories of the organisation"
+            repos=''
+          }
+          for repo in $repos; do
             for kind in issues/comments pulls/comments; do
               if ! gh api --paginate "repos/$repo/$kind?since=$since&per_page=100" \
                 | jq -c --arg repo "$repo" '.[] | {repo: $repo, url: .html_url, author: (.user.login // ""), authorType: (.user.type // ""), body: (.body // "")}' >> "$lines"; then
@@ -88,5 +92,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
+          [ -s "${COMMENTS_FILE:-}" ] || { echo "::warning title=attribution-scan::the comments were not collected, so none were scanned"; exit 0; }
           node .github/scripts/ai-attribution/scan-comments.mjs --patterns .github/ai-attribution/patterns.json --summary \
             < "$COMMENTS_FILE" | tee -a "$GITHUB_STEP_SUMMARY"
