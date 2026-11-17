@@ -63,7 +63,7 @@ reviewer at commit time. Copy it to
 on the narrow profile uses `require('./scripts/commitlint-no-ai-attribution.cjs').build('narrow')` in `plugins` instead. The
 patterns are embedded in the file, so a change to them reaches an adopter only when it re-copies the file.
 In an ESM or flat configuration, `import plugin, { build } from './scripts/commitlint-no-ai-attribution.cjs'` gives the same plugin and
-`build`. The rule reads the header, body and footer commitlint gives it, and the raw text up to the scissors line when it gives none. A line that starts with `#` and was given with `-m` or `-F` is kept by git, but commitlint's parsed view of the message leaves it out, so this hook does not see it; the pull-request job and the organisation ruleset read every line and refuse it. The rule has an
+`build`. The rule reads the header, body and footer commitlint gives it, and the raw text up to the scissors line when it gives none. A line starting with `#` given with `git commit -m` or `-F` stays in the commit, but the local hook does not read it; the pull-request job and the organisation ruleset read every line and refuse it. The rule has an
 `always` form only; any other form throws. commitlint keeps only one inline plugin object, so merge the `rules` maps of any other inline plugin into one.
 
 ## published-surface-links
