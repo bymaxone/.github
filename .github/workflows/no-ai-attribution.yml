@@ -90,7 +90,7 @@ jobs:
           # and a branch may be named for a tool, so exactly those forms are not read. Every other first line, and
           # everything a person added below it, is read, as is every commit that is not a merge.
           jq -n --arg title "$PR_TITLE" --arg body "$PR_BODY" --slurpfile commits "$commits" '
-            def generated: test("^Merge (?:(?:remote-tracking )?branch(?:es)? \u0027[^\u0027]+\u0027(?: and \u0027[^\u0027]+\u0027)*(?: of [^ ]+)?(?: into [^ ]+)?|tag \u0027[^\u0027]+\u0027(?: into [^ ]+)?|pull request #[0-9]+ from [^ ]+)$");
+            def generated: test("^Merge (?:(?:remote-tracking )?branch(?:es)? \u0027[A-Za-z0-9._/+#-]+\u0027(?:(?:, | and |, and )\u0027[A-Za-z0-9._/+#-]+\u0027)*(?: of (?:[a-z][a-z0-9+.-]*://[A-Za-z0-9._/:@+~%#-]+|(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9-]+(?:[.][A-Za-z0-9-]+)+:[A-Za-z0-9._/+-]+))?(?: into [A-Za-z0-9._/+#-]+)?|tag \u0027[A-Za-z0-9._/+#-]+\u0027(?: of (?:[a-z][a-z0-9+.-]*://[A-Za-z0-9._/:@+~%#-]+|(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9-]+(?:[.][A-Za-z0-9-]+)+:[A-Za-z0-9._/+-]+))?(?: into [A-Za-z0-9._/+#-]+)?|commit \u0027[A-Za-z0-9._/+#-]+\u0027(?: into [A-Za-z0-9._/+#-]+)?|pull request #[0-9]+ from [A-Za-z0-9._/+#-]+)\r?$");
             def lines: split("\n");
             [{where: "title", text: $title}, {where: "body", text: $body}]
               + ($commits[0] | map({where, text: (if .merge and (.text | lines | .[0] | generated) then (.text | lines | .[1:] | join("\n")) else .text end)}))' > "$items"

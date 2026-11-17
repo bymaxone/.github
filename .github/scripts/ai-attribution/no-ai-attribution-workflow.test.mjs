@@ -146,6 +146,12 @@ test('the first line of a merge written by git or by the web merge button names 
     "Merge branches 'a' and 'claude-b'",
     "Merge tag 'v1.2.3' into release",
     'Merge pull request #12 from o/claude-md-update',
+    "Merge branches 'a', 'claude-b' and 'c'",
+    "Merge tag 'v1' of https://github.com/o/r into main",
+    "Merge branch 'x' of git@github.com:o/r into claude/y",
+    "Merge commit 'abc1234'",
+    "Merge branch 'x' of https://github.com/o/r into claude/y",
+    "Merge branch 'main' into claude/feature\r",
   ];
   assert.deepEqual(texts(generated, generated.map((_, i) => i)), generated.map(() => ''));
 });
@@ -157,6 +163,14 @@ test('everything else in a merge commit is read: a hand-written first line, a li
     'Merge: the reviewer said so',
     'Merge pull request #12 from o/branch and a note',
     "Reviewed by the reviewer. Merge branch 'main' into x",
+    "Merge branch 'Co-Authored-By: Claude <n@x.com>'",
+    'Merge pull request #1 from noreply@anthropic.com',
+    "Merge branch 'a' into x\tGenerated with Claude",
+    "Merge branch 'a' of noreply@anthropic.com",
+    "Merge branch 'a' into noreply@anthropic.com",
+    "Merge tag 'v1' into noreply@anthropic.com",
+    "Merge commit 'abc' into noreply@anthropic.com",
+    "Merge branch 'a' into x, Co-authored-by: Claude",
   ];
   assert.deepEqual(texts(handWritten, handWritten.map((_, i) => i)), handWritten);
   const below = ["Merge branch 'main' into feature\n\nCo-Authored-By: Someone <a@b.c>"];
@@ -169,7 +183,8 @@ test('a commit that is not a merge is read whole, whatever its first line looks 
 });
 
 test('an octopus merge and a merge with a blank first line are read by the same rule', () => {
-  assert.deepEqual(texts([`Merge branches 'a', 'b' and 'c'\n\nnote`], [0]), [`Merge branches 'a', 'b' and 'c'\n\nnote`]);
+  assert.deepEqual(texts([`Merge branches 'a', 'b' and 'c'\n\nnote`], [0]), ['\nnote']);
+  assert.deepEqual(texts([`Merge octopus of a, b and c\n\nnote`], [0]), [`Merge octopus of a, b and c\n\nnote`]);
   assert.deepEqual(texts(['\n\nbody only'], [0]), ['\n\nbody only']);
 });
 
