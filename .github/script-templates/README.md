@@ -166,6 +166,6 @@ A repository that keeps its own version of a template is not listed in `script-a
 
 | Repository | Template | Why it differs |
 | --- | --- | --- |
-| `bymaxone/nest-logger` | `check-spec-headers` | its `scripts/check-spec-headers.mjs` enforces a `LAYERS` whitelist that includes `tests`, which the template dropped, and it has no `src/check-spec-headers.spec.ts` |
+| `bymaxone/nest-logger` | `check-spec-headers` | its `scripts/check-spec-headers.mjs` enforces a `LAYERS` whitelist that includes `tests`, which the template dropped |
 | `bymaxone/nest-logger` | `published-surface-links` | its copy lacks the single-quoted anchor handling; it is not adopted |
 
