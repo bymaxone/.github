@@ -48,7 +48,7 @@ context: `await checkLinks({ readme, root, fail })`. Remove imports the script n
 documents, links into other pages) does not fit this signature and keeps its own check until the template grows one.
 
 The link-gate family check (`link-gate-family.yml`) measures a library that keeps this module by running it, in module
-form, against the 18 cases of the matrix with `fetch` and DNS stubbed.
+form, against the cases of the matrix with `fetch` and DNS stubbed.
 
 ## check-spec-headers
 
