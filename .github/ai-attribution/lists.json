@@ -111,9 +111,126 @@
     "amazon",
     "open",
     "our own",
-    "ai"
+    "ai",
+    "um",
+    "uma",
+    "o",
+    "os",
+    "as"
   ],
   "lineStartVerbs": [
-    "written"
+    "written",
+    "built",
+    "made",
+    "crafted"
+  ],
+  "genericAgents": [
+    "ai",
+    "llm",
+    "language model",
+    "large language model",
+    "artificial intelligence"
+  ],
+  "genericDescriptors": [
+    "coding",
+    "code",
+    "pair",
+    "programming",
+    "assistant",
+    "agent",
+    "tool",
+    "bot",
+    "model",
+    "programmer",
+    "system",
+    "helper"
+  ],
+  "ptAgents": [
+    "ia",
+    "intelig\u00eancia artificial",
+    "inteligencia artificial"
+  ],
+  "ptVerbs": [
+    "gerado",
+    "gerada",
+    "escrito",
+    "escrita",
+    "criado",
+    "criada",
+    "revisado",
+    "revisada",
+    "assistido",
+    "assistida",
+    "feito",
+    "feita"
+  ],
+  "ptConnectors": [
+    "por",
+    "com",
+    "pela",
+    "pelo",
+    "usando"
+  ],
+  "changeNouns": [
+    "pr",
+    "pull request",
+    "commit",
+    "change",
+    "changes",
+    "patch",
+    "diff",
+    "code",
+    "fix",
+    "implementation",
+    "message",
+    "text",
+    "documentation",
+    "content",
+    "summary",
+    "docs",
+    "tests"
+  ],
+  "ptChangeNouns": [
+    "pr",
+    "commit",
+    "c\u00f3digo",
+    "codigo",
+    "mudan\u00e7a",
+    "mudanca",
+    "altera\u00e7\u00e3o",
+    "alteracao",
+    "corre\u00e7\u00e3o",
+    "correcao"
+  ],
+  "ptDeterminers": [
+    "este",
+    "esta",
+    "o",
+    "a",
+    "os",
+    "as"
+  ],
+  "irregularParticiples": [
+    "made",
+    "built",
+    "done",
+    "written",
+    "drawn",
+    "run",
+    "brought",
+    "begun",
+    "given",
+    "shown",
+    "taken",
+    "sent",
+    "spent",
+    "led",
+    "fed",
+    "set",
+    "put",
+    "cut",
+    "let",
+    "kept",
+    "left"
   ]
 }
