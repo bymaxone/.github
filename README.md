@@ -46,7 +46,7 @@ It is public because organization-wide defaults require a public repo.
 | 🚀 [`.github/workflows/release-major-alias.yml`](.github/workflows/release-major-alias.yml)                                                     | **Release** — on a pushed `vN.Y.Z` tag, moves the `vN` alias onto it. The only thing that moves `v1`, with a token of the `bymaxone-v1-alias` App minted in the `v1-alias` environment; merging to `main` publishes nothing               | Runs here, on every release                                |
 | 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm)                                                                         | **Composite action** — pnpm + Node + cache + local `file:` lib build + install                                                                          | Used by the reusable jobs                                  |
 | 📋 [`.github/workflow-templates/`](.github/workflow-templates)                                                                                  | **Starter workflows + `dependabot.yml`**                                                                                                                | In the repo "New workflow" gallery                         |
-| 📦 [`.github/workflow-templates/npm-release.yml`](.github/workflow-templates/npm-release.yml) | **Canonical npm release** — a build job without a credential packs once and runs the package gates on that tarball; a publish job holds the OIDC token, installs nothing and publishes exactly that file after checking its digest, that the commit is on the default branch and that the release moves forward (the template states the rule); the provenance of a tarball publish was measured (nest-telemetry 1.0.4) and names the commit, while the registry entry has no `gitHead` | Copied into each library as `release.yml`; the file explains the npm trusted-publisher constraints |
+| 📦 [`.github/workflow-templates/npm-release.yml`](.github/workflow-templates/npm-release.yml) | **Canonical npm release** — a build job without a credential packs once and runs the package gates on that tarball; a publish job holds the OIDC token, installs nothing and publishes exactly that file after checking its digest, that the commit is on the default branch and that the release moves forward (the template states the rule); the provenance of a tarball publish was measured (nest-telemetry 1.0.4) and names the commit, while the registry entry has no `gitHead` | Copied into each library as `release.yml`; the file explains the npm trusted-publisher constraints. [`egress-baseline.json`](.github/workflow-templates/egress-baseline.json) beside it lists the hosts a release is expected to reach, to read a harden-runner report against (documentation, not enforced) |
 | 🔎 [`.github/workflows/release-family-check.yml`](.github/workflows/release-family-check.yml) | **Release template family check** — weekly, reads each repository in [`release-adopters.txt`](.github/release-adopters.txt) at the commit its default branch points to, and fails when a release job does not start with the audit-mode `harden-runner` pinned as the template pins it (the file is read by a real YAML parse; the step is checked, not proven to run); a job that holds the OIDC token must also carry the template's forward-only step, identical to it and live, ahead of the artifact download and behind nothing but the template's own steps; the commit read is printed per repository | Scheduled here, dispatched on the default branch; add a repository in the PR that adopts the template |
 | 🔗 [`.github/workflows/link-gate-family.yml`](.github/workflows/link-gate-family.yml) | **Link gate family** — runs a matrix of cases on the link check of each library in [`link-gate-libraries.txt`](.github/link-gate-libraries.txt), read at the commit its default branch points to, with the network stubbed, against the cases of [`matrix.mjs`](.github/scripts/link-gate/matrix.mjs); a link check it cannot find is red. It runs code from other repositories, so each check gets an empty environment, a timeout, a network namespace and the `nobody` user | Scheduled (Mondays 06:53 UTC) and dispatched, on the default branch |
 | 📜 [`.github/workflows/script-family-check.yml`](.github/workflows/script-family-check.yml) | **Script template family** — compares each copy of a script template of [`script-templates/`](.github/script-templates) with the template, byte for byte, in every repository of [`script-adopters.txt`](.github/script-adopters.txt), read at the commit its default branch points to; a copy that differs or is missing is red. Two reminders, which warn and never fail, run after it: an `ignoreUntil` date in an adopter's `osv-scanner.toml` that ends soon (or already has; the window is in the workflow), and an attribution in the last week's comments of the public repositories. It only reads and compares, so no code from another repository runs | Scheduled (Mondays 07:17 UTC) and dispatched, on the default branch |
@@ -163,6 +163,10 @@ to your repo's `.github/dependabot.yml`.
 | `run-export-audit`      | `false`           | `pnpm audit:exports` (library export contract) |
 | `run-mutation`          | `false`           | Stryker on default-branch push / dispatch only |
 | `mutation-source-globs` | api/web/src regex | which changed paths trigger mutation           |
+| `run-unit`              | `true`            | the unit test + coverage job; `false` skips it |
+| `e2e-api-command`       | `pnpm test:e2e:api` | the API e2e command, run as a shell command: a literal, never event text |
+| `redis-image`           | `redis:7-alpine`  | Redis image for the web e2e service            |
+| `api-port`, `web-port`  | `3001`, `3000`    | ports the API and the web app listen on during the web e2e |
 
 These are the common inputs; the [`on.workflow_call.inputs`](.github/workflows/node-ci.yml)
 block of the workflow is the complete list, with defaults.
@@ -186,6 +190,7 @@ visibility-gated `security` job.
 | `post-install`          | `""`            | command after install in every job (e.g. `prisma generate`)                |
 | `run-mutation`          | `false`         | Stryker on default-branch push / dispatch only                             |
 | `mutation-source-globs` | `^(src/)`       | which changed paths trigger mutation                                       |
+| `mutation-timeout-minutes` | `45`         | ceiling of the mutation job; raise it per library for a cold run           |
 
 ### 🦀 `rust-ci` inputs (Rust workspaces)
 
@@ -309,6 +314,10 @@ out-of-memory restart of a worker as the target.
 | `stryker-config`  | `stryker.config.json`      | Read for `mutate`, and written back with per-shard overrides (a plain object)      |
 | `break-threshold` | _(config's `thresholds.break`)_ | Enforced once, on the merged score, because a shard scores only its slice    |
 | `inventory`       | `warn`                     | `warn`, `enforce` or `off`; compares the unit suite with the merged report        |
+| `full-command`    | `pnpm mutation:full`       | the command that runs the suite cold; it must delete the incremental file first, and runs as a shell command: a literal, never event text |
+| `score-paths`     | _(a list of source, test and config paths)_ | pathspecs that can move the score; wider than the per-push glob on purpose (a changed test moves it too) |
+| `inventory-exempt` | `scripts/mutation-inventory.exempt.json` | spec files the run may leave out, as `[{ "file", "reason" }]` |
+| `inventory-jest-config` | `jest.config.ts`      | the unit Jest config whose tests the mutation run must have run |
 
 Dispatch it on the default branch: on any other ref every job would be skipped, so a `guard` job fails the run
 with a message instead. Use scoped Stryker on the changed files for a pre-merge check.
@@ -362,6 +371,8 @@ skipped — adoption is opt-in.
 
 | Secret       | Notes                                                                                                                                                                                       |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app-private-key` | the private key of a GitHub App installed on the repository with `contents: write` and `pull_requests: write`; preferred over `sync-token` because the token is minted per run and expires within the hour. The App is named by the organisation variable `AGENTS_SYNC_CLIENT_ID` |
+| `app-id` | deprecated: the numeric App ID, read only while that variable is empty; kept so a caller that still maps it does not fail |
 | `sync-token` | optional, and worth supplying: a pull request opened with the default `GITHUB_TOKEN` starts no workflow runs, so in a repository whose ruleset requires checks it cannot be merged until someone pushes to it |
 
 The caller must grant `contents: write` and `pull-requests: write` **on the calling job**:
@@ -494,6 +505,15 @@ would merge with **zero CI**. Always read the current `patterns_allowed`, append
 `Swatinem/rust-cache`, `actions-rust-lang/setup-rust-toolchain`, `dtolnay/rust-toolchain`,
 `dorny/paths-filter`, `ossf/scorecard-action`, `stefanzweifel/*`, or `docker/*` — they
 must be explicit.)
+
+### 🔬 `codeql` inputs
+
+| Input | Default | Notes |
+| ----- | ------- | ----- |
+| `languages` | `["javascript-typescript"]` | a JSON array of CodeQL languages, one job each |
+| `build-mode` | `none` | `none` suits interpreted languages; a compiled one needs `autobuild` or `manual` |
+| `queries` | _(empty: the default suite)_ | the query suite handed to the init action; a caller that omits `security-extended` where it ran before analyses less |
+| `harden-runner` | `false` | run `step-security/harden-runner` in egress-audit mode first; off because adding a third-party action is a supply-chain decision |
 
 ### CodeQL: default setup vs. a version-controlled `codeql.yml`
 
