@@ -23,8 +23,10 @@ on:
       # job rejects what does not belong.
       - "v*"
 
-# The alias is a ref in this repository, so writing it needs `contents: write`.
-# Nothing else here does, and this is the only workflow that has it.
+# No job here holds `contents: write` through the workflow's own token. The move uses an installation token
+# of the App `bymaxone-v1-alias`, minted in the one job that runs in the `v1-alias` environment, so the
+# credential that can write `v1` exists only for a run on a `vX.Y.Z` tag (the environment's deployment
+# policy) and a ruleset on `v1` can name that App as its only bypass actor.
 permissions:
   contents: read
 
@@ -33,18 +35,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  move-alias:
-    name: Move the major alias
+  # Reads only and holds no credential beyond `contents: read`: it decides whether the tag is a release
+  # and whether it is on the default branch. It is a separate job so that the run the alias move itself
+  # causes (the `v1` tag push) stops here, without ever asking the `v1-alias` environment for approval.
+  verify:
+    name: Verify the release tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      release: ${{ steps.shape.outputs.release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # This job holds `contents: write`, and the step that uses it is `gh api` with
-          # GH_TOKEN, not git. The only git network call is the fetch below, which reads
-          # this public repository without a credential.
+          # The only git network call is the fetch below, which reads this public repository
+          # without a credential.
           persist-credentials: false
           fetch-depth: 0
 
@@ -84,10 +90,37 @@ jobs:
           fi
           echo "$TAG is on the default branch."
 
+  # The move. Runs only for a version tag that verified, in the environment whose deployment policy admits
+  # `v*.*.*` tags and holds the App's key. Another ref, a branch or the `v1` tag itself, gets no key.
+  move-alias:
+    name: Move the major alias
+    needs: verify
+    if: needs.verify.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: v1-alias
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        # Egress is audited, not blocked: the report lists every host the job reached.
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      # Scoped to this repository and to `contents: write`, the only permission a ref update needs; the
+      # token is revoked when the job ends.
+      - name: Mint an installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.V1_ALIAS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.V1_ALIAS_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - name: Move the alias onto this version
-        if: steps.shape.outputs.release == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
@@ -139,7 +172,6 @@ jobs:
           fi
 
       - name: Summarise
-        if: steps.shape.outputs.release == 'true'
         env:
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
