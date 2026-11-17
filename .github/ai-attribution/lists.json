@@ -437,5 +437,22 @@
     "an",
     "a",
     "the"
+  ],
+  "ambiguousTools": [
+    "cursor",
+    "gemini",
+    "bard",
+    "aider",
+    "windsurf",
+    "mistral",
+    "grok",
+    "devin",
+    "perplexity",
+    "kiro",
+    "codex",
+    "codeium",
+    "tabnine",
+    "deepseek",
+    "gpt"
   ]
 }

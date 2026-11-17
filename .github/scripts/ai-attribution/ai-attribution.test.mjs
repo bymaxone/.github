@@ -443,6 +443,23 @@ const MINIMUM = {
     'a',
     'the',
   ],
+  ambiguousTools: [
+    'cursor',
+    'gemini',
+    'bard',
+    'aider',
+    'windsurf',
+    'mistral',
+    'grok',
+    'devin',
+    'perplexity',
+    'kiro',
+    'codex',
+    'codeium',
+    'tabnine',
+    'deepseek',
+    'gpt',
+  ],
 }
 
 test('the lists keep every entry they hold today: they may grow and never shrink', () => {
@@ -1181,6 +1198,31 @@ test('every word of every list, repeated, is read in linear time after each kind
     }
   }
   assert.deepEqual(slow, [])
+})
+
+test('a name that is also an ordinary word is the tool after a credit verb only where it ends the phrase', () => {
+  for (const message of [
+    'Paginated with cursor-based offsets',
+    'Filtered using cursor pagination',
+    'Sorted with gemini-style routing',
+    'Rendered by aider-like diffs',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  for (const message of [
+    'Built with Cursor',
+    'Made with Gemini',
+    'Crafted with Cursor.',
+    'Raised by Codex',
+    'Written with Cursor Agent',
+    'Built with **Cursor**',
+    'Generated with Cursor - see notes',
+    '## Built with Cursor',
+    'This PR was written by Cursor',
+  ]) {
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+  }
 })
 
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
