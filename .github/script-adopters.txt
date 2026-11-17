@@ -28,3 +28,4 @@ bymaxone/nest-realtime no-ai-attribution-caller
 bymaxone/nest-ai-tokens no-ai-attribution-caller
 bymaxone/rust-auth no-ai-attribution-caller
 bymaxone/nest-logger no-ai-attribution-caller
+bymaxone/nest-logger check-suppressions-baseline

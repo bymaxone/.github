@@ -159,3 +159,13 @@ reads the `file` of each entry; the reason is the line below.
 | `check-test-comments` | none | Its test is `scripts/check-test-comments.test.mjs`, not a `src/` spec, so the mutation inventory does not list it. |
 | `commitlint-no-ai-attribution` | none | It ships a plugin and no spec, so the mutation inventory lists nothing for it. |
 | `no-ai-attribution-caller` | none | It ships a workflow and no spec, so the mutation inventory lists nothing for it. |
+
+## Local variants
+
+A repository that keeps its own version of a template is not listed in `script-adopters.txt` for it, so the family check does not compare it. Each is recorded here with the reason:
+
+| Repository | Template | Why it differs |
+| --- | --- | --- |
+| `bymaxone/nest-logger` | `check-spec-headers` | its `scripts/check-spec-headers.mjs` enforces a `LAYERS` whitelist that includes `tests`, which the template dropped, and it has no `src/check-spec-headers.spec.ts` |
+| `bymaxone/nest-logger` | `published-surface-links` | its copy lacks the single-quoted anchor handling; it is not adopted |
+
