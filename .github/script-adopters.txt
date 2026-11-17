@@ -17,3 +17,7 @@ bymaxone/nest-telemetry check-function-length
 bymaxone/nest-ai-tokens stryker-scope
 bymaxone/nest-queue stryker-scope
 bymaxone/nest-realtime stryker-scope
+bymaxone/nest-config check-spec-headers
+bymaxone/nest-config check-double-assertions
+bymaxone/nest-config published-surface-links
+bymaxone/nest-config stryker-scope
