@@ -1136,6 +1136,23 @@ test('the follow-up: narrow vendor sentences, closing marks and product words af
   }
 })
 
+test('a trailer value of repeated words is read in linear time, and strict refuses what narrow refuses', () => {
+  for (const pattern of [strict, narrow]) {
+    for (const word of ['ai ', 'agent ', 'an autonomous coding ', 'ai agent assistant bot ']) {
+      const started = Date.now()
+      pattern.test(`Co-authored-by: ${word.repeat(Math.floor(60000 / word.length))}x`)
+      assert.ok(
+        Date.now() - started < 500,
+        `${word}: a long run of words must be read in linear time`,
+      )
+    }
+  }
+  for (const message of ['Found by Cursor.', 'Caught with Copilot', 'Caught by Copilot.']) {
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+    assert.equal(narrow.test(message), true, `narrow: ${message}`)
+  }
+})
+
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
   for (const message of [
     'fix: guard the AI provider timeout',

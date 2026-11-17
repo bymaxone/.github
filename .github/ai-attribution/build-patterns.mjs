@@ -65,7 +65,11 @@ export function build(lists) {
   const lineStart = `^[ \\t>*_#\`(\\[-]*(\\d+[.)][ \\t]*)?`
   // A trailer value that is only words that name an agent (autonomous coding agent, assistant, bot, model), with an
   // optional address: a value with any other word is a name.
-  const trailerValue = `((${alternation(lists.trailerAdjectives)})[ \\t]+)*(${alternation(lists.trailerAgentNouns)})([ \\t]+(${alternation(lists.trailerAdjectives)}|${alternation(lists.trailerAgentNouns)}))*`
+  // One word list, each word once, so a word is matched one way and a long run of them is read in linear time.
+  const trailerWords = alternation([
+    ...new Set([...lists.trailerAdjectives, ...lists.trailerAgentNouns]),
+  ])
+  const trailerValue = `((${trailerWords})[ \\t]+)*(${alternation(lists.trailerAgentNouns)})`
   const common = [
     // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
     `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:(([^\\n]*[^a-z0-9])?(${tools})${after}|[ \\t*_\`]*((an?|the)[ \\t]+)?(${generic})([ \\t]+(${descriptors}))*[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$|[ \\t*_\`]*${trailerValue}([ \\t]*<[^>\\n]*>)?[ \\t]*\\r?$)`,
