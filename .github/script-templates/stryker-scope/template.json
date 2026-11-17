@@ -1,0 +1,3 @@
+{
+  "files": [{ "source": "stryker-scope.spec.ts", "target": "src/stryker-scope.spec.ts" }]
+}
