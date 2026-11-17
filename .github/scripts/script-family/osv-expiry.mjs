@@ -21,24 +21,46 @@ const HERE = 'bymaxone/.github';
  * date. A block without a date or with a date that does not parse is left out.
  */
 export function ignores(toml) {
+  return blocks(toml).filter((block) => block.until !== null).map(({ id, until }) => ({ id, until }));
+}
+
+/** Every `[[IgnoredVulns]]` block that names an id: `{ id, until }`, `until` null when it has no date or one that cannot be read. */
+function blocks(toml) {
   const found = [];
   for (const block of toml.split(/^\s*\[\[IgnoredVulns\]\]\s*$/m).slice(1)) {
     const next = block.search(/^\s*\[/m);
     const body = next === -1 ? block : block.slice(0, next);
-    const id = /^\s*id\s*=\s*"([^"\n]+)"/m.exec(body)?.[1];
-    const date = /^\s*ignoreUntil\s*=\s*"?(\d{4}-\d{2}-\d{2}(?:[T ][0-9:]+Z?)?)"?\s*(?:#.*)?$/m.exec(body)?.[1];
-    if (!id || !date) continue;
-    const until = new Date(date.length === 10 ? `${date}T00:00:00Z` : date.replace(' ', 'T'));
-    if (Number.isNaN(until.getTime())) continue;
-    found.push({ id, until });
+    const id = /^\s*id\s*=\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)')/m.exec(body);
+    if (!id) continue;
+    const raw = /^\s*ignoreUntil\s*=\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s#]+))/m.exec(body);
+    const text = raw?.[1] ?? raw?.[2] ?? raw?.[3];
+    let until = null;
+    if (text !== undefined) {
+      const parts = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:\d{2})?)?$/.exec(text);
+      if (parts) {
+        const date = new Date(`${parts[1]}T${parts[2] ?? '00:00:00'}${parts[3] ?? 'Z'}`);
+        until = Number.isNaN(date.getTime()) ? null : date;
+      }
+    }
+    found.push({ id: id[1] ?? id[2], until, dated: text !== undefined });
   }
   return found;
+}
+
+/** The count of ignores whose `ignoreUntil` is present and cannot be read as a date. */
+export function unreadable(toml) {
+  return blocks(toml).filter((block) => block.dated && block.until === null).length;
+}
+
+/** Text from another repository's file, made safe to print in a workflow command and a summary. */
+export function clean(text) {
+  return String(text).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029%]/g, '').replace(/::/g, ':').slice(0, 80);
 }
 
 /** The ignores that end within `days` days of `now`, or already have, soonest first, with the whole days left. */
 export function expiring(toml, now, days) {
   return ignores(toml)
-    .map(({ id, until }) => ({ id, until, left: Math.ceil((until.getTime() - now.getTime()) / DAY) }))
+    .map(({ id, until }) => ({ id, until, left: Math.ceil((until.getTime() - now.getTime()) / DAY), ended: until.getTime() <= now.getTime() }))
     .filter(({ left }) => left <= days)
     .sort((a, b) => a.until - b.until);
 }
@@ -54,16 +76,17 @@ export function scan(repos, now, days, fetch = gh) {
     } catch {
       return { repo, note: `${PATH}: none or unreadable`, due: [] };
     }
-    return { repo, due: expiring(toml, now, days) };
+    const bad = unreadable(toml);
+    return { repo, due: expiring(toml, now, days), ...(bad > 0 ? { note: `${bad} ignore(s) with an ignoreUntil that cannot be read as a date` } : {}) };
   });
 }
 
 /** The line a warning prints for one ignore. */
-export function line({ repo }, { id, until, left }) {
+export function line({ repo }, { id, until, left, ended }) {
   const when = until.toISOString().slice(0, 10);
-  return left < 0
-    ? `${repo}: the ignore of ${id} ended on ${when}; the audit reports it again`
-    : `${repo}: the ignore of ${id} ends on ${when} (${left} day${left === 1 ? '' : 's'}); re-triage it or the audit goes red`;
+  return ended
+    ? `${clean(repo)}: the ignore of ${clean(id)} ended on ${when}; the audit reports it again`
+    : `${clean(repo)}: the ignore of ${clean(id)} ends on ${when} (${left} day${left === 1 ? '' : 's'}); re-triage it or the audit goes red`;
 }
 
 export function main(argv, env = process.env, now = new Date(), fetch = gh) {
@@ -78,7 +101,7 @@ export function main(argv, env = process.env, now = new Date(), fetch = gh) {
       console.log(`::warning title=osv-expiry::${line(result, item)}`);
       out.push(`- ${line(result, item)}`);
     }
-    if (result.note) out.push(`- ${result.repo}: ${result.note}`);
+    if (result.note) out.push(`- ${clean(result.repo)}: ${result.note}`);
   }
   const text = out.length === 0 ? `No ignore ends within ${days} days in ${repos.length} repositories.` : out.join('\n');
   console.log(text);

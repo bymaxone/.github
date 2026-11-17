@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expiring, ignores, line, main, scan } from './osv-expiry.mjs';
+import { clean, expiring, ignores, line, main, scan, unreadable } from './osv-expiry.mjs';
 
 const NOW = new Date('2026-11-17T12:00:00Z');
 const toml = (...blocks) => blocks.map(([id, until]) => `[[IgnoredVulns]]\nid = "${id}"\n${until ? `ignoreUntil = ${until}\n` : ''}reason = "x"\n`).join('\n');
@@ -59,4 +59,36 @@ test('the weekly workflow runs the check as a step that warns and does not fail 
   assert.match(step, /if: \$\{\{ !cancelled\(\) \}\}/);
   assert.match(step, /osv-expiry\.mjs --list \.github\/script-adopters\.txt --days 21/);
   assert.doesNotMatch(step, /continue-on-error|exit 1/);
+});
+
+test('an ignore is ended from the moment its date is reached, a date-only one after midnight UTC of its day', () => {
+  const [item] = expiring(toml(['X', '2026-11-17']), NOW, 21);
+  assert.equal(item.ended, true);
+  assert.match(line({ repo: 'o/r' }, item), /ended on 2026-11-17/);
+  const [later] = expiring(toml(['X', '2026-11-18']), NOW, 21);
+  assert.equal(later.ended, false);
+});
+
+test('single quotes, an offset, fractional seconds and CRLF are read, and an unreadable date is counted', () => {
+  const text = "[[IgnoredVulns]]\r\nid = 'A'\r\nignoreUntil = '2026-12-01'\r\n[[IgnoredVulns]]\nid = \"B\"\nignoreUntil = 2026-12-01T10:00:00-03:00\n[[IgnoredVulns]]\nid = \"C\"\nignoreUntil = 2026-12-01T00:00:00.5Z\n[[IgnoredVulns]]\nid = \"D\"\nignoreUntil = soon\n";
+  assert.deepEqual(ignores(text).map(({ id }) => id), ['A', 'B', 'C']);
+  assert.equal(unreadable(text), 1);
+  const results = scan(['o/r'], NOW, 21, () => text);
+  assert.match(results[0].note, /1 ignore\(s\) with an ignoreUntil that cannot be read/);
+});
+
+test('text from another repository file cannot add a workflow command or a line', () => {
+  const evil = 'X\r::error title=pwn::injected%0A';
+  assert.equal(/[\r\n%]/.test(clean(evil)), false);
+  assert.equal(clean(evil).includes('::'), false);
+  const text = `[[IgnoredVulns]]\nid = "${evil}"\nignoreUntil = 2020-01-01\n`;
+  const lines = [];
+  const original = console.log;
+  console.log = (value) => lines.push(String(value));
+  try {
+    main(['--list', '/dev/null', '--days', '21'], {}, NOW, () => text);
+  } finally {
+    console.log = original;
+  }
+  for (const out of lines) assert.equal(/[\r]|::error/.test(out), false, out);
 });
