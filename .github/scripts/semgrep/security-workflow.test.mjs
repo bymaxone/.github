@@ -366,3 +366,20 @@ test('a finished scan with no readable report is NOT SCANNED, not clean', () => 
     assert.match(enforce.out, /::error title=semgrep unavailable::/);
   }
 });
+
+// Where an error points decides what it is: no path, or a path under /rules, is a problem of the rules (fail closed, red in enforce
+// mode whatever name Semgrep gives it); a path in the scanned tree is a problem of the target (PARTIAL, never red by itself).
+const UNNAMED_RULE_ERROR_REPORT = JSON.stringify({ errors: [{ type: 'Pattern parse error', level: 'error', path: null }, { type: ['Unknown language', []], level: 'error' }], paths: { skipped: [] } });
+const TARGET_ERROR_REPORT = JSON.stringify({ errors: [{ type: 'Syntax error', level: 'error', path: 'src/a.ts' }, { type: ['Rule parse error looking name', []], level: 'warn', path: 'src/b.ts' }], paths: { skipped: [] } });
+
+test('an error with no path is a rule error whatever its name, and an error in the scanned tree is partial whatever its level', () => {
+  const unnamed = runScan(0, 'enforce', UNNAMED_RULE_ERROR_REPORT);
+  assert.equal(unnamed.status, 1, unnamed.out);
+  assert.match(unnamed.summary, /RULE ERROR: 2 rule\(s\) failed to load or parse/);
+  assert.match(unnamed.summary, /Pattern parse error/);
+  assert.match(unnamed.summary, /No findings from the rules that ran/);
+  const target = runScan(0, 'enforce', TARGET_ERROR_REPORT);
+  assert.equal(target.status, 0, target.out);
+  assert.match(target.summary, /PARTIAL: 2 files or rules not scanned/);
+  assert.doesNotMatch(target.summary, /RULE ERROR/);
+});

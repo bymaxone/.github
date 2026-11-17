@@ -284,12 +284,13 @@ jobs:
           : > "$partial_list"
           if [ "$status" -le 1 ]; then
             if jq -e . "$reports/semgrep.json" >/dev/null 2>&1; then
-              # A rule error is one whose type names a rule, a schema or a YAML problem, or whose path is under /rules.
-              # What the scanned tree makes of itself (a file too big, a parse problem, a timeout) is partial.
-              jq -r 'def etype: (.type | if type == "array" then .[0] else . end | tostring); def rule_error: ((etype | test("rule|schema|yaml|invalid"; "i")) or ((.path // "") | startswith("/rules")));
+              # Where an error points decides what it is. An error with no path, or a path under /rules, is a problem of
+              # the rules whatever Semgrep names it, so it fails closed; an error that names a path of the scanned tree
+              # (a parse problem, a timeout) and a skipped file are partial.
+              jq -r 'def etype: (.type | if type == "array" then .[0] else . end | tostring); def rule_error: ((.path == null) or (.path | startswith("/rules")));
                 .errors[]? | select(rule_error) | "\(.path // "a rule"): \(etype)"' "$reports/semgrep.json" \
                 | tr -d '\000-\011\013-\037' | cut -c1-300 > "$rule_list"
-              jq -r 'def etype: (.type | if type == "array" then .[0] else . end | tostring); def rule_error: ((etype | test("rule|schema|yaml|invalid"; "i")) or ((.path // "") | startswith("/rules")));
+              jq -r 'def etype: (.type | if type == "array" then .[0] else . end | tostring); def rule_error: ((.path == null) or (.path | startswith("/rules")));
                 (.errors[]? | select(rule_error | not) | "\(.path // "unknown"): \(etype)"),
                 (.paths.skipped[]? | select((.reason // "") | test("size|parser|internal|error|timeout"; "i")) | "\(.path): \(.reason)")' "$reports/semgrep.json" \
                 | tr -d '\000-\011\013-\037' | cut -c1-300 > "$partial_list"
