@@ -51,6 +51,24 @@ function messageOf(parsed) {
   return (end === -1 ? lines : lines.slice(0, end)).join('\n')
 }
 
+/** The longest run of blanks, or of marks, the rule reads; a longer one is read as this many. */
+const RUN = 4
+
+/**
+ * The text with every long run of blanks, and every long run of marks, cut to a short one. The patterns read a run as
+ * "one or more" of it, so a message means the same after it; and a regular expression engine that backtracks, which
+ * is what runs here, no longer reads a run of tens of thousands of blanks once per start. GitHub reads the same
+ * patterns in a linear-time engine and is not affected.
+ *
+ * @param {string} text The text of the message.
+ * @returns {string} The text with the runs cut.
+ */
+function compact(text) {
+  return text
+    .replace(/[ \t]{5,}/g, ' '.repeat(RUN))
+    .replace(/[*_`>~.:|"'<@{}()[\]\u201c\u201d\u2018\u2019-]{5,}/g, (run) => run.slice(0, RUN))
+}
+
 /**
  * The text shown to the committer on one line: a control character or a line or paragraph separator becomes a space.
  *
@@ -85,7 +103,7 @@ function build(profile = 'strict') {
           throw new Error(
             "no-ai-attribution has an always form only: configure it as [2, 'always']",
           )
-        const match = pattern.exec(messageOf(parsed))
+        const match = pattern.exec(compact(messageOf(parsed)))
         if (match === null) return [true]
         const found = oneLine(match[0])
         return [
@@ -100,3 +118,4 @@ function build(profile = 'strict') {
 module.exports = build()
 module.exports.build = build
 module.exports.patterns = { strict: STRICT, narrow: NARROW }
+module.exports.compact = compact
