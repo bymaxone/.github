@@ -1,15 +1,89 @@
 {
   "description": "The lists the patterns are built from by build-patterns.mjs.",
   "tools": [
-    "claude", "anthropic", "codex", "openai", "chatgpt", "gpt", "copilot", "gemini", "cursor", "windsurf",
-    "devin", "aider", "codeium", "tabnine", "bard", "grok", "deepseek", "mistral", "kiro", "perplexity"
+    "claude",
+    "anthropic",
+    "codex",
+    "openai",
+    "chatgpt",
+    "gpt",
+    "copilot",
+    "gemini",
+    "cursor",
+    "windsurf",
+    "devin",
+    "aider",
+    "codeium",
+    "tabnine",
+    "bard",
+    "grok",
+    "deepseek",
+    "mistral",
+    "kiro",
+    "perplexity",
+    "cursoragent"
   ],
-  "productionVerbs": ["generated", "authored", "co-authored", "assisted", "drafted", "created", "produced"],
-  "judgementVerbs": ["reviewed", "approved", "audited", "verified", "checked", "proposed", "suggested"],
-  "strictByVerbs": ["written", "made", "built", "fixed", "implemented"],
-  "subjectVerbs": ["reviewed", "wrote", "authored", "generated", "created", "co-authored", "approved", "drafted"],
-  "nounsBy": ["review", "approval", "authorship", "co-authorship", "assistance", "sign-off"],
-  "bareWordsStrict": ["codex", "anthropic", "chatgpt"],
-  "narrowNear": ["claude", "codex"],
-  "narrowNearWords": ["review", "reviews", "pass", "reviewer", "bot", "finding", "findings"]
+  "productionVerbs": [
+    "generated",
+    "authored",
+    "co-authored",
+    "assisted",
+    "drafted",
+    "created",
+    "produced"
+  ],
+  "judgementVerbs": [
+    "reviewed",
+    "approved",
+    "audited",
+    "verified",
+    "checked",
+    "proposed",
+    "suggested"
+  ],
+  "strictByVerbs": [
+    "written",
+    "made",
+    "built",
+    "fixed",
+    "implemented"
+  ],
+  "subjectVerbs": [
+    "reviewed",
+    "wrote",
+    "authored",
+    "generated",
+    "created",
+    "co-authored",
+    "approved",
+    "drafted",
+    "suggested",
+    "proposed"
+  ],
+  "nounsBy": [
+    "review",
+    "approval",
+    "authorship",
+    "co-authorship",
+    "assistance",
+    "sign-off"
+  ],
+  "bareWordsStrict": [
+    "codex",
+    "anthropic",
+    "chatgpt"
+  ],
+  "narrowNear": [
+    "claude",
+    "codex"
+  ],
+  "narrowNearWords": [
+    "review",
+    "reviews",
+    "pass",
+    "reviewer",
+    "bot",
+    "finding",
+    "findings"
+  ]
 }
