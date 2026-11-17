@@ -1,8 +1,8 @@
 # Fails a pull request whose title, body or commit messages name an AI tool as their author or reviewer.
 #
 # A ruleset on the default branch sees only the final commit message. A squash merge builds that message from the
-# pull request title and body, and the guard in the CI workflows reads the branch's commits only, so a title or a
-# body is read here, with the same patterns the rulesets carry (`.github/ai-attribution/patterns.json`). The
+# pull request title and body, so a title or a body is read here, with the same patterns the rulesets carry
+# (`.github/ai-attribution/patterns.json`). The
 # patterns and the script that applies them are read at the commit of THIS workflow file, never from a tag, so
 # the rule and the file that applies it cannot be out of step.
 #
