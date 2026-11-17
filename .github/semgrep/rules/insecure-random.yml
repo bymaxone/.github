@@ -1,0 +1,20 @@
+rules:
+  - id: bymax.js.math-random-secret
+    message: >-
+      Math.random() is not cryptographically secure and is predictable. Use crypto.randomBytes,
+      crypto.randomUUID or crypto.randomInt for a token, secret, id, password or nonce.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator"]
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: const $VAR = <... Math.random() ...>
+          - pattern: let $VAR = <... Math.random() ...>
+          - pattern: $VAR = <... Math.random() ...>
+          - pattern: $OBJ.$VAR = <... Math.random() ...>
+          - pattern: "{ ..., $VAR: <... Math.random() ...>, ... }"
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i:^.*(token|secret|password|passwd|nonce|apikey|api_key|session|otp)$)|^(id|.*Id|.*[_-]id)$

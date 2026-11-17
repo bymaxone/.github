@@ -517,6 +517,46 @@ security:
     signatures: warn
 ```
 
+### `security` inputs
+
+| Input              | Default | Notes                                                                                                                         |
+| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `fail-on-severity` | `high`  | minimum severity that fails the dependency review                                                                             |
+| `deny-licenses`    | `""`    | comma-separated SPDX licenses to reject                                                                                       |
+| `signatures`       | `off`   | `off`, `warn` or `enforce`: `npm audit signatures` over the lockfile                                                          |
+| `semgrep`          | `off`   | `off`, `warn` or `enforce`: Semgrep over the whole checkout, see below                                                        |
+| `semgrep-config`   | `""`    | whitespace-separated registry packs, each one `--config` value (`p/<name>` or `r/<path>`); empty uses the vendored rules alone |
+
+### Semgrep (opt-in)
+
+`semgrep: warn` (or `enforce`) runs Semgrep in a pinned, non-root image
+(pinned by digest in the workflow) over the **whole** checkout. The workspace is mounted
+read-only, which rules out the diff-aware `--baseline-commit` mode (it writes to `.git`), so every run
+scans everything. The job holds `contents: read` only and uses no secret; it uploads no SARIF, which
+would need `security-events: write`. The verdict is the job's exit code, and the findings are in the
+log and the job summary. `warn` annotates a warning and stays green, `enforce` fails the check, so roll
+out as `warn` and move to `enforce` once the repository runs clean.
+
+A scan that could not fetch its rules (a registry outage or a mistyped pack) is not a clean scan. It
+is reported on its own: the summary says **NOT SCANNED**, `warn` annotates
+`semgrep unavailable` and stays green, and `enforce` fails closed with the same title.
+
+The rules come from two places. The registry packs are not vendored (their licence forbids
+redistribution): a caller names them in `semgrep-config`, validated against `p/<name>` and `r/<path>`
+before use. The rules in [`.github/semgrep/rules`](.github/semgrep/rules) are always applied, read at
+the commit of the workflow itself, so they move with `v1` and a caller changes nothing to get a new
+rule.
+
+Example with registry packs:
+
+```yaml
+security:
+  uses: bymaxone/.github/.github/workflows/security.yml@v1
+  with:
+    semgrep: warn
+    semgrep-config: p/typescript p/nodejs p/expressjs p/jwt p/secrets p/dockerfile p/docker-compose p/github-actions
+```
+
 ### Publishing a change — never move `@v1` by hand
 
 Merging to `main` publishes **nothing**. Callers run `@v1`, and `v1` only moves when a

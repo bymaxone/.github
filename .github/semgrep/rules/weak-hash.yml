@@ -1,0 +1,17 @@
+rules:
+  - id: bymax.js.weak-hash-md5-sha1
+    message: >-
+      MD5 and SHA-1 are broken for collision resistance. Use SHA-256 or stronger (createHash('sha256')),
+      and a password hash such as argon2, scrypt or bcrypt for passwords.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-328: Use of Weak Hash"]
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: $C.createHash($ALGORITHM, ...)
+          - pattern: createHash($ALGORITHM, ...)
+      - metavariable-regex:
+          metavariable: $ALGORITHM
+          regex: (?i)^["'](md5|sha-?1|rsa-sha1)["']$

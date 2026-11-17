@@ -1,0 +1,24 @@
+rules:
+  - id: bymax.js.sql-text-built-by-interpolation
+    message: >-
+      SQL text is built by concatenation or an interpolated template literal. Whoever controls
+      the interpolated value rewrites the query (SQL injection). Pass values as bound parameters
+      (`$1` placeholders, or the tagged-template form of the client) and keep the text a literal.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-89: Improper Neutralization of Special Elements used in an SQL Command"]
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query($Q, ...)
+          - pattern: $DB.execute($Q, ...)
+          - pattern: $DB.$queryRawUnsafe($Q, ...)
+          - pattern: $DB.$executeRawUnsafe($Q, ...)
+      - metavariable-pattern:
+          metavariable: $Q
+          patterns:
+            - pattern-either:
+                - pattern: "`...${$Y}...`"
+                - pattern: $A + $B
+            - pattern-not: '"..." + "..."'

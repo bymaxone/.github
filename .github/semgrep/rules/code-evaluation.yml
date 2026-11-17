@@ -1,0 +1,32 @@
+rules:
+  - id: bymax.js.code-evaluation-non-literal
+    message: >-
+      Code is evaluated from a value that is not a literal. Whoever controls the value runs
+      code in this process. Replace it with a lookup table, JSON.parse for data, or a function
+      reference instead of a string.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"]
+      category: security
+    pattern-either:
+      - patterns:
+          - pattern: eval($X)
+          - pattern-not: eval("...")
+      - patterns:
+          - pattern: new Function(...)
+          - pattern-not: new Function("...")
+          - pattern-not: new Function("...", "...")
+          - pattern-not: new Function("...", "...", "...")
+      # A callback is the safe form of a timer; only a string-shaped first argument is evaluated,
+      # and a variable of unknown type is not reported, to keep this rule quiet.
+      - patterns:
+          - pattern-either:
+              - pattern: setTimeout($X, ...)
+              - pattern: setInterval($X, ...)
+          - metavariable-pattern:
+              metavariable: $X
+              pattern-either:
+                - pattern: $A + $B
+                - pattern: "`...${$Y}...`"
+                - pattern: '"..."'
