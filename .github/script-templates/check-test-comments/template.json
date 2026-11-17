@@ -1,0 +1,6 @@
+{
+  "files": [
+    { "source": "check-test-comments.mjs", "target": "scripts/check-test-comments.mjs" },
+    { "source": "check-test-comments.test.mjs", "target": "scripts/check-test-comments.test.mjs" }
+  ]
+}
