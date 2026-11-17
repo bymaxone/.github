@@ -322,7 +322,7 @@ jobs:
       # fixtures of the release-template family check, and the link-gate probe, whose isolation test runs
       # `unshare` and `setpriv` through the runner's passwordless sudo.
       - name: Run the tests
-        run: node --test '.github/scripts/mutation-shards/*.test.mjs' '.github/scripts/release-family/*.test.mjs' '.github/scripts/link-gate/*.test.mjs' '.github/scripts/ai-attribution/*.test.mjs' '.github/scripts/script-family/*.test.mjs' '.github/scripts/semgrep/*.test.mjs'
+        run: node --test '.github/scripts/*/*.test.mjs'
 
   semgrep-rules:
     name: Vendored Semgrep rules pass their tests
