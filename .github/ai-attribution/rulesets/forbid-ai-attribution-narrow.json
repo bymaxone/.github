@@ -1,0 +1,33 @@
+{
+  "name": "forbid-ai-attribution-narrow",
+  "target": "branch",
+  "enforcement": "evaluate",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "exclude": []
+    },
+    "repository_name": {
+      "include": [
+        "bymax-agent-kit",
+        "nest-ai-tokens",
+        "nest-ai-tokens-example"
+      ],
+      "exclude": [],
+      "protected": false
+    }
+  },
+  "rules": [
+    {
+      "type": "commit_message_pattern",
+      "parameters": {
+        "name": "no AI attribution in a commit message",
+        "negate": true,
+        "operator": "regex",
+        "pattern": "(?im)(^[ \\t>]*(co-authored-by|signed-off-by|authored-by)[ \\t]*:[^\\n]*\\b(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine)\\b|noreply@(anthropic|openai|claude)\\.|\\bgenerated (with|by) (\\[|an? )?(claude|anthropic|codex|openai|chatgpt|copilot|gemini|cursor|devin|aider|windsurf|codeium|tabnine|ai)\\b|\\b(claude|codex)\\s*(\\+|and|&|/|,)\\s*(claude|codex)\\b|\\b(claude|codex)\\b[^\\n]{0,20}\\b(reviews?|pass|reviewer|bot|findings?)\\b)"
+      }
+    }
+  ]
+}
