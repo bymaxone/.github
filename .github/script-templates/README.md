@@ -29,6 +29,27 @@ in document order and a function within the limit is not counted, so adding a sm
 while an offender that drops to the limit renumbers the same-named offenders after it. Wire it as
 `"check:function-length": "node scripts/check-function-length.mjs"`, with `--base origin/<default branch>` on pull requests.
 
+## published-surface-links
+
+The link check of a library's published-surface gate, as a module of its own that exports exactly
+`checkLinks({ readme, root, fail })` and uses Node built-ins only. It checks every link of the README: anchors
+against its headings (fenced code ignored), relative paths against the repository (confined to `root`), and
+external URLs over the network. A non-https, loopback, private or IP-literal target, a name that resolves to a
+private address, and a redirect into one fail without being requested. HTTP 404, 410, 403 and 401 fail. A 5xx, a 429
+that survives the GET retry, and a transport error are notes, never failures: the gate guards `prepublishOnly`, and
+someone else's outage must not block a release. An npmjs.com package page is asked of the registry, where a 404 is a
+note until the first publish.
+
+To adopt: copy `published-surface-links.mjs` to `scripts/` byte for byte, delete the embedded link-check block
+(from `/** Slug a Markdown heading` to the end of `checkLinks`) from `scripts/check-published-surface.mjs`, add
+`import { checkLinks } from './published-surface-links.mjs'`, and keep calling it as the script did, now with the
+context: `await checkLinks({ readme, root, fail })`. Remove imports the script no longer uses (`lookup`, `existsSync`,
+`resolve`, `sep`), then add the library to `script-adopters.txt`. A library that checks more than the README (several
+documents, links into other pages) does not fit this signature and keeps its own check until the template grows one.
+
+The link-gate family check (`link-gate-family.yml`) measures a library that keeps this module by running it, in module
+form, against the 18 cases of the matrix with `fetch` and DNS stubbed.
+
 ## check-spec-headers
 
 Fails when a tracked spec does not open with a `/** */` block comment that says what it tests in at least a few

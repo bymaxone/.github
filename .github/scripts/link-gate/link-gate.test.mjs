@@ -136,3 +136,37 @@ fail('uid', String(process.getuid()))`;
     holder.kill('SIGKILL');
   }
 });
+
+// The canonical link-check module (script-templates/published-surface-links) is measured in module form, as the
+// family check measures a library that keeps one. The isolation follows the job: LINK_GATE_ISOLATE=1 adds it.
+const template = readFileSync(new URL('../../script-templates/published-surface-links/published-surface-links.mjs', import.meta.url), 'utf8');
+const templateOptions = process.env.LINK_GATE_ISOLATE === '1' ? { wrap: isolation(), timeoutMs: 60_000 } : { timeoutMs: 60_000 };
+const mutate = (from, to) => {
+  assert.equal(template.split(from).length, 2, `the anchor is unique in the template: ${from}`);
+  return template.replace(from, to);
+};
+/** The cases the matrix reports for `script`, as `url: wanted X, got Y` lines. */
+const mismatched = (script) => {
+  const r = mismatches(script, templateOptions);
+  assert.ok(r.bad, `the probe ran: ${r.problem}`);
+  return r.bad;
+};
+
+test('the link-check template decides all 18 cases of the matrix as wanted', () => {
+  assert.equal(Object.keys(CASES).length, 18);
+  const { bad, notes } = mismatches(template, templateOptions);
+  assert.deepEqual(bad, []);
+  assert.ok(notes.some((n) => n.includes('/503') && n.includes('HTTP 503')));
+});
+
+test('the link-check template is not accepted once a decision is removed from it', () => {
+  const sixNotes = mismatched(mutate('res.status >= 500 || res.status === 429', 'false'));
+  assert.deepEqual(names(sixNotes).sort(), [...SIX].sort(), 'without the 5xx and 429 note branch');
+  const no429 = mismatched(mutate('res.status >= 500 || res.status === 429', 'res.status >= 500'));
+  assert.deepEqual(names(no429), ['429-after-retry']);
+  const http = mismatched(mutate("if (u.protocol !== 'https:') return `uses ${u.protocol.replace(':', '')}, not https`", ''));
+  assert.deepEqual(http, ['http://a.example/plain-http: wanted fail, got ok']);
+  // The stub resolves every name to a public address, so the literal check is the only guard an IPv4 literal meets.
+  const priv = mismatched(mutate('if (/^\\d{1,3}(\\.\\d{1,3}){3}$/.test(h)) {', 'if (false) {'));
+  assert.deepEqual(priv, ['https://10.0.0.1/private: wanted fail, got ok']);
+});

@@ -1,0 +1,5 @@
+{
+  "files": [
+    { "source": "published-surface-links.mjs", "target": "scripts/published-surface-links.mjs" }
+  ]
+}
