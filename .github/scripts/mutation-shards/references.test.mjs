@@ -220,16 +220,21 @@ test('the agents-sync guard prints no character that could start a workflow comm
 });
 
 // The egress baseline is documentation read by hand, so its shape is the only thing a test can keep: both jobs
-// list the harden-runner agent's own hosts, the template points at the file, and no host is listed twice.
+// list the registry and the harden-runner agent's own host, the build job also lists the other agent host and the
+// container-registry hosts of a repository that uses Testcontainers, and the template points at the file.
 test('the egress baseline lists the agent hosts for both jobs and the template points at it', () => {
   const baseline = JSON.parse(readFileSync('.github/workflow-templates/egress-baseline.json', 'utf8'));
   for (const job of ['build', 'publish']) {
     const hosts = baseline.jobs[job].hosts;
     assert.equal(new Set(hosts).size, hosts.length, `${job}: a host is listed once`);
-    for (const host of ['prod.app-api.stepsecurity.io', 'agent.api.stepsecurity.io', 'registry.npmjs.org']) {
+    for (const host of ['prod.app-api.stepsecurity.io', 'registry.npmjs.org', 'api.github.com']) {
       assert.ok(hosts.includes(host), `${job}: ${host} is in the baseline`);
     }
   }
+  assert.ok(baseline.jobs.build.hosts.includes('agent.api.stepsecurity.io'));
+  assert.ok(baseline.jobs.publish.hosts.includes('fulcio.sigstore.dev'));
+  assert.ok(!baseline.jobs.build.hosts.includes('fulcio.sigstore.dev'), 'the build job does not sign');
+  assert.ok(baseline.jobs.build.whenTheRepositoryHas.Testcontainers.includes('registry-1.docker.io'));
   const template = readFileSync('.github/workflow-templates/npm-release.yml', 'utf8');
   assert.equal(template.split('egress-baseline.json').length - 1, 2, 'both harden-runner steps point at the baseline');
 });
