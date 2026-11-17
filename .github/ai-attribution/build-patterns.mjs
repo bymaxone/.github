@@ -52,7 +52,9 @@ export function build(lists) {
   const production = `(${alternation(lists.productionVerbs)})\\s+(with|by|using|via|through)`
   const judgement = `(${alternation(lists.judgementVerbs)})\\s+by`
   const strictBy = `(${alternation(lists.strictByVerbs)})\\s+by`
-  const phrase = `(${production}|${judgement})${gap}(${tools})${after}`
+  // Verbs that count in the narrow profile only at the start of a line, where `by` or `with` follows.
+  const lineStart2 = `(${alternation(lists.lineStartVerbs)})\\s+(by|with)`
+  const phrase = `(${production}|${judgement}|${lineStart2})${gap}(${tools})${after}`
   const strict = [
     ...common,
     `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})${after}`,

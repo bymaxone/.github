@@ -154,6 +154,7 @@ const MINIMUM = {
     'our own',
     'ai',
   ],
+  lineStartVerbs: ['written'],
 }
 
 test('the lists keep every entry they hold today: they may grow and never shrink', () => {
@@ -167,12 +168,17 @@ function family(tool) {
   const T = cap(tool)
   const both = []
   const strictOnly = []
+  const narrowOnly = []
   for (const verb of lists.productionVerbs) {
     for (const connector of ['with', 'by', 'using', 'via', 'through'])
       both.push(`fix: x\n\n${cap(verb)} ${connector} ${T}`)
   }
   for (const verb of lists.judgementVerbs) both.push(`fix: x\n\n${cap(verb)} by ${T}`)
   for (const verb of lists.strictByVerbs) strictOnly.push(`docs: ${verb} by ${T}`)
+  for (const verb of lists.lineStartVerbs) {
+    both.push(`fix: x\n\n${cap(verb)} by ${T}`)
+    narrowOnly.push(`fix: x\n\n${cap(verb)} with ${T}`)
+  }
   for (const key of [
     'Co-authored-by',
     'Signed-off-by',
@@ -212,18 +218,19 @@ function family(tool) {
     `Reviewed by: ${T}`,
     `Reviewed by the ${T}`,
   )
-  return { both, strictOnly }
+  return { both, strictOnly, narrowOnly }
 }
 
 test('every attribution phrasing names every tool: each family of phrasings is refused by the profiles that carry it', () => {
   const misses = []
   for (const tool of lists.tools) {
-    const { both, strictOnly } = family(tool)
+    const { both, strictOnly, narrowOnly } = family(tool)
     for (const message of both) {
       if (!strict.test(message)) misses.push(`strict: ${message}`)
       if (!narrow.test(message)) misses.push(`narrow: ${message}`)
     }
     for (const message of strictOnly) if (!strict.test(message)) misses.push(`strict: ${message}`)
+    for (const message of narrowOnly) if (!narrow.test(message)) misses.push(`narrow: ${message}`)
   }
   for (const message of [
     'AI-generated',
@@ -370,7 +377,6 @@ test('the narrow profile reads a verb phrase only at the start of a line: a vend
     'chore: bump claude-agent-sdk',
     'docs: OpenAI assistant api prices',
     'feat: a Gemini agent adapter',
-    'Written by OpenAI: the model card',
   ]) {
     assert.equal(narrow.test(message), false, message)
   }
