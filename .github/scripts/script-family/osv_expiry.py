@@ -18,6 +18,7 @@ import sys
 
 DAY = 86400.0
 PATH = "osv-scanner.toml"
+LIMIT = 50  # warnings per repository: a file of thousands of ignores must not flood the log
 HERE = "bymaxone/.github"
 REPO = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -144,11 +145,49 @@ def option(argv, name, default=None):
     return argv[index + 1]
 
 
+def run(days, now, one, listing, directory, summary):
+    """The reading and the printing, for arguments that are already checked; every file is read inside `scan`'s guard."""
+    def read_file(path):
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+
+    if one:
+        results = scan(["file"], now, days, lambda _repo: read_file(one))
+        print(json.dumps([[repo, [[i, u.isoformat(), left, ended] for i, u, left, ended in items], note] for repo, items, note in results]))
+        return 0
+    repos = read_list(read_file(listing))
+    if HERE not in repos:
+        repos.append(HERE)
+    read = (lambda repo: read_file(f"{directory}/{repo.replace('/', '__')}.toml")) if directory else fetch
+    out = []
+    for repo, items, note in scan(repos, now, days, read):
+        for item in items[:LIMIT]:
+            print(f"::warning title=osv-expiry::{line(repo, item)}")
+            out.append(f"- {line(repo, item)}")
+        if len(items) > LIMIT:
+            out.append(f"- {clean(repo)}: {len(items) - LIMIT} more ignores end soon, not listed")
+        if note:
+            out.append(f"- {clean(repo)}: {note}")
+    text = "\n".join(out) if out else f"No ignore ends within {days} days in {len(repos)} repositories."
+    print(text)
+    if summary:
+        try:
+            with open(summary, "a", encoding="utf-8") as handle:
+                handle.write(f"### OSV ignores that end soon\n\n{text}\n")
+        except OSError:
+            print("::warning title=osv-expiry::the summary file could not be written")
+    return 0
+
+
 def main(argv):
+    """Exit code 0 for any input file. Only a wrong argument stops the script, before a file is read."""
     if sys.version_info < (3, 11):
         print("::warning title=osv-expiry::the expiry check needs Python 3.11 or later (the TOML parser); it did not run")
         return 0
-    days = int(option(argv, "--days", "21"))
+    try:
+        days = int(option(argv, "--days", "21"))
+    except ValueError:
+        raise SystemExit("--days is a whole number of days, zero or more")
     if days < 0:
         raise SystemExit("--days is a whole number of days, zero or more")
     now_text = option(argv, "--now")
@@ -156,37 +195,14 @@ def main(argv):
     if now is None:
         raise SystemExit("--now is not a date")
     one = option(argv, "--file")
-    if one:
-        with open(one, encoding="utf-8") as handle:
-            text = handle.read()
-        results = scan(["file"], now, days, lambda _repo: text)
-        print(json.dumps([[repo, [[i, u.isoformat(), left, ended] for i, u, left, ended in items], note] for repo, items, note in results]))
+    listing = option(argv, "--list")
+    if not one and not listing:
+        raise SystemExit("--list or --file is needed")
+    try:
+        return run(days, now, one, listing, option(argv, "--from-dir"), option(argv, "--summary", os.environ.get("GITHUB_STEP_SUMMARY")))
+    except Exception:
+        print("::warning title=osv-expiry::the expiry check could not finish; nothing it read is shown")
         return 0
-    with open(option(argv, "--list"), encoding="utf-8") as handle:
-        repos = read_list(handle.read())
-    if HERE not in repos:
-        repos.append(HERE)
-    directory = option(argv, "--from-dir")
-    if directory:
-        def read(repo):
-            with open(f"{directory}/{repo.replace('/', '__')}.toml", encoding="utf-8") as handle:
-                return handle.read()
-    else:
-        read = fetch
-    out = []
-    for repo, items, note in scan(repos, now, days, read):
-        for item in items:
-            print(f"::warning title=osv-expiry::{line(repo, item)}")
-            out.append(f"- {line(repo, item)}")
-        if note:
-            out.append(f"- {clean(repo)}: {note}")
-    text = "\n".join(out) if out else f"No ignore ends within {days} days in {len(repos)} repositories."
-    print(text)
-    summary = option(argv, "--summary", os.environ.get("GITHUB_STEP_SUMMARY"))
-    if summary:
-        with open(summary, "a", encoding="utf-8") as handle:
-            handle.write(f"### OSV ignores that end soon\n\n{text}\n")
-    return 0
 
 
 if __name__ == "__main__":

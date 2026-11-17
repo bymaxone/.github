@@ -103,10 +103,22 @@ test('text from another repository file cannot add a workflow command, a line or
   for (const out of run.stdout.split('\n')) assert.equal(/\r|^::error|[\[\]()<>%]/.test(out.replace(/^::warning title=osv-expiry::/, '')), false, out);
 });
 
-test('a list line that is not owner/name template is refused before anything is read', () => {
+test('a list line that is not owner/name template is a warning that reads nothing', () => {
   const dirOf = mkdtempSync(join(tmpdir(), 'osv-bad-'));
   writeFileSync(join(dirOf, 'list.txt'), 'not-a-repo demo\n');
-  assert.notEqual(python('--list', join(dirOf, 'list.txt'), '--from-dir', dirOf).status, 0);
+  const run = python('--list', join(dirOf, 'list.txt'), '--from-dir', dirOf);
+  assert.equal(run.status, 0);
+  assert.match(run.stdout, /the expiry check could not finish; nothing it read is shown/);
+});
+
+test('a file of thousands of ignores warns for a bounded number of them and says how many more', () => {
+  const dirOf = mkdtempSync(join(tmpdir(), 'osv-many-'));
+  writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\n');
+  writeFileSync(join(dirOf, 'o__a.toml'), block('X', '2026-11-20').repeat(500));
+  const run = python('--list', join(dirOf, 'list.txt'), '--now', NOW, '--from-dir', dirOf);
+  assert.equal(run.status, 0);
+  assert.equal(run.stdout.split('\n').filter((l) => l.startsWith('::warning')).length, 50);
+  assert.match(run.stdout, /450 more ignores end soon, not listed/);
 });
 
 test('the weekly workflow runs the script isolated, as a step that warns and does not fail the job', () => {
@@ -117,22 +129,49 @@ test('the weekly workflow runs the script isolated, as a step that warns and doe
   assert.doesNotMatch(step, /continue-on-error|exit 1/);
 });
 
-test('no file can make the run fail or abort the scan: an overflowing date, a list that is not one, a bad window', () => {
-  for (const toml of [
-    block('A', '9999-12-31T23:59:59-05:00'),
-    block('A', '0001-01-01T00:00:00+05:00'),
-    'IgnoredVulns = 5\n',
-    'IgnoredVulns = "x"\n',
-    'IgnoredVulns = { id = "A" }\n',
-    '[[IgnoredVulns]]\nid = 5\nignoreUntil = 2026-12-01\n',
-    '[[IgnoredVulns]]\nid = "A"\nignoreUntil = [1, 2]\n',
-    '\ufeff[[IgnoredVulns]]\nid = "A"\n',
-  ]) {
-    const file = join(dir, `odd-${Math.random().toString(16).slice(2)}.toml`);
-    writeFileSync(file, toml);
-    const run = python('--file', file, '--now', NOW);
-    assert.equal(run.status, 0, `${toml}: ${run.stderr}`);
-    assert.equal(run.stderr, '', toml);
+test('for any input file the script exits 0 and prints at most a warning: every file crossed with every argument', () => {
+  const many = '[[IgnoredVulns]]\nid = "X"\nignoreUntil = 2026-12-01\n'.repeat(Math.ceil((1024 * 1024) / 56));
+  const files = {
+    overflow: block('A', '9999-12-31T23:59:59-05:00'),
+    underflow: block('A', '0001-01-01T00:00:00+05:00'),
+    'list is an integer': 'IgnoredVulns = 5\n',
+    'list is a string': 'IgnoredVulns = "x"\n',
+    'list is an inline table': 'IgnoredVulns = { id = "A" }\n',
+    'id is an integer': '[[IgnoredVulns]]\nid = 5\nignoreUntil = 2026-12-01\n',
+    'date is an array': '[[IgnoredVulns]]\nid = "A"\nignoreUntil = [1, 2]\n',
+    'byte order mark': '\ufeff[[IgnoredVulns]]\nid = "A"\n',
+    'not UTF-8': Buffer.from([0xff, 0xfe, 0x5b, 0x5b, 0x80, 0x0a]),
+    empty: '',
+    'a megabyte of ignores': many,
+    'a megabyte of garbage': 'x'.repeat(1024 * 1024),
+    'a megabyte of one line': `# ${'a'.repeat(1024 * 1024)}\n`,
+    'nested tables': '[a.b.c.d.e.f]\nx = 1\n[[IgnoredVulns]]\nid = "A"\nignoreUntil = 2026-12-01\n',
+  };
+  const safe = /^(::warning title=osv-expiry::.*|- .*|### .*|No ignore ends within .*|\[.*\]|)$/;
+  const summaries = [null, join(dir, 'summary-ok.md'), '/nonexistent-directory/summary.md'];
+  for (const [name, content] of Object.entries(files)) {
+    const file = join(dir, `table-${name.replace(/\W+/g, '-')}.toml`);
+    writeFileSync(file, content);
+    const dirOf = mkdtempSync(join(tmpdir(), 'osv-table-'));
+    writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\n');
+    writeFileSync(join(dirOf, 'o__a.toml'), content);
+    for (const days of ['0', '21', '365']) {
+      for (const summary of summaries) {
+        const flags = summary === null ? [] : ['--summary', summary];
+        for (const args of [['--file', file], ['--list', join(dirOf, 'list.txt'), '--from-dir', dirOf]]) {
+          const run = python(...args, '--now', NOW, '--days', days, ...flags);
+          const label = `${name}, days ${days}, summary ${summary}, ${args[0]}`;
+          assert.equal(run.status, 0, `${label}: ${run.stderr.slice(0, 200)}`);
+          assert.equal(run.stderr, '', label);
+          for (const out of run.stdout.split('\n')) assert.match(out, safe, `${label}: ${out.slice(0, 80)}`);
+        }
+      }
+    }
+    // The summary named by the environment is written the same way, and an unwritable one is a warning.
+    const env = { ...process.env, GITHUB_STEP_SUMMARY: '/nonexistent-directory/summary.md' };
+    const viaEnv = spawnSync('python3', ['-I', SCRIPT, '--list', join(dirOf, 'list.txt'), '--from-dir', dirOf, '--now', NOW], { encoding: 'utf8', env });
+    assert.equal(viaEnv.status, 0, name);
+    assert.equal(viaEnv.stderr, '', name);
   }
   const dirOf = mkdtempSync(join(tmpdir(), 'osv-odd-'));
   writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\no/b demo\n');
@@ -142,7 +181,15 @@ test('no file can make the run fail or abort the scan: an overflowing date, a li
   assert.equal(run.status, 0);
   assert.match(run.stdout, /o\/a: osv-scanner.toml: not valid TOML or not a list of ignores/);
   assert.match(run.stdout, /o\/b: the ignore of LATER ends on 2026-11-20/);
-  assert.notEqual(python('--list', join(dirOf, 'list.txt'), '--days', '-1', '--from-dir', dirOf).status, 0);
+});
+
+test('a wrong argument is refused before any file is read, and only an argument can stop the script', () => {
+  const dirOf = mkdtempSync(join(tmpdir(), 'osv-args-'));
+  writeFileSync(join(dirOf, 'list.txt'), 'o/a demo\n');
+  for (const args of [['--days', '-1'], ['--days', 'soon'], ['--now', 'yesterday']]) {
+    assert.notEqual(python('--list', join(dirOf, 'list.txt'), '--from-dir', dirOf, ...args).status, 0, args.join(' '));
+  }
+  assert.notEqual(python('--now', NOW).status, 0);
 });
 
 test('the step summary is written to the file GITHUB_STEP_SUMMARY names, and an ignore ending exactly now is ended', () => {
