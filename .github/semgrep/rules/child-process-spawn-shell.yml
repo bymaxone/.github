@@ -1,0 +1,290 @@
+rules:
+  - id: bymax.js.child-process-spawn-shell-command
+    message: >-
+      A command or argument handed to a shell is shell injection: with a `shell` option, Node joins
+      the command and the argument array into one string for the shell, so whoever controls a value
+      injects shell commands. Use no `shell` option and pass an argument array.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-78: Improper Neutralization of Special Elements used in an OS Command"]
+      category: security
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  $CP = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import * as $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.default.$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.default.$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import * as $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: 'require($MOD).$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: 'require($MOD).$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import { ..., $FN, ... } from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  const { ..., $FN, ... } = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  $CP = await import($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  const { ..., $FN, ... } = await import($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '(await import($MOD)).$FN($CMD, { ..., shell: $SH, ... }, ...)'
+                  - pattern: '(await import($MOD)).$FN($CMD, $A, { ..., shell: $SH, ... }, ...)'
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+      - metavariable-pattern:
+          metavariable: $SH
+          patterns:
+            - pattern-not: 'false'
+      - metavariable-pattern:
+          metavariable: $CMD
+          patterns:
+            - pattern-not: '"..."'
+  - id: bymax.js.child-process-spawn-shell-argument
+    message: >-
+      A command or argument handed to a shell is shell injection: with a `shell` option, Node joins
+      the command and the argument array into one string for the shell, so whoever controls a value
+      injects shell commands. Use no `shell` option and pass an argument array.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: ["CWE-78: Improper Neutralization of Special Elements used in an OS Command"]
+      category: security
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  $CP = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import * as $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.default.$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.default.$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import * as $CP from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: 'require($MOD).$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: 'require($MOD).$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  import { ..., $FN, ... } from $MOD;
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  const { ..., $FN, ... } = require($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$CP.$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$CP.$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  $CP = await import($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - pattern-inside: |
+                  const { ..., $FN, ... } = await import($MOD);
+                  ...
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+          - patterns:
+              - pattern-either:
+                  - pattern: '(await import($MOD)).$FN("...", [..., $ARG, ...], { ..., shell: $SH, ... }, ...)'
+                  - pattern: '(await import($MOD)).$FN("...", $ARG, { ..., shell: $SH, ... }, ...)'
+              - metavariable-regex:
+                  metavariable: $FN
+                  regex: ^(spawn|spawnSync|execFile|execFileSync)$
+              - metavariable-regex:
+                  metavariable: $MOD
+                  regex: ^['"`]?(node:)?child_process['"`]?$
+      - metavariable-pattern:
+          metavariable: $SH
+          patterns:
+            - pattern-not: 'false'
+      - metavariable-pattern:
+          metavariable: $ARG
+          patterns:
+            - pattern-not: '"..."'
+            - pattern-not: '[...]'
