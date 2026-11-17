@@ -1,0 +1,40 @@
+{
+  "description": "The hosts a library release is expected to reach, so a harden-runner report is read against a list instead of from memory. Documentation only: nothing reads this file in CI, and a host that is not listed is a question to answer, not a failure. The first report this was written from: a library's 1.2.17 release on 2026-11-14 (build 17 hosts, publish 8 hosts).",
+  "jobs": {
+    "build": {
+      "hosts": [
+        "github.com",
+        "api.github.com",
+        "objects.githubusercontent.com",
+        "registry.npmjs.org",
+        "registry-1.docker.io",
+        "auth.docker.io",
+        "production.cloudflare.docker.com",
+        "prod.app-api.stepsecurity.io",
+        "agent.api.stepsecurity.io"
+      ],
+      "perRepository": "The documentation hosts that the published-surface link check (check:published) reaches differ per repository (about nine in the first report); list them in the repository's own release notes, not here.",
+      "notes": {
+        "registry-1.docker.io": "Docker Hub, pulled by Testcontainers in the tests; with auth.docker.io and production.cloudflare.docker.com.",
+        "prod.app-api.stepsecurity.io": "The harden-runner agent's own API, resolved when the agent starts, so it appears in every job that runs it.",
+        "agent.api.stepsecurity.io": "Tried by the agent before the host above; a build that cannot reach it can time out at the first step."
+      }
+    },
+    "publish": {
+      "hosts": [
+        "github.com",
+        "api.github.com",
+        "registry.npmjs.org",
+        "fulcio.sigstore.dev",
+        "rekor.sigstore.dev",
+        "tuf-repo-cdn.sigstore.dev",
+        "prod.app-api.stepsecurity.io",
+        "agent.api.stepsecurity.io"
+      ],
+      "notes": {
+        "fulcio.sigstore.dev": "Provenance signing: the certificate authority, the transparency log and the trust root.",
+        "prod.app-api.stepsecurity.io": "The harden-runner agent's own API, as in the build job."
+      }
+    }
+  }
+}
