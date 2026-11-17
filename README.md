@@ -545,7 +545,7 @@ The rules come from two places. The registry packs are not vendored (their licen
 redistribution): a caller names them in `semgrep-config`, validated against `p/<name>` and `r/<path>`
 before use. The rules in [`.github/semgrep/rules`](.github/semgrep/rules) are always applied, read at
 the commit of the workflow itself, so they move with `v1` and a caller changes nothing to get a new
-rule. Each has a rule test beside it.
+rule.
 
 Example with registry packs:
 
