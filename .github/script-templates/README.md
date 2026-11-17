@@ -68,9 +68,8 @@ In an ESM or flat configuration, `import plugin, { build } from './scripts/commi
 
 ## no-ai-attribution-caller
 
-The caller of the shared `no-ai-attribution` workflow, copied to `.github/workflows/no-ai-attribution.yml`: it runs the shared job on
-`pull_request` with the types `opened`, `edited`, `synchronize` and `reopened`, because an edit of a title or a body must run it
-again. It is a workflow, not a script, and ships no spec, so the exempt table has no entry for it.
+The caller of the shared `no-ai-attribution` workflow, copied to `.github/workflows/no-ai-attribution.yml`. It lives in its own file
+because an edit of a pull request's title or body must run the job again. It is a workflow, not a script, and ships no spec.
 
 ## published-surface-links
 
