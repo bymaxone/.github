@@ -58,6 +58,7 @@ export function build(lists) {
   const strict = [
     ...common,
     `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})${after}`,
+    `${lineStart}${lineStart2}${gap}(${tools})${after}`,
     `${before}(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     `\\bclaude([^.]|$)`,

@@ -176,8 +176,7 @@ function family(tool) {
   for (const verb of lists.judgementVerbs) both.push(`fix: x\n\n${cap(verb)} by ${T}`)
   for (const verb of lists.strictByVerbs) strictOnly.push(`docs: ${verb} by ${T}`)
   for (const verb of lists.lineStartVerbs) {
-    both.push(`fix: x\n\n${cap(verb)} by ${T}`)
-    narrowOnly.push(`fix: x\n\n${cap(verb)} with ${T}`)
+    both.push(`fix: x\n\n${cap(verb)} by ${T}`, `fix: x\n\n${cap(verb)} with ${T}`)
   }
   for (const key of [
     'Co-authored-by',
