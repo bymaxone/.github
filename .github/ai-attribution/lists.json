@@ -85,5 +85,32 @@
     "bot",
     "finding",
     "findings"
+  ],
+  "toolSpellings": [
+    "chat gpt",
+    "chat-gpt",
+    "open ai",
+    "open-ai",
+    "github copilot",
+    "github-copilot",
+    "google gemini",
+    "microsoft copilot"
+  ],
+  "fillers": [
+    "the",
+    "a",
+    "an",
+    "our",
+    "my",
+    "new",
+    "latest",
+    "github",
+    "google",
+    "microsoft",
+    "meta",
+    "amazon",
+    "open",
+    "our own",
+    "ai"
   ]
 }

@@ -21,7 +21,11 @@ const alternation = (words) =>
  * @returns {{ strict: string, narrow: string }} The patterns.
  */
 export function build(lists) {
-  const tools = alternation(lists.tools)
+  const tools = alternation([...lists.tools, ...lists.toolSpellings])
+  // What may stand between a connector and the tool: marks of emphasis, quotes, brackets or a handle, and words that
+  // are not the tool (an article, a vendor, an adjective).
+  const marks = `[\\s:*_\`"'\\[(@-]`
+  const gap = `${marks}+((${alternation(lists.fillers)})${marks}+)*`
   const subject = alternation(lists.subjectVerbs)
   const nouns = alternation(lists.nounsBy)
   // The start of a line, with the marks a list item, a quote, a heading or an emphasis puts before the text.
@@ -30,7 +34,8 @@ export function build(lists) {
     // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
     `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:([^\\n]*\\b(${tools})\\b|[ \\t]*(ai|llm)[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
     `noreply@(anthropic|openai|claude)\\.`,
-    `\\b(${tools})(\\[bot\\]|[ -]bot\\b)`,
+    `\\b(${tools})\\[bot\\]`,
+    `^[ \\t>*_-]*(${tools})[ -]bot[ \\t.]*\\r?$`,
     `🤖[^\\n]*\\b(${tools})\\b`,
     `\\b(made|built|crafted)\\s+with\\s+[^\\n]{1,12}\\s+and\\s+(${tools})\\b`,
     `\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(${tools})\\b`,
@@ -44,10 +49,10 @@ export function build(lists) {
   const production = `(${alternation(lists.productionVerbs)})\\s+(with|by|using|via|through)`
   const judgement = `(${alternation(lists.judgementVerbs)})\\s+by`
   const strictBy = `(${alternation(lists.strictByVerbs)})\\s+by`
-  const phrase = `(${production}|${judgement})[:\\s]+(the\\s+|an?\\s+|github\\s+|\\[|@)*(${tools})\\b`
+  const phrase = `(${production}|${judgement})${gap}(${tools})\\b`
   const strict = [
     ...common,
-    `\\b(${production}|${judgement}|${strictBy})[:\\s]+(the\\s+|an?\\s+|github\\s+|\\[|@)*(${tools})\\b`,
+    `\\b(${production}|${judgement}|${strictBy})${gap}(${tools})\\b`,
     `\\b(${tools})[ -](agent|assistant)\\b`,
     `(^|[^@\\w])(${alternation(lists.bareWordsStrict)})\\b`,
     `\\bclaude([^.]|$)`,
