@@ -136,6 +136,8 @@ const MINIMUM = {
     'github-copilot',
     'google gemini',
     'microsoft copilot',
+    'openai codex',
+    'claude code',
   ],
   fillers: [
     'the',
@@ -158,6 +160,10 @@ const MINIMUM = {
     'o',
     'os',
     'as',
+    'generic',
+    'autonomous',
+    'helpful',
+    'automated',
   ],
   lineStartVerbs: ['written'],
   genericAgents: [
@@ -178,6 +184,10 @@ const MINIMUM = {
     'language models',
     'large language models',
     'artificial intelligences',
+    'autonomous agent',
+    'autonomous coding agent',
+    'coding assistant',
+    'ai coding assistant',
   ],
   genericDescriptors: [
     'coding',
@@ -375,6 +385,64 @@ const MINIMUM = {
     'subsequently',
   ],
   ptAndAdverbs: ['depois', 'tamb\u00e9m', 'tambem', 'manualmente'],
+  narrowCreditVerbs: [
+    'generated',
+    'authored',
+    'co-authored',
+    'written',
+    'built',
+    'made',
+    'crafted',
+    'created',
+    'produced',
+    'drafted',
+    'assisted',
+    'raised',
+    'caught',
+    'found',
+    'flagged',
+    'suggested',
+    'proposed',
+    'reviewed',
+    'approved',
+    'verified',
+    'checked',
+    'designed',
+    'developed',
+    'implemented',
+    'coded',
+    'refactored',
+    'fixed',
+    'rewritten',
+    'reported',
+  ],
+  toolWords: ['code', 'cli', 'agent', 'assistant', 'bot'],
+  trailerAgentNouns: [
+    'agent',
+    'assistant',
+    'bot',
+    'model',
+    'llm',
+    'ai',
+    'chatbot',
+    'copilot agent',
+  ],
+  trailerAdjectives: [
+    'generic',
+    'autonomous',
+    'coding',
+    'helpful',
+    'automated',
+    'virtual',
+    'ai',
+    'code',
+    'software',
+    'language',
+    'large',
+    'an',
+    'a',
+    'the',
+  ],
 }
 
 test('the lists keep every entry they hold today: they may grow and never shrink', () => {
@@ -1015,6 +1083,56 @@ test('a person whose name begins with the tool is not the tool', () => {
   ]) {
     if (message.startsWith('claude.md')) assert.equal(strict.test(message), false, message)
     else assert.equal(strict.test(message), true, message)
+  }
+})
+
+test('the follow-up: narrow vendor sentences, closing marks and product words after a tool, and trailers naming only an agent', () => {
+  for (const message of [
+    'Built with Claude Code',
+    'Built with OpenAI Codex',
+    'Built with Cursor Agent',
+    'Built with **Copilot**',
+    'Built with `Cursor`',
+    'Built with [Copilot]',
+  ]) {
+    assert.equal(narrow.test(message), true, `narrow: ${message}`)
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+  }
+  for (const message of [
+    'Tested with Gemini.',
+    'Compared with Gemini',
+    'Replaced by Gemini',
+    'Sponsored by Anthropic',
+    'Acquired by OpenAI',
+    'Integrated with Copilot',
+    'Blocked by Cursor',
+    'Made with the OpenAI SDK',
+  ]) {
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  for (const message of [
+    'feat: x\n\nCo-authored-by: Coding Agent <agent@example.com>',
+    'feat: x\n\nGenerated-by: an agent',
+    'feat: x\n\nAssisted-by: agent',
+    'feat: x\n\nCo-authored-by: an autonomous agent <agent@example.com>',
+    'feat: x\n\nReviewed-by: a helpful AI assistant',
+    'feat: x\n\nCo-authored-by: Autonomous Coding Agent',
+    'feat: x\n\nReviewed-by: Bot',
+    'This commit was authored by a generic AI agent',
+    'Authored by an autonomous coding agent',
+    'Claude4',
+  ]) {
+    assert.equal(strict.test(message), true, `strict: ${message}`)
+  }
+  for (const message of [
+    'feat: x\n\nCo-authored-by: Ai Lin <a@b.c>',
+    'feat: x\n\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>',
+    'feat: x\n\nCo-authored-by: Agent Smith <smith@example.com>',
+    'feat: x\n\nCo-authored-by: Maria Model <m@b.c>',
+    'feat: x\n\nSigned-off-by: Jane Doe <j@b.c>',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
   }
 })
 
