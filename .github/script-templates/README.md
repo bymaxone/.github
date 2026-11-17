@@ -63,7 +63,7 @@ reviewer at commit time. Copy it to
 on the narrow profile uses `require('./scripts/commitlint-no-ai-attribution.cjs').build('narrow')` in `plugins` instead. The
 patterns are embedded in the file, so a change to them reaches an adopter only when it re-copies the file.
 In an ESM or flat configuration, `import plugin, { build } from './scripts/commitlint-no-ai-attribution.cjs'` gives the same plugin and
-`build`. The rule reads commitlint's own view of the message (header, body and footer), so the comment character of the git configuration applies; a line commitlint treats as a comment is not read here. The rule has an
+`build`. The rule reads the header, body and footer commitlint gives it, and the raw text up to the scissors line when it gives none. The rule has an
 `always` form only; any other form throws. commitlint keeps only one inline plugin object, so merge the `rules` maps of any other inline plugin into one.
 
 ## published-surface-links
