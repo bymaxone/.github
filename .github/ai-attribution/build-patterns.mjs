@@ -35,11 +35,11 @@ export function build(lists) {
   const lineStart = `^[ \\t>*_\`(\\[-]*(\\d+[.)][ \\t]*)?`
   const common = [
     // A trailer of any `-by` kind, in a list or a quote or bold, whose value names a tool, or is only `AI` or `LLM`.
-    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:([^\\n]*${before}(${tools})${after}|[ \\t]*(ai|llm)[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
+    `^[ \\t>*_\`-]*(\\d+[.)][ \\t]*)?[*_\`]*[a-z][a-z-]*-by[*_\`]*[ \\t]*:(([^\\n]*[^a-z0-9])?(${tools})${after}|[ \\t]*(ai|llm)[ \\t]*(<[^>\\n]*>)?[ \\t]*\\r?$)`,
     `noreply@(anthropic|openai|claude)\\.`,
     `${before}(${tools})\\[bot\\]`,
     `^[ \\t>*_-]*(${tools})[ -]bot[ \\t.]*\\r?$`,
-    `🤖[^\\n]*${before}(${tools})${after}`,
+    `🤖([^\\n]*[^a-z0-9])?(${tools})${after}`,
     `\\b(made|built|crafted)\\s+with\\s+[^\\n]{1,12}\\s+and\\s+(${tools})${after}`,
     `\\bwith\\s+(the\\s+)?help\\s+(of|from)\\s+(${tools})${after}`,
     `\\b(thanks\\s+to|courtesy\\s+of|powered\\s+by)\\s+(${tools})${after}`,
