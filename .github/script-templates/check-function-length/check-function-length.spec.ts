@@ -219,7 +219,7 @@ describe('check-function-length', () => {
     })
 
     // Hooks are functions: a setup or teardown body is measured like an `it` body, with the same limit and the
-    // same baseline. Before this rule a 61-line `beforeEach` passed because hooks were counted as containers.
+    // same baseline.
     describe.each(['beforeEach', 'afterEach', 'beforeAll', 'afterAll'])('the %s hook', (hook) => {
       it('fails over the limit, named as a hook', () => {
         const spec = `describe('Suite', () => {\n${callback(hook, 61)}})\n`
