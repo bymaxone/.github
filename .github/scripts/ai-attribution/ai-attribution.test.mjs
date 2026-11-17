@@ -1311,6 +1311,24 @@ test('narrow: a product word, a number or a comma and ends the credit phrase aft
   }
 })
 
+test('the text the agents-sync workflow writes into a pull request and a commit names no tool', () => {
+  // The subject is the pull request title and the commit subject, the commit message has a second paragraph, and the
+  // body becomes the squash message of a synchronisation pull request in every repository; the rule that refuses an
+  // attribution would refuse any of them, so a sentence about the reader of the file must not name the reader.
+  const workflow = readFileSync(new URL('../../workflows/agents-sync.yml', import.meta.url), 'utf8')
+  const written = {
+    subject: /^\s*subject="([^"]+)"/m.exec(workflow)?.[1],
+    commit: /git commit -m "\$subject" -m "([^"]+)"/.exec(workflow)?.[1],
+    body: /\bbody="([\s\S]*?)"\n\n/.exec(workflow)?.[1],
+  }
+  for (const [name, text] of Object.entries(written)) {
+    assert.ok(typeof text === 'string' && text.length > 20, `${name}: found in the workflow`)
+    assert.equal(strict.test(text), false, `${name} (strict): ${text.slice(0, 80)}`)
+    assert.equal(narrow.test(text), false, `${name} (narrow): ${text.slice(0, 80)}`)
+  }
+  assert.ok(written.body.includes('_Opened by the'), 'the whole body is read, up to its last line')
+})
+
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {
   for (const message of [
     'fix: guard the AI provider timeout',
