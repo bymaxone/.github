@@ -478,6 +478,26 @@
     "lite",
     "preview",
     "advanced",
-    "free"
+    "free",
+    "spec",
+    "specs",
+    "large",
+    "medium",
+    "small",
+    "coder",
+    "architect",
+    "live",
+    "deep",
+    "bugbot",
+    "background",
+    "heavy",
+    "sonar",
+    "enterprise",
+    "team",
+    "business",
+    "code",
+    "think",
+    "research",
+    "agent"
   ]
 }

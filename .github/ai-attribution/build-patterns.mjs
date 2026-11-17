@@ -33,7 +33,7 @@ export function build(lists) {
   // After an ambiguous name the tool is NOT meant when a hyphen and a letter follow (cursor-based) or an ordinary
   // noun does (cursor pagination); any other next character leaves it the tool: a mark, a comma, a colon, a slash, an
   // emoji, a number, the end of the line, `ai`, a product word, an and, or a spaced dash.
-  const ambiguousEnd = `([^a-z0-9 \\t-]|-([^a-z]|$)|[ \\t]*\\r?$|[ \\t]+([^a-z0-9 \\t]|[0-9]|(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|and|or|v[0-9])([^a-z0-9]|$)))`
+  const ambiguousEnd = `([^a-z0-9 \\t-]|-([^a-z]|$)|[ \\t]*\\r?$|[ \\t]+([^a-z0-9 \\t]|[0-9]|(ai|${alternation(lists.toolWords)}|${alternation(lists.productWords)}|${ambiguousTools}|and|or|[a-z]?[0-9]+)([^a-z0-9]|$)))`
   const creditTool = `((${clearTools})([^a-z0-9]|$)|(${ambiguousTools})${ambiguousEnd})`
   // What may stand between a connector and the tool: marks of emphasis, quotes, brackets or a handle, and words that
   // are not the tool (an article, a vendor, an adjective).

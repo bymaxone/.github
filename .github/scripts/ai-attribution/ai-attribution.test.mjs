@@ -1262,6 +1262,17 @@ test('a name that is also an ordinary word is the tool after a credit verb only 
     'Built with Cursor Composer',
     'Made with Gemini Flash',
     'Built with Windsurf Cascade',
+    'Built with Kiro Spec',
+    'Built with Mistral Large',
+    'Made with DeepSeek Coder',
+    'Built with Aider Architect',
+    'Built with Gemini Live',
+    'Built with Cursor Bugbot',
+    'Built with Grok Heavy',
+    'Made with Perplexity Sonar',
+    'Built with Tabnine Enterprise',
+    'Made with DeepSeek R1',
+    'Built with Codeium Windsurf',
   ]) {
     assert.equal(strict.test(message), true, `strict: ${message}`)
   }
