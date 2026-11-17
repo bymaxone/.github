@@ -41,7 +41,7 @@ export function readTemplate(dir, name) {
     throw new Error(`${name}: template.json lists no files.`);
   }
   return manifest.files.map(({ source, target }) => {
-    if (!TARGET.test(source ?? '') || !TARGET.test(target ?? '') || target.split('/').includes('..')) {
+    if (!TARGET.test(source ?? '') || !TARGET.test(target ?? '') || source.split('/').includes('..') || target.split('/').includes('..')) {
       throw new Error(`${name}: a file entry of template.json is not a plain relative path.`);
     }
     return { target, text: readFileSync(join(dir, name, source), 'utf8') };
@@ -54,7 +54,7 @@ const gh = (args) => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignor
 export function checkFamily(entries, templates, fetch = gh) {
   return entries.map(({ repo, template }) => {
     const files = templates.get(template);
-    if (!files) return { repo, template, sha: '-', problems: [`${template}: no such template`] };
+    if (!files) return { repo, template, sha: '-', problems: [`${template}: no such template or unreadable manifest`] };
     let sha;
     try {
       const branch = fetch(['api', `repos/${repo}`, '--jq', '.default_branch']).trim();
@@ -88,7 +88,15 @@ export function main(argv, env = process.env) {
   const args = parseArgs(argv);
   const entries = readList(readFileSync(args.list, 'utf8'));
   const templates = new Map();
-  for (const { template } of entries) if (!templates.has(template)) templates.set(template, readTemplate(args.templates, template));
+  for (const { template } of entries) {
+    if (templates.has(template)) continue;
+    // A template that cannot be read is reported for its adopters, with the rest of the report, not thrown.
+    try {
+      templates.set(template, readTemplate(args.templates, template));
+    } catch {
+      templates.set(template, null);
+    }
+  }
   const results = checkFamily(entries, templates);
   const text = report(results);
   console.log(text);

@@ -3,7 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkFamily, readList, readTemplate, report } from './check-family.mjs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { checkFamily, main, readList, readTemplate, report } from './check-family.mjs';
 
 const SHA = 'a'.repeat(40);
 const TEMPLATES = new Map([['demo', [{ target: 'scripts/demo.mjs', text: 'one\n' }, { target: 'src/demo.spec.ts', text: 'two\n' }]]]);
@@ -42,7 +44,7 @@ test('a missing file, an unreadable repository and an unknown template are each 
   assert.deepEqual(checkFamily(entry, TEMPLATES, fake({ 'scripts/demo.mjs': 'one\n' }))[0].problems, ['src/demo.spec.ts: missing']);
   assert.deepEqual(checkFamily(entry, TEMPLATES, () => { throw new Error('boom'); })[0].problems, ['unreadable']);
   assert.deepEqual(checkFamily(entry, TEMPLATES, fake({}, { sha: 'not-a-sha' }))[0].problems, ['unreadable']);
-  assert.deepEqual(checkFamily([{ repo: 'o/r', template: 'nope' }], TEMPLATES, fake({}))[0].problems, ['nope: no such template']);
+  assert.deepEqual(checkFamily([{ repo: 'o/r', template: 'nope' }], TEMPLATES, fake({}))[0].problems, ['nope: no such template or unreadable manifest']);
 });
 
 test('every template of the repository has a manifest whose files exist, and every listed adopter names one', () => {
@@ -60,4 +62,26 @@ test('every template of the repository has a manifest whose files exist, and eve
 test('a manifest entry that climbs out of the adopter is refused', () => {
   const root = new URL('./fixtures-bad/', import.meta.url).pathname;
   assert.throws(() => readTemplate(root, 'climbs'), /plain relative path/);
+});
+
+test('a manifest source that climbs out of the template is refused too', () => {
+  const root = new URL('./fixtures-bad/', import.meta.url).pathname;
+  assert.throws(() => readTemplate(root, 'climbs-source'), /plain relative path/);
+});
+
+test('an adopter naming a template that has no directory fails the run with a report, not a crash', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'script-family-'));
+  const list = join(dir, 'list.txt');
+  const summary = join(dir, 'summary.md');
+  writeFileSync(list, 'o/r missing-template\n');
+  const logs = [];
+  const log = console.log;
+  console.log = (line) => logs.push(line);
+  try {
+    assert.equal(main(['--list', list, '--templates', dir, '--summary', summary], {}), 1);
+  } finally {
+    console.log = log;
+  }
+  assert.match(readFileSync(summary, 'utf8'), /missing-template: no such template or unreadable manifest/);
+  assert.ok(logs.some((l) => l.startsWith('::error title=script-family::')));
 });
