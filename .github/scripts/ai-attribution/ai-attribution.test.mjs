@@ -245,6 +245,13 @@ const MINIMUM = {
     'utilizando',
     'com ajuda de',
     'com a ajuda de',
+    'com assist\u00eancia de',
+    'com a assist\u00eancia de',
+    'com assistencia de',
+    'com aux\u00edlio de',
+    'com o aux\u00edlio de',
+    'com suporte de',
+    'com o suporte de',
   ],
   changeNouns: [
     'pr',
@@ -739,6 +746,33 @@ test('the third review round: an adverb, and a credit that says with AI assistan
     assert.equal(strict.test(message), false, `strict: ${message}`)
     assert.equal(narrow.test(message), false, `narrow: ${message}`)
   }
+})
+
+test('the fourth review round: an assistance credit ends where the phrase ends, takes an adverb, and has Portuguese forms', () => {
+  for (const message of [
+    'Implemented with AI support for streaming',
+    'Refactored with AI guidance docs',
+    'Generated with AI help command output',
+    'Tested with AI support enabled',
+    'Generated with AI assistance for each athlete',
+  ]) {
+    assert.equal(strict.test(message), false, `strict: ${message}`)
+    assert.equal(narrow.test(message), false, `narrow: ${message}`)
+  }
+  const misses = []
+  for (const message of [
+    'This PR was largely written with AI assistance',
+    'The commit was mostly generated with AI help',
+    'Written with AI assistance.',
+    'Written with AI assistance and reviewed by a human',
+    'Este PR foi escrito com assistência de IA',
+    'Este commit foi gerado com auxílio de IA',
+    'Escrito com suporte de IA',
+  ]) {
+    if (!strict.test(message)) misses.push(`strict: ${message}`)
+    if (!narrow.test(message)) misses.push(`narrow: ${message}`)
+  }
+  assert.deepEqual(misses, [])
 })
 
 test('a product that has AI features, a person named like a generic agent, and a tool name used for what it also means, pass', () => {

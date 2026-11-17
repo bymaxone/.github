@@ -40,6 +40,8 @@ export function build(lists) {
   const ptConnectors = alternation(lists.ptConnectors)
   // A past participle: a word ending in -ed, or an irregular one, with an optional prefix (co-, auto-).
   const participle = `([a-z]+-)*([a-z]+ed|(re|over|hand|ghost|mis|under|out)?(${alternation(lists.irregularParticiples)}))`
+  // The end of a phrase that names an agent and a noun: a mark, the end of the line, or an and.
+  const phraseEnd = `([ \\t]*([.,;:!?)\\]*_\`"”’]+|\\r?$)|[ \\t]+(and|&)[ \\t])`
   const adverb = `((${alternation(lists.adverbs)})[ \\t]+)?`
   const credit = `${adverb}${participle}([ \\t]+and[ \\t]+${participle})?([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+(with|by|using|via|through)([ \\t]+the[ \\t]+help[ \\t]+of)?`
   // The gap that stays on one line, so a participle at the end of a line never joins the next line.
@@ -65,8 +67,8 @@ export function build(lists) {
     // A credit verb (a past participle) and a connector, then a tool or a generic agent, in a position that is an
     // attribution: a line that starts with it, or a sentence whose subject is the change itself.
     `${lineStart}${credit}${gapL}(${generic})${genericEnd}`,
-    `${lineStart}((this|the|these)[ \\t]+)?((${alternation(lists.changeNouns)})[ \\t]+((is|was|were|are)[ \\t]+)?)?${participle}[ \\t]+with${gapL}(${generic})[ \\t]+(${alternation(lists.assistanceNouns)})${after}`,
-    `${lineStart}((this|the|these)[ \\t]+)?((${alternation(lists.changeNouns)})[ \\t]+((is|was|were|are)[ \\t]+)?)?${participle}[ \\t]+with([ \\t]+the)?[ \\t]+(${alternation(lists.assistanceNouns)})[ \\t]+(of|from)${gapL}(${generic})${genericEnd}`,
+    `${lineStart}((this|the|these)[ \\t]+)?((${alternation(lists.changeNouns)})[ \\t]+((is|was|were|are)[ \\t]+)?)?${adverb}${participle}([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+with${gapL}(${generic})[ \\t]+(${alternation(lists.assistanceNouns)})${phraseEnd}`,
+    `${lineStart}((this|the|these)[ \\t]+)?((${alternation(lists.changeNouns)})[ \\t]+((is|was|were|are)[ \\t]+)?)?${adverb}${participle}([ \\t]+(${alternation(lists.adverbs)}))?[ \\t]+with([ \\t]+the)?[ \\t]+(${alternation(lists.assistanceNouns)})[ \\t]+(of|from)${gapL}(${generic})${genericEnd}`,
     `${lineStart}((this|the|these)\\s+)?(${alternation(lists.changeNouns)})\\s+((is|was|were|are)\\s+)?${credit}${gapL}(${generic})${genericEnd}`,
     `${lineStart}(thanks\\s+to|courtesy\\s+of|with\\s+(the\\s+)?help\\s+(of|from))${gap}(${generic})${genericEnd}`,
     `\\b(this|the|these)\\s+(${alternation(lists.changeNouns)})\\s+(is|was|were|are)\\s+((${generic})[- ](generated|assisted|authored|written)|${credit}${gapL}(${generic})${genericEnd})`,
