@@ -262,3 +262,25 @@ test('under bash -e a clean scan passes, findings are a warning or an error, an 
   assert.match(enforceDown.out, /::error title=semgrep unavailable::/);
   assert.match(enforceDown.summary, /NOT SCANNED/);
 });
+
+// The whole table of exit statuses of the scan under bash -e: 0 is clean, 1 is findings, every other status (a
+// fatal error, a registry outage, a failure of docker itself) is NOT SCANNED, in both modes.
+test('every exit status of the scan has one verdict in each mode, under bash -e', () => {
+  const verdicts = { 0: 'clean', 1: 'findings', 2: 'unavailable', 3: 'unavailable', 4: 'unavailable', 7: 'unavailable', 125: 'unavailable', 126: 'unavailable', 127: 'unavailable' };
+  for (const [code, verdict] of Object.entries(verdicts)) {
+    for (const mode of ['warn', 'enforce']) {
+      const r = runScan(Number(code), mode);
+      const expectStatus = verdict === 'clean' || mode === 'warn' ? 0 : 1;
+      assert.equal(r.status, expectStatus, `exit ${code} in ${mode}: ${r.out}`);
+      if (verdict === 'unavailable') {
+        assert.match(r.out, new RegExp(`::(warning|error) title=semgrep unavailable::`), `exit ${code} in ${mode}`);
+        assert.match(r.summary, /NOT SCANNED/, `exit ${code} in ${mode}`);
+      } else if (verdict === 'findings') {
+        assert.match(r.out, new RegExp(`::(warning|error) title=semgrep::`), `exit ${code} in ${mode}`);
+        assert.doesNotMatch(r.summary, /NOT SCANNED/);
+      } else {
+        assert.doesNotMatch(r.out, /::(warning|error)/, `exit ${code} in ${mode}`);
+      }
+    }
+  }
+});
