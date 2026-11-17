@@ -224,17 +224,18 @@ test('the agents-sync guard prints no character that could start a workflow comm
 // container-registry hosts of a repository that uses Testcontainers, and the template points at the file.
 test('the egress baseline lists the agent hosts for both jobs and the template points at it', () => {
   const baseline = JSON.parse(readFileSync('.github/workflow-templates/egress-baseline.json', 'utf8'));
+  // A set, not a substring search: the entries are host names, and a membership test says exactly that.
+  const listed = { build: new Set(baseline.jobs.build.hosts), publish: new Set(baseline.jobs.publish.hosts) };
   for (const job of ['build', 'publish']) {
-    const hosts = baseline.jobs[job].hosts;
-    assert.equal(new Set(hosts).size, hosts.length, `${job}: a host is listed once`);
+    assert.equal(listed[job].size, baseline.jobs[job].hosts.length, `${job}: a host is listed once`);
     for (const host of ['prod.app-api.stepsecurity.io', 'registry.npmjs.org', 'api.github.com']) {
-      assert.ok(hosts.includes(host), `${job}: ${host} is in the baseline`);
+      assert.ok(listed[job].has(host), `${job}: ${host} is in the baseline`);
     }
   }
-  assert.ok(baseline.jobs.build.hosts.includes('agent.api.stepsecurity.io'));
-  assert.ok(baseline.jobs.publish.hosts.includes('fulcio.sigstore.dev'));
-  assert.ok(!baseline.jobs.build.hosts.includes('fulcio.sigstore.dev'), 'the build job does not sign');
-  assert.ok(baseline.jobs.build.whenTheRepositoryHas.Testcontainers.includes('registry-1.docker.io'));
+  assert.ok(listed.build.has('agent.api.stepsecurity.io'));
+  assert.ok(listed.publish.has('fulcio.sigstore.dev'));
+  assert.ok(!listed.build.has('fulcio.sigstore.dev'), 'the build job does not sign');
+  assert.ok(new Set(baseline.jobs.build.whenTheRepositoryHas.Testcontainers).has('registry-1.docker.io'));
   const template = readFileSync('.github/workflow-templates/npm-release.yml', 'utf8');
   assert.equal(template.split('egress-baseline.json').length - 1, 2, 'both harden-runner steps point at the baseline');
 });
