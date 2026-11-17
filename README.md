@@ -298,7 +298,8 @@ worker grows to several GiB over a long run, and a lost runner reports no error)
 
 Two caller choices need a measurement, not a guess. `timeout-minutes` should be at least 1.5
 times the wall time of the last cold run (the slowest shard, when sharded), with the run and its
-minutes in a comment beside the value. Size `concurrency` from the shard's peak memory.
+minutes in a comment beside the value. Size `concurrency` per shard from the peak memory measured on a cold run, with no
+out-of-memory restart of a worker as the target.
 
 | Input             | Default                    | What it does                                                                      |
 | ----------------- | -------------------------- | --------------------------------------------------------------------------------- |

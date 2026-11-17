@@ -11,8 +11,8 @@
  * specs name the layer they test in their own terms, so the gate checks that one is named and not which. Nothing
  * else enforces the header.
  *
- * A spec that already lacks a header is listed in the baseline, so the check can be red for what a change
- * introduces without failing on what the repository inherits. The list is kept honest from both sides:
+ * The check is red for what a change introduces; a spec without a header is allowed only while it is
+ * on the baseline. The list is kept honest from both sides:
  *
  * - a spec without a valid header that is not on the baseline fails (a new offender);
  * - a baselined spec that now has a valid header, or is no longer tracked, fails until its entry is removed,
