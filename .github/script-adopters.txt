@@ -33,3 +33,6 @@ bymaxone/nest-config commitlint-no-ai-attribution
 bymaxone/nest-logger commitlint-no-ai-attribution
 bymaxone/nest-cache commitlint-no-ai-attribution
 bymaxone/rust-auth commitlint-no-ai-attribution
+bymaxone/nest-core commitlint-no-ai-attribution
+bymaxone/nest-telemetry commitlint-no-ai-attribution
+bymaxone/nest-notification commitlint-no-ai-attribution
