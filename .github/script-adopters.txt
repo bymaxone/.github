@@ -29,3 +29,7 @@ bymaxone/nest-ai-tokens no-ai-attribution-caller
 bymaxone/rust-auth no-ai-attribution-caller
 bymaxone/nest-logger no-ai-attribution-caller
 bymaxone/nest-logger check-suppressions-baseline
+bymaxone/nest-config commitlint-no-ai-attribution
+bymaxone/nest-logger commitlint-no-ai-attribution
+bymaxone/nest-cache commitlint-no-ai-attribution
+bymaxone/rust-auth commitlint-no-ai-attribution
