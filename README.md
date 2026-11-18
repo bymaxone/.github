@@ -345,9 +345,8 @@ which calls the reusable workflow on the default branch and checks that a sharde
 single run gives. Nothing consumes or publishes it. It runs with `ignoreStatic: false` so that a
 mutant of the table an `it.each` is built from runs: when it empties the table, Jest reports one
 test under the unformatted title, and the shard merge has to map that id
-back to the rows the unmutated run lists. The runner may also record a title whose value it rendered its
-own way (a symbol as `Symbol()` where Jest prints `Symbol(description)`); the merge maps that id to the rows
-that differ from it only where the value was rendered, and still refuses an id no row resembles. The self-test does not exercise the single
+back to the rows the unmutated run lists. The runner also prints a symbol without its description (`Symbol()` where Jest keeps `Symbol(description)`);
+the merge reads both sides that way and maps the id to the rows equal to it, and still refuses an id no row equals. The self-test does not exercise the single
 `full` job (it compares against a plain job running the same command, because two calls would
 upload the same artifact name); that job is proven by every caller's weekly run.
 

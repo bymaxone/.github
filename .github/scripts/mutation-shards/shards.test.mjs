@@ -363,7 +363,7 @@ test('mergeReports reads %# as a row number and %% as a percent sign when it mat
 
 // A symbol row: Jest titles the test `Symbol(description)`, the runner records the id with `Symbol()`.
 // The first title is the one nest-core's sharded run failed on.
-test('mergeReports maps a title whose value the runner rendered its own way to the rows it stands for', () => {
+test('mergeReports maps a title with a symbol printed without its description to the rows that equal it', () => {
   const { one, two, plan } = shardReports();
   const t = (id, name, line) => ({ id, name, location: { start: { line, column: 1 } } });
   const title = 'core DI tokens exposes Symbol() under its own registry key';
@@ -386,11 +386,18 @@ test('mergeReports maps a title whose value the runner rendered its own way to t
   ]);
 });
 
-test('mergeReports refuses a rendered title that shares no long start and end with a listed test', () => {
+test('mergeReports still refuses a symbol title when no listed test equals it, only a similar one does', () => {
   const { one, two, plan } = shardReports();
-  one.testFiles['x.spec.ts'] = { tests: [{ id: '0', name: 'core DI tokens namespaces every registry key with the package name' }, { id: '1', name: 'another suite does another thing' }] };
-  one.files['a.ts'].mutants[0].killedBy = ['core DI tokens exposes Symbol() under its own registry key'];
-  assert.throws(() => mergeReports([one, two], plan, {}), /refers to test core DI tokens exposes Symbol\(\)/);
+  one.testFiles['x.spec.ts'] = {
+    tests: [
+      { id: '0', name: 'core DI tokens exposes Symbol(@scope/lib:core-options) under its own registry key' },
+      { id: '1', name: 'another suite does another thing' },
+    ],
+  };
+  one.files['a.ts'].mutants[0].killedBy = ['core DI tokens exposes Symbol() under its own registry keys'];
+  assert.throws(() => mergeReports([one, two], plan, {}), /refers to test core DI tokens exposes Symbol\(\) under its own registry keys/);
+  one.files['a.ts'].mutants[0].killedBy = ['core DI tokens exposes Symbol() under its own registry key', 'core DI tokens resolves Symbol() under its own registry key'];
+  assert.throws(() => mergeReports([one, two], plan, {}), /refers to test core DI tokens resolves Symbol\(\)/);
 });
 
 test('mergeReports still refuses an unformatted title that no listed test matches', () => {
