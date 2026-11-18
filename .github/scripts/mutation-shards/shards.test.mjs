@@ -400,6 +400,12 @@ test('mergeReports still refuses a symbol title when no listed test equals it, o
   assert.throws(() => mergeReports([one, two], plan, {}), /refers to test core DI tokens resolves Symbol\(\)/);
 });
 
+test('the refusal of an id no listed test matches says that a title built from a mutated value changes under mutation', () => {
+  const { one, two, plan } = shardReports();
+  one.files['a.ts'].mutants[0].killedBy = ['suite exposes the exact literal ""'];
+  assert.throws(() => mergeReports([one, two], plan, {}), /do not list\. A test title may interpolate a value that a mutant changes/);
+});
+
 test('mergeReports still refuses an unformatted title that no listed test matches', () => {
   const { one, two, plan } = shardReports();
   one.files['a.ts'].mutants[0].killedBy = ['nothing refuses the header %s'];

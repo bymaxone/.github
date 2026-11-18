@@ -346,7 +346,7 @@ single run gives. Nothing consumes or publishes it. It runs with `ignoreStatic: 
 mutant of the table an `it.each` is built from runs: when it empties the table, Jest reports one
 test under the unformatted title, and the shard merge has to map that id
 back to the rows the unmutated run lists. The runner also prints a symbol without its description (`Symbol()` where Jest keeps `Symbol(description)`),
-so the merge compares such titles with the description removed on both sides. The self-test does not exercise the single
+so the merge compares such titles with the description removed on both sides. An id that still equals no listed test fails the merge on purpose: a spec title that interpolates a value a mutant changes (a string literal) renames its test under mutation, and the fix is a fixed title. The self-test does not exercise the single
 `full` job (it compares against a plain job running the same command, because two calls would
 upload the same artifact name); that job is proven by every caller's weekly run.
 
