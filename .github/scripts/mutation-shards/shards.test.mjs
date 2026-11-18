@@ -361,6 +361,38 @@ test('mergeReports reads %# as a row number and %% as a percent sign when it mat
   assert.deepEqual(names(merged, merged.files['a.ts'].mutants[0].killedBy), ['rate 5%']);
 });
 
+// A symbol row: Jest titles the test `Symbol(description)`, the runner records the id with `Symbol()`.
+// The first title is the one nest-core's sharded run failed on.
+test('mergeReports maps a title whose value the runner rendered its own way to the rows it stands for', () => {
+  const { one, two, plan } = shardReports();
+  const t = (id, name, line) => ({ id, name, location: { start: { line, column: 1 } } });
+  const title = 'core DI tokens exposes Symbol() under its own registry key';
+  one.testFiles['x.spec.ts'] = {
+    tests: [
+      t('0', 'core DI tokens exposes Symbol(@scope/lib:core-options) under its own registry key', 35),
+      t('1', 'core DI tokens exposes Symbol(@scope/lib:timing-sink) under its own registry key', 35),
+      t('2', 'core DI tokens resolves Symbol(@scope/lib:timing-sink) through the global symbol registry', 42),
+      t('3', 'core DI tokens namespaces every registry key with the package name', 52),
+    ],
+  };
+  one.files['a.ts'].mutants[0].killedBy = [title];
+  one.files['a.ts'].mutants[0].coveredBy = ['3'];
+  const merged = mergeReports([one, two], plan, {});
+  const names = new Map();
+  for (const data of Object.values(merged.testFiles)) for (const x of data.tests) names.set(x.id, x.name);
+  assert.deepEqual(merged.files['a.ts'].mutants[0].killedBy.map((i) => names.get(i)).sort(), [
+    'core DI tokens exposes Symbol(@scope/lib:core-options) under its own registry key',
+    'core DI tokens exposes Symbol(@scope/lib:timing-sink) under its own registry key',
+  ]);
+});
+
+test('mergeReports refuses a rendered title that shares no long start and end with a listed test', () => {
+  const { one, two, plan } = shardReports();
+  one.testFiles['x.spec.ts'] = { tests: [{ id: '0', name: 'core DI tokens namespaces every registry key with the package name' }, { id: '1', name: 'another suite does another thing' }] };
+  one.files['a.ts'].mutants[0].killedBy = ['core DI tokens exposes Symbol() under its own registry key'];
+  assert.throws(() => mergeReports([one, two], plan, {}), /refers to test core DI tokens exposes Symbol\(\)/);
+});
+
 test('mergeReports still refuses an unformatted title that no listed test matches', () => {
   const { one, two, plan } = shardReports();
   one.files['a.ts'].mutants[0].killedBy = ['nothing refuses the header %s'];

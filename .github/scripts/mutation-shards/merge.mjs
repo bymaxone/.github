@@ -26,6 +26,10 @@ const titlePattern = (title) =>
       .join('')}$`,
     's',
   );
+// How a rendered value may differ from the title the runner recorded: see `renderedAs`.
+const RENDERED_GAP = 16
+const RENDERED_MIN_END = 8
+const RENDERED_MIN_TITLE = 16
 const testKey = (t) => `${t.name}\u0000${t.location?.start?.line ?? ''}:${t.location?.start?.column ?? ''}`;
 
 export function mergeReports(shardReports, plan, base) {
@@ -66,13 +70,33 @@ export function mergeReports(shardReports, plan, base) {
   // Jest formats an `it.each` title per row, yet the runner may record the unformatted title,
   // placeholders and all, as the id of a test. Such an id stands for every row of that title in
   // the same shard: coverage becomes a superset of the rows, never a guess at one of them.
+  // The runner may also record a title whose value it rendered its own way (a symbol as `Symbol()`
+  // where Jest prints `Symbol(description)`), so no placeholder is left in it. Such an id stands for
+  // every test whose name differs from it only in the span where the value was rendered: it shares a
+  // long prefix and a long suffix with the title, and at most RENDERED_GAP characters of the title
+  // lie between them.
+  const sharedEnds = (title, name) => {
+    let prefix = 0;
+    while (prefix < title.length && prefix < name.length && title[prefix] === name[prefix]) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < title.length - prefix &&
+      suffix < name.length - prefix &&
+      title[title.length - 1 - suffix] === name[name.length - 1 - suffix]
+    ) suffix += 1;
+    return { prefix, suffix };
+  };
+  const renderedAs = (title, name) => {
+    if (title.length < RENDERED_MIN_TITLE) return false;
+    const { prefix, suffix } = sharedEnds(title, name);
+    return prefix >= RENDERED_MIN_END && suffix >= RENDERED_MIN_END && title.length - prefix - suffix <= RENDERED_GAP;
+  };
   const rowsOf = (i, title) => {
-    if (!PRINTF.test(title)) return [];
-    const pattern = titlePattern(title);
+    const matches = PRINTF.test(title) ? ((name) => titlePattern(title).test(name)) : (name) => renderedAs(title, name);
     const rows = [];
     for (const data of Object.values(shardReports[i].testFiles ?? {})) {
       for (const test of data.tests ?? []) {
-        if (pattern.test(test.name)) rows.push(testIdMap[i].get(test.id));
+        if (matches(test.name)) rows.push(testIdMap[i].get(test.id));
       }
     }
     return rows;
