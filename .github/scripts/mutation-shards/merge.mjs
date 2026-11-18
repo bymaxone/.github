@@ -26,6 +26,8 @@ const titlePattern = (title) =>
       .join('')}$`,
     's',
   );
+// A symbol as the runner prints it: `Symbol()`. A description may hold one level of parentheses.
+const withoutSymbolDescriptions = (text) => text.replace(/Symbol\((?:[^()]|\([^()]*\))*\)/g, 'Symbol()');
 const testKey = (t) => `${t.name}\u0000${t.location?.start?.line ?? ''}:${t.location?.start?.column ?? ''}`;
 
 export function mergeReports(shardReports, plan, base) {
@@ -66,13 +68,15 @@ export function mergeReports(shardReports, plan, base) {
   // Jest formats an `it.each` title per row, yet the runner may record the unformatted title,
   // placeholders and all, as the id of a test. Such an id stands for every row of that title in
   // the same shard: coverage becomes a superset of the rows, never a guess at one of them.
+  // The runner prints a symbol without its description (`Symbol()`) where Jest keeps it
+  // (`Symbol(description)`). Both sides are read the same exact way, and an id then names the rows
+  // whose names are equal to it; an id no row equals is still refused.
   const rowsOf = (i, title) => {
-    if (!PRINTF.test(title)) return [];
-    const pattern = titlePattern(title);
+    const matches = PRINTF.test(title) ? (name) => titlePattern(title).test(name) : (name) => withoutSymbolDescriptions(name) === withoutSymbolDescriptions(title);
     const rows = [];
     for (const data of Object.values(shardReports[i].testFiles ?? {})) {
       for (const test of data.tests ?? []) {
-        if (pattern.test(test.name)) rows.push(testIdMap[i].get(test.id));
+        if (matches(test.name)) rows.push(testIdMap[i].get(test.id));
       }
     }
     return rows;
