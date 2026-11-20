@@ -36,3 +36,5 @@ bymaxone/rust-auth commitlint-no-ai-attribution
 bymaxone/nest-core commitlint-no-ai-attribution
 bymaxone/nest-telemetry commitlint-no-ai-attribution
 bymaxone/nest-notification commitlint-no-ai-attribution
+bymaxone/nest-auth no-ai-attribution-caller
+bymaxone/nest-auth commitlint-no-ai-attribution
