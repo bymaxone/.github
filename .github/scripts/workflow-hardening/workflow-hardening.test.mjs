@@ -25,7 +25,9 @@ function eventsOf(doc) {
 // The `${{ }}` expressions in run scripts that name the github context at all. The context carries
 // the event payload and the head ref, which an attacker chooses, and an expression can reach them
 // through a dot, a bracket, a function or another letter case, so no spelling is matched: any
-// expression that mentions `github` is a hit. A script reads what it needs from `env` instead.
+// expression that mentions `github` is a hit.
+//
+// Policy: a run script takes context values only through `env:`, and reads them as "$VAR".
 function interpolations(doc) {
   const found = [];
   for (const [name, job] of Object.entries(doc.jobs ?? {})) {
@@ -98,6 +100,7 @@ test('the run-script scan sees every spelling of the github context', () => {
     "echo ${{ github.event['pull_request'] }}",
     "echo ${{ github['event'].pull_request.title }}",
     'echo ${{ toJSON(github.event) }}',
+    'echo ${{ toJSON(github) }}',
     'echo ${{ github.EVENT.pull_request.title }}',
     "echo ${{ format('{0}', github.event.x) }}",
     'echo ${{ github.head_ref }}',
@@ -105,4 +108,10 @@ test('the run-script scan sees every spelling of the github context', () => {
   // These read other contexts, and a plain "$VAR" is the way a script reads the event.
   for (const run of ['echo ${{ inputs.command }}', 'echo ${{ steps.a.outputs.b }}', 'echo "$TITLE"'])
     assert.deepEqual(interpolations(doc(run)), [], run);
+});
+
+test('a github value mapped through env passes', () => {
+  // The expression sits in `env:`, which is the sanctioned route, and the script reads "$SHA".
+  const doc = { jobs: { j: { steps: [{ env: { SHA: '${{ github.sha }}' }, run: 'echo "$SHA"' }] } } };
+  assert.deepEqual(interpolations(doc), []);
 });
