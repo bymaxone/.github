@@ -449,3 +449,23 @@ test('the gate passes Trivy its flags and mounts the ignore file read-only', () 
   assert.match(r.args, /--ignorefile\n\/ignore\/\.trivyignore/);
   assert.doesNotMatch(gate(0).args, /--ignorefile/);
 });
+
+test('the uploaded report is filtered by the same ignore file as the gate', () => {
+  const dir = workspace({ '.trivyignore': 'CVE-2024-1\n' });
+  try {
+    const log = join(dir, 'docker.log');
+    const run = (ignore) =>
+      runStep('image', 'Trivy report', { TRIVY_IMAGE: 'trivy@sha256:abc', TRIVYIGNORE: ignore }, dir, {
+        fakeDocker: `printf '%s\\n' "$@" > "${log}"`,
+      });
+    assert.equal(step('image', 'Trivy report').env.TRIVYIGNORE, '${{ inputs.trivyignore }}');
+    assert.equal(run('.trivyignore').status, 0);
+    const filtered = readFileSync(log, 'utf8');
+    assert.match(filtered, /\/ignore\/\.trivyignore:ro/);
+    assert.match(filtered, /--ignorefile\n\/ignore\/\.trivyignore/);
+    assert.equal(run('').status, 0);
+    assert.doesNotMatch(readFileSync(log, 'utf8'), /--ignorefile/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

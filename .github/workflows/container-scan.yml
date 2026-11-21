@@ -200,21 +200,31 @@ jobs:
           fi
 
       # The report and the SBOM are artifacts for people and tools downstream, written after the gate so
-      # that a failed gate still leaves them behind. They decide nothing.
+      # that a failed gate still leaves them behind. They decide nothing, and the report honours the same
+      # ignore file as the gate, so it does not list what the caller accepted on purpose.
       - name: Trivy report
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
+          TRIVYIGNORE: ${{ inputs.trivyignore }}
           TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/trivy-cache" "$RUNNER_TEMP/trivy-out"
+          mounts=()
+          options=()
+          if [ -n "$TRIVYIGNORE" ]; then
+            mounts=(--volume "$GITHUB_WORKSPACE/$TRIVYIGNORE:/ignore/$(basename "$TRIVYIGNORE"):ro")
+            options=(--ignorefile "/ignore/$(basename "$TRIVYIGNORE")")
+          fi
           docker run --rm --user "$(id -u):$(id -g)" \
             --volume "$RUNNER_TEMP/image.tar:/image.tar:ro" \
             --volume "$RUNNER_TEMP/trivy-cache:/cache" \
             --volume "$RUNNER_TEMP/trivy-out:/out" \
+            ${mounts[@]+"${mounts[@]}"} \
             "$TRIVY_IMAGE" image --input /image.tar --cache-dir /cache \
             --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --no-progress \
-            --format json --output /out/trivy.json --exit-code 0
+            --format json --output /out/trivy.json --exit-code 0 \
+            ${options[@]+"${options[@]}"}
 
       - name: SBOM
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}

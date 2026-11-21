@@ -438,7 +438,7 @@ The two profiles, the limits and how a repository moves to the narrow list are i
 
 ### 📦 `container-scan` inputs (repositories that ship a Dockerfile)
 
-Two read-only jobs, reported as `container-scan / Hadolint` and `container-scan / Image`. Nothing is pushed and no secret is
+Two read-only jobs, named `Hadolint` and `Image`: a caller's checks read `<caller job id> / Hadolint` and `<caller job id> / Image`. Nothing is pushed and no secret is
 involved: the Dockerfile is built on the runner with the caller's own context and the image is discarded. No gate reads a
 report or parses the Dockerfile: Trivy decides on its own exit status, and the user is measured by running the image.
 
@@ -455,7 +455,7 @@ report or parses the Dockerfile: Trivy decides on its own exit status, and the u
 | `hadolint-ignore` | `""` | Whitespace-separated rule ids to ignore, each `DL` or `SC` and four digits (`DL3008 SC2086`) |
 | `hadolint-failure-threshold` | `warning` | Lowest Hadolint severity that fails: `error`, `warning`, `info` or `style` |
 | `expected-uid` | `""` | A decimal uid other than zero the image must run as. Empty only requires a non-zero uid. Set it for an image with no `id` (distroless, scratch), where the configured `USER` must then be exactly this number |
-| `sbom-artifact-name` | `container-sbom` | Artifact name for `sbom.cdx.json` and `trivy.json`. Give each call a distinct name when one run calls the workflow more than once |
+| `sbom-artifact-name` | `container-sbom` | Artifact name for `sbom.cdx.json` and `trivy.json` (the report honours `trivyignore`). Give each call a distinct name when one run calls the workflow more than once |
 
 Every input reaches the shell through the environment, and a value that is not a safe path, a known id or a plain number
 is refused before anything runs. No secrets and no outputs. The caller grants `contents: read` and nothing else.
@@ -478,8 +478,9 @@ jobs:
       trivyignore: .trivyignore # optional
 ```
 
-What it does not do. The user is the one the image starts as: an entrypoint script that later drops to another user, or
-a different one, is not seen. An image with no `id` fails closed until `expected-uid` names the uid. It does not read a
+What it does not do. The user is measured with the image's own `id` binary, so the check catches a Dockerfile mistake and
+not a hostile image, which can print any uid. It reads the uid and not the group, so `USER 1000:0` (root group) passes.
+An entrypoint script that later drops to another user, or a different one, is not seen. An image with no `id` fails closed unless `expected-uid` is set and its configured `USER` is exactly that uid. It does not read a
 `.hadolint.yaml` from the repository, because the Dockerfile reaches Hadolint on stdin with no mount; use `hadolint-ignore`
 and `hadolint-failure-threshold`. It scans the OS and language packages Trivy reads from the image and says nothing about
 secrets or misconfiguration in it. It builds for the runner's platform only, and it gives the build no secrets or build
