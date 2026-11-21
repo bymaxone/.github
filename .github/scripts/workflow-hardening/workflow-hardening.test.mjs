@@ -22,10 +22,11 @@ function eventsOf(doc) {
   return on && typeof on === 'object' ? Object.keys(on) : [];
 }
 
-// The `${{ }}` expressions in run scripts that name the github context at all. The context carries
-// the event payload and the head ref, which an attacker chooses, and an expression can reach them
-// through a dot, a bracket, a function or another letter case, so no spelling is matched: any
-// expression that mentions `github` is a hit.
+// The `${{` expressions in run scripts whose text from there to the END of the script names the
+// github context. The context carries the event payload and the head ref, which an attacker
+// chooses. Where an expression ends is not parsed (a `}}` can sit inside a string literal), and no
+// spelling of the context is matched: any mention of `github`, in any case, after a `${{` is a hit.
+// That over-matches on purpose; the one carve-out is a shell variable named `$GITHUB_*`.
 //
 // Policy: a run script takes context values only through `env:`, and reads them as "$VAR".
 function interpolations(doc) {
@@ -34,9 +35,10 @@ function interpolations(doc) {
     for (const step of job.steps ?? []) {
       const run = step.run ?? '';
       for (let at = run.indexOf('${{'); at >= 0; at = run.indexOf('${{', at + 3)) {
-        const end = run.indexOf('}}', at);
-        const expression = run.slice(at, end < 0 ? undefined : end + 2);
-        if (/github/i.test(expression)) found.push(`${name}:${expression}`);
+        // `$GITHUB_STEP_SUMMARY` and its kin are shell variables the runner sets, not the context.
+        // Only the whole token goes, case-sensitively, and nothing around it.
+        const tail = run.slice(at).replace(/\$GITHUB_[A-Z0-9_]+|\$\{GITHUB_[A-Z0-9_]+\}/g, '');
+        if (/github/i.test(tail)) found.push(`${name}:${tail.split('\n')[0]}`);
       }
     }
   }
@@ -93,7 +95,7 @@ test('no run script interpolates the github context', () => {
   assert.deepEqual(hits, []);
 });
 
-test('the run-script scan sees every spelling of the github context', () => {
+test('the run-script scan sees every spelling of the github context and a }} inside a string', () => {
   const doc = (run) => ({ jobs: { j: { steps: [{ run }] } } });
   for (const run of [
     'echo ${{ github.event.pull_request.title }}',
@@ -103,10 +105,22 @@ test('the run-script scan sees every spelling of the github context', () => {
     'echo ${{ toJSON(github) }}',
     'echo ${{ github.EVENT.pull_request.title }}',
     "echo ${{ format('{0}', github.event.x) }}",
+    "echo ${{ '}}' && github.event.pull_request.title }}",
+    "echo ${{ format('}}{0}', github.event.x) }}",
+    "echo ${{ 'a}}b' }} ${{ github.head_ref }}",
+    'echo ${{ github.event.x }}; echo $GITHUB_ENV',
+    "echo ${{ '$GITHUB_X' && github.event.x }}",
+    'echo ${{ inputs.x }} $github.event',
     'echo ${{ github.head_ref }}',
-  ]) assert.equal(interpolations(doc(run)).length, 1, run);
+  ]) assert.ok(interpolations(doc(run)).length > 0, run);
   // These read other contexts, and a plain "$VAR" is the way a script reads the event.
-  for (const run of ['echo ${{ inputs.command }}', 'echo ${{ steps.a.outputs.b }}', 'echo "$TITLE"'])
+  for (const run of [
+    'echo ${{ inputs.command }}',
+    'echo ${{ steps.a.outputs.b }}',
+    'echo "$TITLE"',
+    'echo "${{ job.workflow_sha }}" | tee -a "$GITHUB_STEP_SUMMARY"',
+    'echo ${{ inputs.x }} >> "${GITHUB_OUTPUT}"',
+  ])
     assert.deepEqual(interpolations(doc(run)), [], run);
 });
 
