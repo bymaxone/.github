@@ -90,3 +90,33 @@ test('a value the API does not define for a repository is skipped even with allo
   assert.doesNotMatch(visibility('private', 'false').log, /::warning::/);
   assert.doesNotMatch(visibility('private', 'true').log, /::warning::/);
 });
+
+// The whole decision table of the visibility step, one row per (visibility, allow-private): the output,
+// and the annotation the log must carry. A row added to the workflow's branches needs a row here.
+const TABLE = [
+  ['public', 'false', 'scan=true', null],
+  ['public', 'true', 'scan=true', null],
+  ['public', '', 'scan=true', null],
+  ['private', 'false', 'scan=false', 'notice'],
+  ['private', '', 'scan=false', 'notice'],
+  ['private', 'true', 'scan=true', 'notice'],
+  ['internal', 'false', 'scan=false', 'notice'],
+  ['internal', '', 'scan=false', 'notice'],
+  ['internal', 'true', 'scan=true', 'notice'],
+  ['secret', 'false', 'scan=false', 'warning'],
+  ['secret', '', 'scan=false', 'warning'],
+  ['secret', 'true', 'scan=false', 'warning'],
+  ['', 'false', 'scan=false', 'warning'],
+  ['', 'true', 'scan=false', 'warning'],
+];
+
+test('every (visibility, allow-private) pair gives the documented output and annotation', () => {
+  for (const [v, allow, output, level] of TABLE) {
+    const r = visibility(v, allow);
+    const where = `visibility=${JSON.stringify(v)} allow-private=${JSON.stringify(allow)}`;
+    assert.equal(r.status, 0, where);
+    assert.equal(r.output, output, where);
+    const levels = ['notice', 'warning'].filter((l) => r.log.includes(`::${l}::`));
+    assert.deepEqual(levels, level ? [level] : [], where);
+  }
+});
