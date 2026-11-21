@@ -83,5 +83,10 @@ test('a value the API does not define for a repository is skipped even with allo
     const r = visibility(v, 'true');
     assert.equal(r.status, 0, v);
     assert.equal(r.output, 'scan=false', v);
+    assert.match(r.log, /^::warning::/m, `${v} warns`);
+    assert.doesNotMatch(r.log.split('\n').filter((l) => l.startsWith('::warning::')).join('\n'), new RegExp(v), `${v} is not echoed in the warning`);
   }
+  // A known non-public value is a notice, not a warning.
+  assert.doesNotMatch(visibility('private', 'false').log, /::warning::/);
+  assert.doesNotMatch(visibility('private', 'true').log, /::warning::/);
 });

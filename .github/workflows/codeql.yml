@@ -100,15 +100,20 @@ jobs:
           echo "visibility: $visibility"
           if [ "$visibility" = "public" ]; then
             echo "scan=true" >> "$GITHUB_OUTPUT"
-          elif [ "$ALLOW_PRIVATE" = "true" ] && { [ "$visibility" = "private" ] || [ "$visibility" = "internal" ]; }; then
-            # The caller said this repository has a Code Security license. Only the two values the API
-            # defines for a non-public repository qualify; anything else is skipped like an unknown one.
-            echo "scan=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Analysing a $visibility repository because allow-private is set; the upload needs a GitHub Code Security license."
+          elif [ "$visibility" = "private" ] || [ "$visibility" = "internal" ]; then
+            if [ "$ALLOW_PRIVATE" = "true" ]; then
+              # The caller said this repository has a Code Security license.
+              echo "scan=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Analysing a $visibility repository because allow-private is set; the upload needs a GitHub Code Security license."
+            else
+              echo "scan=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Skipped (repository visibility: $visibility): uploading results needs a GitHub Code Security license, which is only free on public repositories."
+            fi
           else
-            # Covers internal as well as private.
+            # A value the API does not define: skipped whatever allow-private says, and never echoed, since
+            # it is not text this workflow controls.
             echo "scan=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipped (repository visibility: $visibility): uploading results needs a GitHub Code Security license, which is only free on public repositories."
+            echo "::warning::The repository visibility is not one of public, private or internal; skipping."
           fi
 
   analyze:
