@@ -69,7 +69,7 @@ In an ESM or flat configuration, `import plugin, { build } from './scripts/commi
 ## no-ai-attribution-caller
 
 The caller of the shared `no-ai-attribution` workflow, copied to `.github/workflows/no-ai-attribution.yml`. It lives in its own file
-because an edit of a pull request's title or body must run the job again. It is a workflow, not a script, and ships no spec.
+because an edit of a pull request's title or body must run the job again. It is a workflow, not a script, and ships no spec. It declares `permissions: contents: read` at the top of the file, so no job inherits a wider default.
 
 ## published-surface-links
 
