@@ -17,8 +17,7 @@ A script or a spec that every library copies, kept here once so that a copy that
 ## check-dist-fresh
 
 Fails when `dist/` is older than the sources it was built from, so a script that measures the build (the size budget,
-an export check) does not report on a stale one. The measuring scripts only check that a file exists, and `pnpm size`
-does not build, so after an edit it measures the previous build and can pass or fail on code that is gone. The check
+an export check) does not report on a stale one, and so does not pass or fail on code that is gone. The check
 compares the oldest file under `dist/` with the newest file under `src/` that is not a spec or a test, and with
 `tsup.config.ts`; a source newer than the oldest output is a stale build and exits 1, a missing `dist/` exits 1, a bad
 option exits 2. With `PACKAGE_TARBALL` set the measuring script reads the tarball, not `dist/`, and the check passes.
@@ -26,7 +25,7 @@ option exits 2. With `PACKAGE_TARBALL` set the measuring script reads the tarbal
 dependencies; its test is a `node:test` file that builds throwaway directories. Wire it ahead of the script it guards,
 as `"size": "node scripts/check-dist-fresh.mjs && node scripts/check-size.mjs"`, and run its test with
 `node --test scripts/check-dist-fresh.test.mjs`. The comparison uses file times, so it is a guard against forgetting to
-build, not a proof of what was built: CI builds in the same job before it measures, where the check holds trivially.
+build, not a proof of what was built.
 A library copies the template byte for byte.
 
 ## check-double-assertions
