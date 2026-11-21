@@ -74,6 +74,7 @@ jobs:
   sync:
     name: agents-sync
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write

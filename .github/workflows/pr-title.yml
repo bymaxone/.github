@@ -17,6 +17,7 @@ jobs:
   conventional-commit:
     name: PR title
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Validate the title against Conventional Commits
         env:
