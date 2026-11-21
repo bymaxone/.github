@@ -32,6 +32,7 @@ test('the inputs and their defaults', () => {
   assert.deepEqual(Object.keys(inputs).sort(), [
     'context',
     'dockerfile',
+    'expected-uid',
     'hadolint-failure-threshold',
     'hadolint-ignore',
     'sbom-artifact-name',
@@ -40,6 +41,7 @@ test('the inputs and their defaults', () => {
   assert.equal(inputs.dockerfile.default, 'Dockerfile');
   assert.equal(inputs.context.default, '.');
   assert.equal(inputs.trivyignore.default, '');
+  assert.equal(inputs['expected-uid'].default, '');
   assert.equal(inputs['hadolint-ignore'].default, '');
   assert.equal(inputs['hadolint-failure-threshold'].default, 'warning');
   assert.equal(inputs['sbom-artifact-name'].default, 'container-sbom');
@@ -75,10 +77,11 @@ test('no job references a secret, a socket, a push or a privileged container', (
 
 test('the tool images carry a digest', () => {
   const hadolint = step('hadolint', 'Hadolint').env.HADOLINT_IMAGE;
-  const trivy = step('image', 'Trivy scan').env.TRIVY_IMAGE;
+  const trivy = step('image', 'Trivy gate').env.TRIVY_IMAGE;
   assert.match(hadolint, /^ghcr\.io\/hadolint\/hadolint:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/);
   assert.match(trivy, /^ghcr\.io\/aquasecurity\/trivy:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/);
   assert.equal(step('image', 'SBOM').env.TRIVY_IMAGE, trivy);
+  assert.equal(step('image', 'Trivy report').env.TRIVY_IMAGE, trivy);
 });
 
 test('inputs reach the shell only through the environment', () => {
@@ -91,6 +94,8 @@ test('inputs reach the shell only through the environment', () => {
   assert.equal(step('image', 'Check the inputs').env.DOCKERFILE, '${{ inputs.dockerfile }}');
   assert.equal(step('image', 'Check the inputs').env.CONTEXT, '${{ inputs.context }}');
   assert.equal(step('image', 'Check the inputs').env.TRIVYIGNORE, '${{ inputs.trivyignore }}');
+  assert.equal(step('image', 'Check the inputs').env.EXPECTED_UID, '${{ inputs.expected-uid }}');
+  assert.equal(step('image', 'Check the image configuration').env.EXPECTED_UID, '${{ inputs.expected-uid }}');
   assert.equal(step('image', 'Check the inputs').env.SBOM_NAME, '${{ inputs.sbom-artifact-name }}');
 });
 
@@ -99,16 +104,27 @@ test('the image is built and never pushed, then scanned from a read-only archive
   assert.match(build, /docker build /);
   assert.match(build, /--file "\$DOCKERFILE"/);
   assert.match(build, /"\$CONTEXT"/);
-  const save = script('image', 'Save the image');
-  assert.match(save, /docker save/);
-  const scan = script('image', 'Trivy scan');
-  assert.match(scan, /--volume "\$\{?RUNNER_TEMP\}?\/image\.tar:\/image\.tar:ro"/);
+  assert.match(script('image', 'Save the image'), /docker save/);
+  const scan = script('image', 'Trivy gate');
+  assert.match(scan, /--volume "\$RUNNER_TEMP\/image\.tar:\/image\.tar:ro"/);
   assert.match(scan, /--input \/image\.tar/);
   assert.match(scan, /--severity HIGH,CRITICAL/);
   assert.match(scan, /--ignore-unfixed/);
   assert.match(scan, /--scanners vuln/);
-  assert.match(scan, /--format json/);
+  assert.match(scan, /--exit-code 1/);
   assert.match(scan, /--user "\$\(id -u\):\$\(id -g\)"/);
+});
+
+test('no gate reads a report: Trivy decides on its exit status', () => {
+  const gate = script('image', 'Trivy gate');
+  assert.doesNotMatch(gate, /jq|trivy\.json|--format json|--exit-code 0/);
+  // The only step that writes the JSON report decides nothing.
+  const report = script('image', 'Trivy report');
+  assert.match(report, /--format json/);
+  assert.match(report, /--exit-code 0/);
+  for (const s of stepsOf('image')) {
+    if (s.name !== 'Trivy report' && s.name !== 'Upload the SBOM') assert.doesNotMatch(JSON.stringify(s.run ?? ''), /trivy\.json/, s.name);
+  }
 });
 
 test('the SBOM is CycloneDX and is uploaded whatever the scan said', () => {
@@ -118,22 +134,27 @@ test('the SBOM is CycloneDX and is uploaded whatever the scan said', () => {
   const upload = step('image', 'Upload the SBOM');
   assert.match(upload.uses, /^actions\/upload-artifact@[0-9a-f]{40}$/);
   assert.equal(upload.with.name, '${{ inputs.sbom-artifact-name }}');
-  assert.match(upload.with.path, /sbom\.cdx\.json$/);
+  assert.match(upload.with.path, /sbom\.cdx\.json/);
+  assert.match(upload.with.path, /trivy\.json/);
   assert.match(upload.if, /!cancelled\(\)/);
 });
 
-test('every gate runs after an earlier gate failed, and none runs on an image that did not build', () => {
+test('the artifacts and the configuration check run after the gate failed, and none runs on an image that did not build', () => {
   const build = step('image', 'Build the image');
   assert.equal(build.id, 'build');
-  for (const name of ['Upload the SBOM', 'Check the image configuration', 'Fail on findings']) {
+  assert.equal(step('image', 'Trivy gate').id, 'scan');
+  // The gate has no condition of its own: a failure there fails the job, and the steps below still run.
+  assert.equal(step('image', 'Trivy gate').if, undefined);
+  for (const name of ['Trivy report', 'SBOM', 'Upload the SBOM', 'Check the image configuration']) {
     const condition = step('image', name).if;
     assert.match(condition, /!cancelled\(\)/, name);
     assert.match(condition, /steps\.build\.outcome == 'success'/, name);
   }
   const order = stepsOf('image').map((s) => s.name);
-  assert.ok(order.indexOf('Trivy scan') < order.indexOf('SBOM'));
+  assert.ok(order.indexOf('Trivy gate') < order.indexOf('Trivy report'));
   assert.ok(order.indexOf('Upload the SBOM') < order.indexOf('Check the image configuration'));
-  assert.equal(order.at(-1), 'Fail on findings');
+  assert.equal(order.at(-1), 'Check the image configuration');
+  assert.ok(!order.includes('Fail on findings'));
 });
 
 // ---- the shell steps, executed -------------------------------------------------------------
@@ -241,7 +262,7 @@ test('hadolint reads the Dockerfile from stdin, with no mount, and passes the ig
   }
 });
 
-const imageEnv = { DOCKERFILE: 'Dockerfile', CONTEXT: '.', TRIVYIGNORE: '', SBOM_NAME: 'container-sbom' };
+const imageEnv = { DOCKERFILE: 'Dockerfile', CONTEXT: '.', TRIVYIGNORE: '', EXPECTED_UID: '', SBOM_NAME: 'container-sbom' };
 
 test('the build context, the trivy ignore file and the artifact name are checked', () => {
   const dir = workspace({ Dockerfile: 'FROM scratch\n', '.trivyignore': 'CVE-2024-0001\n', 'sub/x.txt': '' }, { linked: '/etc/hostname' });
@@ -260,6 +281,18 @@ test('the build context, the trivy ignore file and the artifact name are checked
       [{ TRIVYIGNORE: 'linked' }, 1],
       [{ TRIVYIGNORE: '../x' }, 1],
       [{ TRIVYIGNORE: 'sub' }, 1],
+      [{ EXPECTED_UID: '10001' }, 0],
+      [{ EXPECTED_UID: '1' }, 0],
+      [{ EXPECTED_UID: '4294967294' }, 0],
+      [{ EXPECTED_UID: '0' }, 1],
+      [{ EXPECTED_UID: '00' }, 1],
+      [{ EXPECTED_UID: '010' }, 1],
+      [{ EXPECTED_UID: '+1000' }, 1],
+      [{ EXPECTED_UID: '-1' }, 1],
+      [{ EXPECTED_UID: 'abc' }, 1],
+      [{ EXPECTED_UID: '1 2' }, 1],
+      [{ EXPECTED_UID: '10001;id' }, 1],
+      [{ EXPECTED_UID: '12345678901' }, 1],
       [{ SBOM_NAME: 'my-sbom_1.0' }, 0],
       [{ SBOM_NAME: '' }, 1],
       [{ SBOM_NAME: 'a b' }, 1],
@@ -274,137 +307,145 @@ test('the build context, the trivy ignore file and the artifact name are checked
   }
 });
 
-// A fake docker that answers `image inspect` with a given config.
-const inspecting = (config) => `if [ "$1 $2" = "image inspect" ]; then printf '%s' '${JSON.stringify(config)}'; exit 0; fi; exit 9`;
+// The fake docker for the configuration step. `run` answers like `id -u` in the image: it prints
+// `id` and exits with `idStatus`. `image inspect` answers the configured user or the healthcheck.
+function fake({ id = '1000', idStatus = 0, user = '', healthcheck = 'null' }) {
+  return `
+case "$1" in
+  run) printf '%s\\n' "$@" > "$RECORD"; printf '%s' '${id}'; exit ${idStatus} ;;
+  image) case "$*" in
+    *'.Config.User'*) printf '%s' '${user}'; exit 0 ;;
+    *'json .Config.Healthcheck'*) printf '%s' '${healthcheck}'; exit 0 ;;
+  esac ;;
+esac
+exit 9`;
+}
 
-test('the image runs as a non-root user and declares a healthcheck', () => {
-  const dir = workspace();
-  const healthy = { Test: ['CMD', 'true'], Interval: 1 };
-  try {
-    for (const [config, status, why] of [
-      [{ User: '1000', Healthcheck: healthy }, 0, 'a numeric user'],
-      [{ User: 'node', Healthcheck: healthy }, 0, 'a named user'],
-      [{ User: '10001:10001', Healthcheck: healthy }, 0, 'uid and gid'],
-      [{ User: 'app:app', Healthcheck: healthy }, 0, 'name and group'],
-      [{ Healthcheck: healthy }, 1, 'no user'],
-      [{ User: '', Healthcheck: healthy }, 1, 'an empty user'],
-      [{ User: '0', Healthcheck: healthy }, 1, 'user 0'],
-      [{ User: '0:0', Healthcheck: healthy }, 1, 'user 0:0'],
-      [{ User: '00', Healthcheck: healthy }, 1, 'a zero-padded uid'],
-      [{ User: '000:5', Healthcheck: healthy }, 1, 'a zero-padded uid with a group'],
-      [{ User: '+0', Healthcheck: healthy }, 1, 'a signed zero'],
-      [{ User: '-0', Healthcheck: healthy }, 1, 'a negative zero'],
-      [{ User: '+00:7', Healthcheck: healthy }, 1, 'a signed zero with padding and a group'],
-      [{ User: '+1000', Healthcheck: healthy }, 0, 'a signed non-zero uid'],
-      [{ User: '08', Healthcheck: healthy }, 0, 'a leading zero that is not zero'],
-      [{ User: '0day', Healthcheck: healthy }, 0, 'a name that only starts with a zero'],
-      [{ User: '1000:0', Healthcheck: healthy }, 0, 'a non-root user in the root group'],
-      [{ User: '0:1000', Healthcheck: healthy }, 1, 'user 0 with a group'],
-      [{ User: 'root', Healthcheck: healthy }, 1, 'user root'],
-      [{ User: 'root:root', Healthcheck: healthy }, 1, 'user root:root'],
-      [{ User: '1000' }, 1, 'no healthcheck'],
-      [{ User: '1000', Healthcheck: null }, 1, 'a null healthcheck'],
-      [{ User: '1000', Healthcheck: { Test: ['NONE'] } }, 1, 'HEALTHCHECK NONE'],
-      [{ User: '1000', Healthcheck: {} }, 1, 'an empty healthcheck'],
-    ]) {
-      const r = runStep('image', 'Check the image configuration', { IMAGE_TAG: 'container-scan:candidate' }, dir, {
-        fakeDocker: inspecting(config),
-      });
-      assert.equal(r.status, status, `${why}: ${r.stdout}${r.stderr}`);
-    }
-    const both = runStep('image', 'Check the image configuration', { IMAGE_TAG: 'x' }, dir, { fakeDocker: inspecting({ User: '0' }) });
-    assert.match(both.stdout, /::error title=container-scan::.*non-root/);
-    assert.match(both.stdout, /::error title=container-scan::.*HEALTHCHECK/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-const finding = (id, severity, fixed = '1.2.4') => ({
-  VulnerabilityID: id,
-  PkgName: 'openssl',
-  InstalledVersion: '1.2.3',
-  FixedVersion: fixed,
-  Severity: severity,
-});
-
-// What Trivy writes for an image, around the given results.
-const report = (results) => JSON.stringify({ SchemaVersion: 2, ArtifactType: 'container_image', ArtifactName: '/image.tar', ...(results ? { Results: results } : {}) });
-
-function gate(report) {
+const healthy = JSON.stringify({ Test: ['CMD', 'true'], Interval: 1 });
+function configure(patch, expected = '') {
   const dir = workspace();
   try {
-    mkdirSync(join(dir, 'tmp', 'trivy-out'), { recursive: true });
-    if (report !== undefined) writeFileSync(join(dir, 'tmp', 'trivy-out', 'trivy.json'), report);
-    return runStep('image', 'Fail on findings', {}, dir);
+    const r = runStep('image', 'Check the image configuration', { IMAGE_TAG: 'container-scan:candidate', EXPECTED_UID: expected, RECORD: join(dir, 'run.log') }, dir, {
+      fakeDocker: fake({ healthcheck: healthy, ...patch }),
+    });
+    return { ...r, record: existsSync(join(dir, 'run.log')) ? readFileSync(join(dir, 'run.log'), 'utf8') : '' };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-test('a fixable HIGH or CRITICAL finding fails the gate and an empty report passes', () => {
-  const clean = gate(report([{ Target: 'os', Vulnerabilities: [] }]));
-  assert.equal(clean.status, 0, clean.stdout);
-  assert.equal(gate(report([])).status, 0);
-  // Trivy leaves `Results` out for an image with nothing to scan, and that is a scan that ran.
-  assert.equal(gate(report()).status, 0);
-  const failing = gate(report([{ Target: 'os', Vulnerabilities: [finding('CVE-2024-1', 'HIGH'), finding('CVE-2024-2', 'CRITICAL')] }]));
-  assert.equal(failing.status, 1);
-  assert.match(failing.stdout, /::error title=container-scan::HIGH CVE-2024-1 openssl 1\.2\.3 fixed in 1\.2\.4/);
-  assert.match(failing.stdout, /::error title=container-scan::CRITICAL CVE-2024-2/);
+test('the user is measured by running id in the image, with the flags that contain it', () => {
+  const r = configure({ id: '1000' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const args = r.record.split('\n');
+  assert.deepEqual(args.slice(0, 1), ['run']);
+  for (const flag of ['--rm', '--read-only', '--network', 'none', '--cap-drop', 'ALL', 'no-new-privileges', '--entrypoint', 'id', '--pull', 'never']) {
+    assert.ok(args.includes(flag), flag);
+  }
+  // The image's default user is what is measured, so docker is given no --user; `-u` is id's own flag.
+  assert.ok(!args.includes('--user'), 'no user override');
+  assert.deepEqual(args.filter(Boolean).slice(-3), ['id', 'container-scan:candidate', '-u']);
 });
 
-test('a report that is missing, empty or not JSON is NOT SCANNED, never a pass', () => {
-  const wrongArtifact = JSON.stringify({ SchemaVersion: 2, ArtifactType: 'filesystem', Results: [] });
-  const noSchema = JSON.stringify({ ArtifactType: 'container_image', Results: [] });
-  // Valid JSON is not a report: an object Trivy did not write must not read as a clean scan.
-  const shaped = (extra) => JSON.stringify({ SchemaVersion: 2, ArtifactType: 'container_image', ...extra });
-  const malformed = [
-    shaped({ Results: 'bad' }),
-    shaped({ Results: {} }),
-    shaped({ Results: false }),
-    shaped({ Results: ['bad'] }),
-    shaped({ Results: [{ Target: 'os', Vulnerabilities: 'bad' }] }),
-    shaped({ Results: [{ Target: 'os', Vulnerabilities: {} }] }),
-    shaped({ Results: [{ Target: 'os', Vulnerabilities: false }] }),
-    shaped({ Results: [{ Target: 'os', Vulnerabilities: [1] }] }),
-    shaped({ Results: [{ Target: 'os', Vulnerabilities: [{ VulnerabilityID: 'CVE-2024-4' }] }] }),
-  ];
-  for (const bad of [undefined, '', 'not json', '{"Results":', '{}', '{"Results":[]}', '[]', 'null', wrongArtifact, noSchema, ...malformed]) {
-    const r = gate(bad);
-    assert.equal(r.status, 1, JSON.stringify(bad));
-    assert.match(r.stdout, /::error title=container-scan::NOT SCANNED/);
+test('a measured uid of zero is root however the USER line was spelled', () => {
+  // USER 00, +0, 0:0 and root all start the image as uid 0, and `id -u` prints that as 0.
+  for (const id of ['0', '00', '000']) {
+    const r = configure({ id, user: '+0' });
+    assert.equal(r.status, 1, id);
+    assert.match(r.stdout, /::error title=container-scan::The image runs as root/);
+  }
+  for (const id of ['1', '1000', '10001', '65534', '4294967294']) assert.equal(configure({ id }).status, 0, id);
+});
+
+test('an id that prints anything but a decimal integer fails closed', () => {
+  for (const id of ['', '+0', '-1', 'uid=0(root)', '1000 0', '1000\n0', '0x0', '1e3', '12345678901', 'root']) {
+    const r = configure({ id, user: '' });
+    assert.equal(r.status, 1, JSON.stringify(id));
+    assert.match(r.stdout, /could not be measured/, JSON.stringify(id));
   }
 });
 
-test('a newline in a package name cannot start another workflow command', () => {
-  const evil = { ...finding('CVE-2024-3', 'HIGH'), PkgName: 'a\n::error title=x::forged' };
-  const r = gate(report([{ Target: 'os', Vulnerabilities: [evil] }]));
-  assert.equal(r.status, 1);
-  assert.equal(r.stdout.split('\n').filter((l) => l.startsWith('::error title=x')).length, 0);
+test('an image with no id fails closed, and expected-uid names the way out', () => {
+  const none = configure({ idStatus: 127, id: '', user: '10001' });
+  assert.equal(none.status, 1);
+  assert.match(none.stdout, /::error title=container-scan::The user could not be measured/);
+  assert.match(none.stdout, /expected-uid/);
+  // With the uid named, the configured USER must be exactly that number, with or without a group.
+  for (const user of ['10001', '10001:10001', '10001:0']) {
+    const r = configure({ idStatus: 127, id: '', user }, '10001');
+    assert.equal(r.status, 0, user + r.stdout);
+    assert.match(r.stdout, /::notice title=container-scan::/);
+  }
+  for (const user of ['', 'node', '0', '00', '010001', '10001x', '1000', '0:10001', ' 10001', 'root:10001']) {
+    assert.equal(configure({ idStatus: 127, id: '', user }, '10001').status, 1, JSON.stringify(user));
+  }
 });
 
-test('the scan step never fails on findings itself and mounts the ignore file read-only', () => {
+test('expected-uid is compared to the measured uid when id works', () => {
+  assert.equal(configure({ id: '10001' }, '10001').status, 0);
+  const wrong = configure({ id: '1000' }, '10001');
+  assert.equal(wrong.status, 1);
+  assert.match(wrong.stdout, /expected-uid is 10001/);
+  assert.equal(configure({ id: '0' }, '10001').status, 1);
+});
+
+test('the image declares a healthcheck that is not NONE', () => {
+  const ok = [{ Test: ['CMD', 'true'] }, { Test: ['CMD-SHELL', 'exit 0'], Interval: 5 }];
+  for (const h of ok) assert.equal(configure({ healthcheck: JSON.stringify(h) }).status, 0, JSON.stringify(h));
+  for (const h of ['null', '', '{}', '[]', '"CMD"', '{"Test":[]}', '{"Test":"x"}', '{"Test":["NONE"]}', '{"Test":{}}', 'false', 'not json']) {
+    const r = configure({ healthcheck: h });
+    assert.equal(r.status, 1, JSON.stringify(h));
+    assert.match(r.stdout, /::error title=container-scan::The image declares no HEALTHCHECK/);
+  }
+});
+
+test('root and a missing healthcheck are both reported', () => {
+  const r = configure({ id: '0', healthcheck: 'null' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /runs as root/);
+  assert.match(r.stdout, /no HEALTHCHECK/);
+});
+
+// The gate is Trivy's own exit status: whatever Trivy does that is not a clean exit fails the step.
+function gate(code, { ignore = '', planted } = {}) {
   const dir = workspace({ '.trivyignore': 'CVE-2024-1\n' });
   try {
+    mkdirSync(join(dir, 'tmp', 'trivy-out'), { recursive: true });
+    if (planted !== undefined) writeFileSync(join(dir, 'tmp', 'trivy-out', 'trivy.json'), planted);
     const log = join(dir, 'docker.log');
-    const r = runStep(
-      'image',
-      'Trivy scan',
-      { TRIVY_IMAGE: 'trivy@sha256:abc', TRIVYIGNORE: '.trivyignore' },
-      dir,
-      { fakeDocker: `printf '%s\\n' "$@" > "${log}"` },
-    );
-    assert.equal(r.status, 0, r.stdout + r.stderr);
-    const args = readFileSync(log, 'utf8');
-    assert.match(args, /--exit-code\n0/);
-    assert.match(args, new RegExp(`${join(dir, 'ws', '.trivyignore').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:/ignore/.trivyignore:ro`));
-    assert.match(args, /--ignorefile\n\/ignore\/\.trivyignore/);
-    assert.ok(existsSync(join(dir, 'tmp', 'trivy-out')));
-    const without = runStep('image', 'Trivy scan', { TRIVY_IMAGE: 'x', TRIVYIGNORE: '' }, dir, { fakeDocker: `printf '%s\\n' "$@" > "${log}"` });
-    assert.equal(without.status, 0);
-    assert.doesNotMatch(readFileSync(log, 'utf8'), /--ignorefile/);
+    const r = runStep('image', 'Trivy gate', { TRIVY_IMAGE: 'trivy@sha256:abc', TRIVYIGNORE: ignore }, dir, {
+      fakeDocker: `printf '%s\\n' "$@" > "${log}"; exit ${code}`,
+    });
+    return { ...r, args: existsSync(log) ? readFileSync(log, 'utf8') : '', dir };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+test('Trivy exiting zero passes the gate and every other exit fails it', () => {
+  assert.equal(gate(0).status, 0);
+  for (const code of [1, 2, 3, 125, 126, 127, 137, 255]) {
+    const r = gate(code);
+    assert.equal(r.status, 1, String(code));
+    assert.match(r.stdout, /::error title=container-scan::Trivy failed the image/);
+  }
+});
+
+test('a report in the output directory changes nothing about the gate', () => {
+  // The gate never reads one: a clean-looking, an empty and a hostile file all leave the exit status alone.
+  for (const planted of ['{}', '', 'not json', JSON.stringify({ SchemaVersion: 2, ArtifactType: 'container_image', Results: 'bad' })]) {
+    assert.equal(gate(0, { planted }).status, 0, JSON.stringify(planted));
+    assert.equal(gate(1, { planted }).status, 1, JSON.stringify(planted));
+  }
+});
+
+test('the gate passes Trivy its flags and mounts the ignore file read-only', () => {
+  const r = gate(0, { ignore: '.trivyignore' });
+  assert.match(r.args, /--exit-code\n1\n/);
+  assert.match(r.args, /--severity\nHIGH,CRITICAL/);
+  assert.match(r.args, /--ignore-unfixed/);
+  assert.match(r.args, /--scanners\nvuln/);
+  assert.match(r.args, /\/ignore\/\.trivyignore:ro/);
+  assert.match(r.args, /--ignorefile\n\/ignore\/\.trivyignore/);
+  assert.doesNotMatch(gate(0).args, /--ignorefile/);
 });

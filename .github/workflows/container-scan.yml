@@ -2,7 +2,8 @@
 #
 # Two jobs, both read-only. `hadolint` lints the Dockerfile. `image` builds it, scans the result for
 # fixable HIGH and CRITICAL vulnerabilities, writes a CycloneDX SBOM, and checks that the image runs
-# as a non-root user and declares a HEALTHCHECK. Nothing is pushed and nothing here holds a secret:
+# as a non-root user and declares a HEALTHCHECK. No gate here reads a report or parses a Dockerfile:
+# Trivy decides on its own exit status, and the user is measured by running the image. Nothing is pushed and nothing here holds a secret:
 # the image is built with the caller's own Dockerfile and context, on the runner, and discarded.
 #
 # The two tools run from images pinned by digest, in `run:` steps. A third-party `uses:` would need to
@@ -38,6 +39,13 @@ on:
         description: Lowest Hadolint severity that fails the job (error, warning, info or style).
         type: string
         default: warning
+      expected-uid:
+        description: >-
+          The uid the image is expected to run as, a decimal integer other than zero. Empty (the default)
+          measures the user by running `id -u` in the image. Set it for an image that has no `id` (a
+          distroless or scratch image): then the image's configured USER must name exactly this uid.
+        type: string
+        default: ""
       sbom-artifact-name:
         description: >-
           Name of the artifact that carries the CycloneDX SBOM. Give each call a distinct name when one
@@ -123,6 +131,7 @@ jobs:
           DOCKERFILE: ${{ inputs.dockerfile }}
           CONTEXT: ${{ inputs.context }}
           TRIVYIGNORE: ${{ inputs.trivyignore }}
+          EXPECTED_UID: ${{ inputs.expected-uid }}
           SBOM_NAME: ${{ inputs.sbom-artifact-name }}
         run: |
           set -euo pipefail
@@ -142,6 +151,8 @@ jobs:
             { [ -f "$TRIVYIGNORE" ] && [ ! -L "$TRIVYIGNORE" ]; } \
               || fail "trivyignore '$TRIVYIGNORE' is not a regular file in the checkout."
           fi
+          [[ -z "$EXPECTED_UID" || "$EXPECTED_UID" =~ ^[1-9][0-9]{0,9}$ ]] \
+            || fail "expected-uid must be a decimal integer other than zero, without a sign or a leading zero."
           [[ "$SBOM_NAME" =~ ^[A-Za-z0-9._-]+$ ]] \
             || fail "sbom-artifact-name must be letters, digits, dot, dash and underscore."
 
@@ -159,10 +170,11 @@ jobs:
           set -euo pipefail
           docker save --output "$RUNNER_TEMP/image.tar" "$IMAGE_TAG"
 
-      # A scan that could not run is not a clean scan, and Trivy exits 1 for both a finding and a
-      # failure to fetch its database. So this step never fails on either: it writes the report, and
-      # the last step reads it and decides. No report is NOT SCANNED there.
-      - name: Trivy scan
+      # Trivy decides. `--exit-code 1` makes a fixable HIGH or CRITICAL vulnerability fail the step, and a
+      # scan that errors or produces nothing exits non-zero as well, so there is no state in which this
+      # step passes without having scanned. Nothing later reads a report to decide.
+      - name: Trivy gate
+        id: scan
         env:
           TRIVYIGNORE: ${{ inputs.trivyignore }}
           TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
@@ -178,16 +190,34 @@ jobs:
           if ! docker run --rm --user "$(id -u):$(id -g)" \
             --volume "$RUNNER_TEMP/image.tar:/image.tar:ro" \
             --volume "$RUNNER_TEMP/trivy-cache:/cache" \
-            --volume "$RUNNER_TEMP/trivy-out:/out" \
             ${mounts[@]+"${mounts[@]}"} \
             "$TRIVY_IMAGE" image --input /image.tar --cache-dir /cache \
             --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --no-progress \
-            --format json --output /out/trivy.json --exit-code 0 \
+            --format table --exit-code 1 \
             ${options[@]+"${options[@]}"}; then
-            echo "::warning title=container-scan::Trivy did not complete; the last step reports this as NOT SCANNED."
+            echo "::error title=container-scan::Trivy failed the image: a fixable HIGH or CRITICAL vulnerability, or a scan that could not run. The log above says which. Update the base image or the package, or accept a vulnerability on purpose in the trivyignore file."
+            exit 1
           fi
 
+      # The report and the SBOM are artifacts for people and tools downstream, written after the gate so
+      # that a failed gate still leaves them behind. They decide nothing.
+      - name: Trivy report
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/trivy-cache" "$RUNNER_TEMP/trivy-out"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --volume "$RUNNER_TEMP/image.tar:/image.tar:ro" \
+            --volume "$RUNNER_TEMP/trivy-cache:/cache" \
+            --volume "$RUNNER_TEMP/trivy-out:/out" \
+            "$TRIVY_IMAGE" image --input /image.tar --cache-dir /cache \
+            --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --no-progress \
+            --format json --output /out/trivy.json --exit-code 0
+
       - name: SBOM
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
         run: |
@@ -205,52 +235,47 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.sbom-artifact-name }}
-          path: ${{ runner.temp }}/trivy-out/sbom.cdx.json
+          path: |
+            ${{ runner.temp }}/trivy-out/sbom.cdx.json
+            ${{ runner.temp }}/trivy-out/trivy.json
           if-no-files-found: warn
           retention-days: 30
 
+      # The user is measured, not read from the Dockerfile: the image runs `id -u` with no `--user`, so
+      # what prints is the uid the image starts as, whatever the USER line looked like. The container has
+      # no network, a read-only filesystem and no capabilities, and the entrypoint is replaced by `id`.
       - name: Check the image configuration
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          EXPECTED_UID: ${{ inputs.expected-uid }}
         run: |
           set -euo pipefail
-          config="$(docker image inspect --format '{{json .Config}}' "$IMAGE_TAG")"
           problems=0
-          user="$(jq -r '.User // ""' <<< "$config")"
-          account="${user%%:*}"
-          # The account is root when it is empty, the name root, or a number that is zero: "0", "00" and
-          # "+0" all resolve to uid 0, so the number is compared and not its spelling.
-          if [ -z "$account" ] || [ "$account" = root ] || { [[ "$account" =~ ^[+-]?[0-9]+$ ]] && (( 10#${account#[+-]} == 0 )); }; then
-            echo "::error title=container-scan::The image runs as root (USER is '${user}'). Set a non-root USER in the final stage."
-            problems=1
+          uid=""
+          if uid="$(docker run --rm --pull never --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint id "$IMAGE_TAG" -u 2> /dev/null)" \
+            && [[ "$uid" =~ ^[0-9]{1,10}$ ]]; then
+            if (( 10#$uid == 0 )); then
+              echo "::error title=container-scan::The image runs as root: \`id -u\` printed 0. Set a non-root USER in the final stage."
+              problems=1
+            elif [ -n "$EXPECTED_UID" ] && (( 10#$uid != 10#$EXPECTED_UID )); then
+              echo "::error title=container-scan::The image runs as uid ${uid}, and expected-uid is ${EXPECTED_UID}."
+              problems=1
+            fi
+          else
+            # No `id` to run (a distroless or scratch image), or it printed something that is not a uid. The
+            # check fails closed, unless the caller named the uid and the configured USER is exactly it.
+            configured="$(docker image inspect --format '{{.Config.User}}' "$IMAGE_TAG" 2> /dev/null || true)"
+            if [ -n "$EXPECTED_UID" ] && { [ "$configured" = "$EXPECTED_UID" ] || [[ "$configured" =~ ^${EXPECTED_UID}:[0-9]+$ ]]; }; then
+              echo "::notice title=container-scan::The image has no usable \`id\`; its configured USER is exactly expected-uid ${EXPECTED_UID}."
+            else
+              echo "::error title=container-scan::The user could not be measured: running \`id -u\` in the image failed (no \`id\` in a distroless or scratch image?). Set the expected-uid input to the uid the image runs as, and set USER to exactly that number."
+              problems=1
+            fi
           fi
-          if ! jq -e '(.Healthcheck // null) != null and ((.Healthcheck.Test // ["NONE"])[0] != "NONE")' <<< "$config" > /dev/null; then
+          healthcheck="$(docker image inspect --format '{{json .Config.Healthcheck}}' "$IMAGE_TAG" 2> /dev/null || true)"
+          if ! jq -e '. != null and (.Test | type) == "array" and (.Test | length) > 0 and .Test[0] != "NONE"' <<< "${healthcheck:-null}" > /dev/null 2>&1; then
             echo "::error title=container-scan::The image declares no HEALTHCHECK. Add a HEALTHCHECK instruction to the final stage."
             problems=1
           fi
           exit "$problems"
-
-      - name: Fail on findings
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          set -euo pipefail
-          report="$RUNNER_TEMP/trivy-out/trivy.json"
-          # A report is one Trivy wrote for an image, and valid JSON is not enough: `{}` parses, and so does
-          # a `Results` that is a string. The shape the count reads is checked first, so that no optional
-          # selector below can turn a malformed report into zero findings. `Results` and `Vulnerabilities`
-          # are optional because Trivy leaves them out when there is nothing to report.
-          shape='(.SchemaVersion | type) == "number" and .ArtifactType == "container_image"
-            and (.Results == null or (.Results | type) == "array")
-            and all((.Results // [])[]; type == "object" and (.Vulnerabilities == null or (.Vulnerabilities | type) == "array")
-              and all((.Vulnerabilities // [])[]; type == "object" and (.Severity | type) == "string"))'
-          if [ ! -s "$report" ] || ! jq -e "$shape" "$report" > /dev/null 2>&1; then
-            echo "::error title=container-scan::NOT SCANNED. Trivy produced no usable report, so the image was not checked for vulnerabilities."
-            exit 1
-          fi
-          count="$(jq '[.Results[]? | .Vulnerabilities[]?] | length' "$report")"
-          if [ "$count" -gt 0 ]; then
-            # A package name comes from the image, so a line break in it must not start another command.
-            jq -r '.Results[]? | .Target as $target | .Vulnerabilities[]? |
-              "::error title=container-scan::\(.Severity) \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion) fixed in \(.FixedVersion) (\($target))" | gsub("[\r\n]"; " ")' "$report"
-            echo "::error title=container-scan::${count} fixable HIGH or CRITICAL vulnerabilities. Update the base image or the package, or accept one on purpose in the trivyignore file."
-            exit 1
-          fi

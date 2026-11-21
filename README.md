@@ -439,12 +439,13 @@ The two profiles, the limits and how a repository moves to the narrow list are i
 ### 📦 `container-scan` inputs (repositories that ship a Dockerfile)
 
 Two read-only jobs, reported as `container-scan / Hadolint` and `container-scan / Image`. Nothing is pushed and no secret is
-involved: the Dockerfile is built on the runner with the caller's own context and the image is discarded.
+involved: the Dockerfile is built on the runner with the caller's own context and the image is discarded. No gate reads a
+report or parses the Dockerfile: Trivy decides on its own exit status, and the user is measured by running the image.
 
 | Job | What it checks | Fails when |
 | --- | --- | --- |
 | `Hadolint` | The Dockerfile, read from stdin by a Hadolint image pinned by digest | A rule at or above `hadolint-failure-threshold` fires, and it is not in `hadolint-ignore` |
-| `Image` | Builds the Dockerfile; scans the image with Trivy (vulnerabilities only, HIGH and CRITICAL, only those with a fixed version); writes a CycloneDX SBOM and uploads it; reads the image configuration | A fixable HIGH or CRITICAL vulnerability is found; the final `USER` is empty, `0` or `root`; the image declares no `HEALTHCHECK` (or `HEALTHCHECK NONE`); or Trivy produced no report (`NOT SCANNED`, never a pass) |
+| `Image` | Builds the Dockerfile; scans the image with Trivy (vulnerabilities only, HIGH and CRITICAL, only those with a fixed version); writes a CycloneDX SBOM and the JSON report and uploads both; runs `id -u` in the image and reads its `HEALTHCHECK` | Trivy exits non-zero, which it does for a fixable HIGH or CRITICAL vulnerability and for a scan that could not run; `id -u` prints `0`, or prints anything that is not a uid; the image declares no `HEALTHCHECK` (or `HEALTHCHECK NONE`) |
 
 | Input | Default | Meaning |
 | --- | --- | --- |
@@ -453,10 +454,11 @@ involved: the Dockerfile is built on the runner with the caller's own context an
 | `trivyignore` | `""` | A Trivy ignore file in the checkout (`.trivyignore` or `.trivyignore.yaml`) for vulnerabilities accepted on purpose. Empty uses none. Mounted read-only |
 | `hadolint-ignore` | `""` | Whitespace-separated rule ids to ignore, each `DL` or `SC` and four digits (`DL3008 SC2086`) |
 | `hadolint-failure-threshold` | `warning` | Lowest Hadolint severity that fails: `error`, `warning`, `info` or `style` |
-| `sbom-artifact-name` | `container-sbom` | Artifact name for `sbom.cdx.json`. Give each call a distinct name when one run calls the workflow more than once |
+| `expected-uid` | `""` | A decimal uid other than zero the image must run as. Empty only requires a non-zero uid. Set it for an image with no `id` (distroless, scratch), where the configured `USER` must then be exactly this number |
+| `sbom-artifact-name` | `container-sbom` | Artifact name for `sbom.cdx.json` and `trivy.json`. Give each call a distinct name when one run calls the workflow more than once |
 
-Every input reaches the shell through the environment, and a value that is not a safe path or a known id is refused
-before anything runs. No secrets and no outputs. The caller grants `contents: read` and nothing else.
+Every input reaches the shell through the environment, and a value that is not a safe path, a known id or a plain number
+is refused before anything runs. No secrets and no outputs. The caller grants `contents: read` and nothing else.
 
 ```yaml
 # .github/workflows/container.yml
@@ -476,12 +478,13 @@ jobs:
       trivyignore: .trivyignore # optional
 ```
 
-What it does not do. It checks the configured user, not what an entrypoint script drops to or an `/etc/passwd` entry
-that maps a name to uid 0, so a named user is accepted as non-root; a numeric uid of zeros (`0`, `00`) is refused. It does not read a `.hadolint.yaml` from the repository, because the Dockerfile reaches Hadolint on stdin with no mount; use `hadolint-ignore` and `hadolint-failure-threshold`. It scans the OS and language packages Trivy reads
-from the image and says nothing about secrets or misconfiguration in it. It builds for the runner's platform only, and it
-gives the build no secrets or build arguments, so a Dockerfile that needs either has to be built by the caller's own
-workflow. The Hadolint and Trivy images are pinned by digest and move only by a pull request here, so a new rule
-reaches callers at the next release.
+What it does not do. The user is the one the image starts as: an entrypoint script that later drops to another user, or
+a different one, is not seen. An image with no `id` fails closed until `expected-uid` names the uid. It does not read a
+`.hadolint.yaml` from the repository, because the Dockerfile reaches Hadolint on stdin with no mount; use `hadolint-ignore`
+and `hadolint-failure-threshold`. It scans the OS and language packages Trivy reads from the image and says nothing about
+secrets or misconfiguration in it. It builds for the runner's platform only, and it gives the build no secrets or build
+arguments, so a Dockerfile that needs either has to be built by the caller's own workflow. The Hadolint and Trivy images are
+pinned by digest and move only by a pull request here, so a new rule reaches callers at the next release.
 
 ### 🏷️ Versioning
 
