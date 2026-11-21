@@ -1,0 +1,6 @@
+{
+  "files": [
+    { "source": "check-dist-fresh.mjs", "target": "scripts/check-dist-fresh.mjs" },
+    { "source": "check-dist-fresh.test.mjs", "target": "scripts/check-dist-fresh.test.mjs" }
+  ]
+}
