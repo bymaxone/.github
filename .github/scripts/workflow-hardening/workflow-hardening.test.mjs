@@ -22,13 +22,20 @@ function eventsOf(doc) {
   return on && typeof on === 'object' ? Object.keys(on) : [];
 }
 
-// The `${{ }}` expressions in run scripts that read the event payload or the head ref directly.
+// The `${{ }}` expressions in run scripts that name the github context at all. The context carries
+// the event payload and the head ref, which an attacker chooses, and an expression can reach them
+// through a dot, a bracket, a function or another letter case, so no spelling is matched: any
+// expression that mentions `github` is a hit. A script reads what it needs from `env` instead.
 function interpolations(doc) {
   const found = [];
   for (const [name, job] of Object.entries(doc.jobs ?? {})) {
     for (const step of job.steps ?? []) {
-      const hits = (step.run ?? '').match(/\$\{\{[^}]*(github\.event\b|github\.head_ref\b)[^}]*\}\}/g);
-      if (hits) found.push(`${name}:${hits.join(',')}`);
+      const run = step.run ?? '';
+      for (let at = run.indexOf('${{'); at >= 0; at = run.indexOf('${{', at + 3)) {
+        const end = run.indexOf('}}', at);
+        const expression = run.slice(at, end < 0 ? undefined : end + 2);
+        if (/github/i.test(expression)) found.push(`${name}:${expression}`);
+      }
     }
   }
   return found;
@@ -79,20 +86,23 @@ test('the event list is read from a string, a list and a map alike', () => {
   assert.deepEqual(on('on:\n  workflow_call:'), ['workflow_call']);
 });
 
-test('no run script interpolates github.event or the head ref directly', () => {
+test('no run script interpolates the github context', () => {
   const hits = workflows.flatMap((w) => interpolations(w.doc).map((h) => `${w.file}:${h}`));
   assert.deepEqual(hits, []);
 });
 
-test('the run-script scan sees the dotted, bracket and function forms of the event payload', () => {
+test('the run-script scan sees every spelling of the github context', () => {
   const doc = (run) => ({ jobs: { j: { steps: [{ run }] } } });
   for (const run of [
     'echo ${{ github.event.pull_request.title }}',
     "echo ${{ github.event['pull_request'] }}",
+    "echo ${{ github['event'].pull_request.title }}",
     'echo ${{ toJSON(github.event) }}',
+    'echo ${{ github.EVENT.pull_request.title }}',
+    "echo ${{ format('{0}', github.event.x) }}",
     'echo ${{ github.head_ref }}',
   ]) assert.equal(interpolations(doc(run)).length, 1, run);
-  // These read other contexts, or the event name, which an attacker does not choose.
-  for (const run of ['echo ${{ github.event_name }}', 'echo ${{ inputs.command }}', 'echo "$TITLE"'])
+  // These read other contexts, and a plain "$VAR" is the way a script reads the event.
+  for (const run of ['echo ${{ inputs.command }}', 'echo ${{ steps.a.outputs.b }}', 'echo "$TITLE"'])
     assert.deepEqual(interpolations(doc(run)), [], run);
 });
