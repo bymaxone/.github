@@ -445,7 +445,7 @@ report or parses the Dockerfile: Trivy decides on its own exit status, and the u
 | Job | What it checks | Fails when |
 | --- | --- | --- |
 | `Hadolint` | The Dockerfile, read from stdin by a Hadolint image pinned by digest | A rule at or above `hadolint-failure-threshold` fires, and it is not in `hadolint-ignore` |
-| `Image` | Builds the Dockerfile; scans the image with Trivy (vulnerabilities only, HIGH and CRITICAL, only those with a fixed version); writes a CycloneDX SBOM and the JSON report and uploads both; runs `id -u` in the image and reads its `HEALTHCHECK` | Trivy exits non-zero, which it does for a fixable HIGH or CRITICAL vulnerability and for a scan that could not run; `id -u` prints `0`, or prints anything that is not a uid; the image declares no `HEALTHCHECK` (or `HEALTHCHECK NONE`) |
+| `Image` | Builds the Dockerfile; scans the image with Trivy (vulnerabilities only, HIGH and CRITICAL, only those with a fixed version); writes a CycloneDX SBOM and the JSON report and uploads both; runs `id -u` in the image and reads its `HEALTHCHECK` | Trivy exits non-zero, which it does for a fixable HIGH or CRITICAL vulnerability and for a scan that could not run; the image does not run as a non-root user (or as `expected-uid`, when set); the image declares no `HEALTHCHECK` (or `HEALTHCHECK NONE`) |
 
 | Input | Default | Meaning |
 | --- | --- | --- |
