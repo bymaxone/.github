@@ -292,6 +292,11 @@ test('the image runs as a non-root user and declares a healthcheck', () => {
       [{ User: '0:0', Healthcheck: healthy }, 1, 'user 0:0'],
       [{ User: '00', Healthcheck: healthy }, 1, 'a zero-padded uid'],
       [{ User: '000:5', Healthcheck: healthy }, 1, 'a zero-padded uid with a group'],
+      [{ User: '+0', Healthcheck: healthy }, 1, 'a signed zero'],
+      [{ User: '-0', Healthcheck: healthy }, 1, 'a negative zero'],
+      [{ User: '+00:7', Healthcheck: healthy }, 1, 'a signed zero with padding and a group'],
+      [{ User: '+1000', Healthcheck: healthy }, 0, 'a signed non-zero uid'],
+      [{ User: '08', Healthcheck: healthy }, 0, 'a leading zero that is not zero'],
       [{ User: '0day', Healthcheck: healthy }, 0, 'a name that only starts with a zero'],
       [{ User: '1000:0', Healthcheck: healthy }, 0, 'a non-root user in the root group'],
       [{ User: '0:1000', Healthcheck: healthy }, 1, 'user 0 with a group'],
@@ -353,7 +358,19 @@ test('a report that is missing, empty or not JSON is NOT SCANNED, never a pass',
   const wrongArtifact = JSON.stringify({ SchemaVersion: 2, ArtifactType: 'filesystem', Results: [] });
   const noSchema = JSON.stringify({ ArtifactType: 'container_image', Results: [] });
   // Valid JSON is not a report: an object Trivy did not write must not read as a clean scan.
-  for (const bad of [undefined, '', 'not json', '{"Results":', '{}', '{"Results":[]}', '[]', 'null', wrongArtifact, noSchema]) {
+  const shaped = (extra) => JSON.stringify({ SchemaVersion: 2, ArtifactType: 'container_image', ...extra });
+  const malformed = [
+    shaped({ Results: 'bad' }),
+    shaped({ Results: {} }),
+    shaped({ Results: false }),
+    shaped({ Results: ['bad'] }),
+    shaped({ Results: [{ Target: 'os', Vulnerabilities: 'bad' }] }),
+    shaped({ Results: [{ Target: 'os', Vulnerabilities: {} }] }),
+    shaped({ Results: [{ Target: 'os', Vulnerabilities: false }] }),
+    shaped({ Results: [{ Target: 'os', Vulnerabilities: [1] }] }),
+    shaped({ Results: [{ Target: 'os', Vulnerabilities: [{ VulnerabilityID: 'CVE-2024-4' }] }] }),
+  ];
+  for (const bad of [undefined, '', 'not json', '{"Results":', '{}', '{"Results":[]}', '[]', 'null', wrongArtifact, noSchema, ...malformed]) {
     const r = gate(bad);
     assert.equal(r.status, 1, JSON.stringify(bad));
     assert.match(r.stdout, /::error title=container-scan::NOT SCANNED/);

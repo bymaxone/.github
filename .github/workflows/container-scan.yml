@@ -217,8 +217,9 @@ jobs:
           problems=0
           user="$(jq -r '.User // ""' <<< "$config")"
           account="${user%%:*}"
-          # A numeric uid of zeros ("0", "00") is root as well as the name.
-          if [ -z "$account" ] || [ "$account" = root ] || [[ "$account" =~ ^0+$ ]]; then
+          # The account is root when it is empty, the name root, or a number that is zero: "0", "00" and
+          # "+0" all resolve to uid 0, so the number is compared and not its spelling.
+          if [ -z "$account" ] || [ "$account" = root ] || { [[ "$account" =~ ^[+-]?[0-9]+$ ]] && (( 10#${account#[+-]} == 0 )); }; then
             echo "::error title=container-scan::The image runs as root (USER is '${user}'). Set a non-root USER in the final stage."
             problems=1
           fi
@@ -233,9 +234,15 @@ jobs:
         run: |
           set -euo pipefail
           report="$RUNNER_TEMP/trivy-out/trivy.json"
-          # A report is one Trivy wrote for an image: valid JSON that is not enough, since `{}` parses.
-          # `Results` is left optional because Trivy omits it for an image with nothing to scan.
-          if [ ! -s "$report" ] || ! jq -e '(.SchemaVersion | type) == "number" and .ArtifactType == "container_image"' "$report" > /dev/null 2>&1; then
+          # A report is one Trivy wrote for an image, and valid JSON is not enough: `{}` parses, and so does
+          # a `Results` that is a string. The shape the count reads is checked first, so that no optional
+          # selector below can turn a malformed report into zero findings. `Results` and `Vulnerabilities`
+          # are optional because Trivy leaves them out when there is nothing to report.
+          shape='(.SchemaVersion | type) == "number" and .ArtifactType == "container_image"
+            and (.Results == null or (.Results | type) == "array")
+            and all((.Results // [])[]; type == "object" and (.Vulnerabilities == null or (.Vulnerabilities | type) == "array")
+              and all((.Vulnerabilities // [])[]; type == "object" and (.Severity | type) == "string"))'
+          if [ ! -s "$report" ] || ! jq -e "$shape" "$report" > /dev/null 2>&1; then
             echo "::error title=container-scan::NOT SCANNED. Trivy produced no usable report, so the image was not checked for vulnerabilities."
             exit 1
           fi
