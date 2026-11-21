@@ -38,3 +38,8 @@ bymaxone/nest-telemetry commitlint-no-ai-attribution
 bymaxone/nest-notification commitlint-no-ai-attribution
 bymaxone/nest-auth no-ai-attribution-caller
 bymaxone/nest-auth commitlint-no-ai-attribution
+bymaxone/nest-cache no-ai-attribution-caller
+bymaxone/nest-notification no-ai-attribution-caller
+bymaxone/nest-telemetry no-ai-attribution-caller
+bymaxone/bymax-one no-ai-attribution-caller
+bymaxone/bymax-one commitlint-no-ai-attribution
