@@ -43,3 +43,14 @@ bymaxone/nest-notification no-ai-attribution-caller
 bymaxone/nest-telemetry no-ai-attribution-caller
 bymaxone/bymax-one no-ai-attribution-caller
 bymaxone/bymax-one commitlint-no-ai-attribution
+bymaxone/nest-ai-tokens check-dist-fresh
+bymaxone/nest-auth check-dist-fresh
+bymaxone/nest-cache check-dist-fresh
+bymaxone/nest-config check-dist-fresh
+bymaxone/nest-core check-dist-fresh
+bymaxone/nest-logger check-dist-fresh
+bymaxone/nest-notification check-dist-fresh
+bymaxone/nest-queue check-dist-fresh
+bymaxone/nest-realtime check-dist-fresh
+bymaxone/nest-storage check-dist-fresh
+bymaxone/nest-telemetry check-dist-fresh
