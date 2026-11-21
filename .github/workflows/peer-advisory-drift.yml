@@ -62,18 +62,21 @@ on:
         description: Total advisory matches behind those ranges, for reporting.
         value: ${{ jobs.audit.outputs.advisory-count }}
 
-# `issues: write` is required to open and close the tracking issue. Permissions
-# on a reusable workflow can only narrow what the caller granted, so the caller
-# must grant it too or the issue step fails with 403.
+# The default for a job that declares no permissions of its own; the job below
+# declares its own, including `issues: write` to open and close the tracking
+# issue. Permissions on a reusable workflow can only narrow what the caller
+# granted, so the caller must grant it too or the issue step fails with 403.
 permissions:
   contents: read
-  issues: write
 
 jobs:
   audit:
     name: Peer advisory drift
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     outputs:
       drift-count: ${{ steps.audit.outputs.drift-count }}
       advisory-count: ${{ steps.audit.outputs.advisory-count }}
