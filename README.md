@@ -480,7 +480,7 @@ jobs:
 
 What it does not do. The user is measured with the image's own `id` binary, so the check catches a Dockerfile mistake and
 not a hostile image, which can print any uid. It reads the uid and not the group, so `USER 1000:0` (root group) passes.
-An entrypoint script that later drops to another user, or a different one, is not seen. An image with no `id` fails closed until `expected-uid` names the uid. It does not read a
+An entrypoint script that later drops to another user, or a different one, is not seen. An image with no `id` fails closed unless `expected-uid` is set and its configured `USER` is exactly that uid. It does not read a
 `.hadolint.yaml` from the repository, because the Dockerfile reaches Hadolint on stdin with no mount; use `hadolint-ignore`
 and `hadolint-failure-threshold`. It scans the OS and language packages Trivy reads from the image and says nothing about
 secrets or misconfiguration in it. It builds for the runner's platform only, and it gives the build no secrets or build
