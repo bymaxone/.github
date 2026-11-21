@@ -100,8 +100,9 @@ jobs:
           echo "visibility: $visibility"
           if [ "$visibility" = "public" ]; then
             echo "scan=true" >> "$GITHUB_OUTPUT"
-          elif [ "$ALLOW_PRIVATE" = "true" ]; then
-            # The caller said this repository has a Code Security license.
+          elif [ "$ALLOW_PRIVATE" = "true" ] && { [ "$visibility" = "private" ] || [ "$visibility" = "internal" ]; }; then
+            # The caller said this repository has a Code Security license. Only the two values the API
+            # defines for a non-public repository qualify; anything else is skipped like an unknown one.
             echo "scan=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Analysing a $visibility repository because allow-private is set; the upload needs a GitHub Code Security license."
           else

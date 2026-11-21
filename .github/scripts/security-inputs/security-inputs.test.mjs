@@ -77,3 +77,11 @@ test('an unknown visibility is skipped even with allow-private, and the step sta
   assert.equal(r.status, 0);
   assert.equal(r.output, 'scan=false');
 });
+
+test('a value the API does not define for a repository is skipped even with allow-private', () => {
+  for (const v of ['secret', 'Private', 'null', 'public-ish']) {
+    const r = visibility(v, 'true');
+    assert.equal(r.status, 0, v);
+    assert.equal(r.output, 'scan=false', v);
+  }
+});
