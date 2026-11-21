@@ -66,15 +66,16 @@ function usesOf(doc) {
   return Object.values(doc.jobs ?? {}).flatMap((job) => [job.uses, ...(job.steps ?? []).map((s) => s.uses)]).filter(Boolean);
 }
 
-// The third-party references that are not a full commit with a version comment on their line.
+// The third-party references that are not a full commit, or whose every line in the file does not
+// carry a version comment. A reference used twice is judged on each of its lines.
 function unpinned(doc, text) {
-  const lines = text.split('\n');
-  return usesOf(doc)
+  const lines = text.split('\n').filter((l) => !l.trim().startsWith('#'));
+  return [...new Set(usesOf(doc))]
     .filter((u) => !u.startsWith('./') && !u.startsWith('bymaxone/'))
     .filter((u) => {
       if (!/@[0-9a-f]{40}$/.test(u)) return true;
-      const at = lines.find((l) => l.includes(u));
-      return !(at && /#\s*v?\d/.test(at.slice(at.indexOf(u) + u.length)));
+      const at = lines.filter((l) => l.includes(u));
+      return at.length === 0 || !at.every((l) => /#\s*v?\d/.test(l.slice(l.indexOf(u) + u.length)));
     });
 }
 
@@ -83,7 +84,7 @@ test('every third-party action is pinned to a full commit with a version comment
   assert.deepEqual(hits, []);
 });
 
-test('the pin scan sees a flow-style step and a job-level reference', () => {
+test('the pin scan sees a flow-style step, a job-level reference and a second use without a comment', () => {
   // A line-by-line scan for a line that starts with `uses:` skips both of these.
   const text = [
     'jobs:',
@@ -95,11 +96,17 @@ test('the pin scan sees a flow-style step and a job-level reference', () => {
     '    steps:',
     '      - uses: actions/cache@0123456789012345678901234567890123456789',
     '      - uses: actions/setup@0123456789012345678901234567890123456789 # v4.1.0',
+    '  d:',
+    '    steps:',
+    '      - uses: actions/twice@abcdefabcdefabcdefabcdefabcdefabcdefabcd # v2.0.0',
+    '      - uses: actions/twice@abcdefabcdefabcdefabcdefabcdefabcdefabcd',
   ].join('\n');
   const doc = JSON.parse(execFileSync('ruby', ['-e', RUBY], { input: text, encoding: 'utf8' }));
   assert.deepEqual(unpinned(doc, text), [
     'actions/checkout@v5',
     'owner/repo/.github/workflows/x.yml@main',
     'actions/cache@0123456789012345678901234567890123456789',
+    // The second use of the same reference has no comment, and the first one's must not cover it.
+    'actions/twice@abcdefabcdefabcdefabcdefabcdefabcdefabcd',
   ]);
 });
