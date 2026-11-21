@@ -290,6 +290,10 @@ test('the image runs as a non-root user and declares a healthcheck', () => {
       [{ User: '', Healthcheck: healthy }, 1, 'an empty user'],
       [{ User: '0', Healthcheck: healthy }, 1, 'user 0'],
       [{ User: '0:0', Healthcheck: healthy }, 1, 'user 0:0'],
+      [{ User: '00', Healthcheck: healthy }, 1, 'a zero-padded uid'],
+      [{ User: '000:5', Healthcheck: healthy }, 1, 'a zero-padded uid with a group'],
+      [{ User: '0day', Healthcheck: healthy }, 0, 'a name that only starts with a zero'],
+      [{ User: '1000:0', Healthcheck: healthy }, 0, 'a non-root user in the root group'],
       [{ User: '0:1000', Healthcheck: healthy }, 1, 'user 0 with a group'],
       [{ User: 'root', Healthcheck: healthy }, 1, 'user root'],
       [{ User: 'root:root', Healthcheck: healthy }, 1, 'user root:root'],
@@ -319,6 +323,9 @@ const finding = (id, severity, fixed = '1.2.4') => ({
   Severity: severity,
 });
 
+// What Trivy writes for an image, around the given results.
+const report = (results) => JSON.stringify({ SchemaVersion: 2, ArtifactType: 'container_image', ArtifactName: '/image.tar', ...(results ? { Results: results } : {}) });
+
 function gate(report) {
   const dir = workspace();
   try {
@@ -331,27 +338,31 @@ function gate(report) {
 }
 
 test('a fixable HIGH or CRITICAL finding fails the gate and an empty report passes', () => {
-  const clean = gate(JSON.stringify({ Results: [{ Target: 'os', Vulnerabilities: [] }] }));
+  const clean = gate(report([{ Target: 'os', Vulnerabilities: [] }]));
   assert.equal(clean.status, 0, clean.stdout);
-  assert.equal(gate(JSON.stringify({ Results: [] })).status, 0);
-  assert.equal(gate(JSON.stringify({})).status, 0);
-  const failing = gate(JSON.stringify({ Results: [{ Target: 'os', Vulnerabilities: [finding('CVE-2024-1', 'HIGH'), finding('CVE-2024-2', 'CRITICAL')] }] }));
+  assert.equal(gate(report([])).status, 0);
+  // Trivy leaves `Results` out for an image with nothing to scan, and that is a scan that ran.
+  assert.equal(gate(report()).status, 0);
+  const failing = gate(report([{ Target: 'os', Vulnerabilities: [finding('CVE-2024-1', 'HIGH'), finding('CVE-2024-2', 'CRITICAL')] }]));
   assert.equal(failing.status, 1);
   assert.match(failing.stdout, /::error title=container-scan::HIGH CVE-2024-1 openssl 1\.2\.3 fixed in 1\.2\.4/);
   assert.match(failing.stdout, /::error title=container-scan::CRITICAL CVE-2024-2/);
 });
 
 test('a report that is missing, empty or not JSON is NOT SCANNED, never a pass', () => {
-  for (const report of [undefined, '', 'not json', '{"Results":']) {
-    const r = gate(report);
-    assert.equal(r.status, 1, JSON.stringify(report));
+  const wrongArtifact = JSON.stringify({ SchemaVersion: 2, ArtifactType: 'filesystem', Results: [] });
+  const noSchema = JSON.stringify({ ArtifactType: 'container_image', Results: [] });
+  // Valid JSON is not a report: an object Trivy did not write must not read as a clean scan.
+  for (const bad of [undefined, '', 'not json', '{"Results":', '{}', '{"Results":[]}', '[]', 'null', wrongArtifact, noSchema]) {
+    const r = gate(bad);
+    assert.equal(r.status, 1, JSON.stringify(bad));
     assert.match(r.stdout, /::error title=container-scan::NOT SCANNED/);
   }
 });
 
 test('a newline in a package name cannot start another workflow command', () => {
   const evil = { ...finding('CVE-2024-3', 'HIGH'), PkgName: 'a\n::error title=x::forged' };
-  const r = gate(JSON.stringify({ Results: [{ Target: 'os', Vulnerabilities: [evil] }] }));
+  const r = gate(report([{ Target: 'os', Vulnerabilities: [evil] }]));
   assert.equal(r.status, 1);
   assert.equal(r.stdout.split('\n').filter((l) => l.startsWith('::error title=x')).length, 0);
 });

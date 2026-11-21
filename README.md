@@ -477,7 +477,7 @@ jobs:
 ```
 
 What it does not do. It checks the configured user, not what an entrypoint script drops to or an `/etc/passwd` entry
-that maps a name to uid 0, so a named user is accepted as non-root. It scans the OS and language packages Trivy reads
+that maps a name to uid 0, so a named user is accepted as non-root; a numeric uid of zeros (`0`, `00`) is refused. It does not read a `.hadolint.yaml` from the repository, because the Dockerfile reaches Hadolint on stdin with no mount; use `hadolint-ignore` and `hadolint-failure-threshold`. It scans the OS and language packages Trivy reads
 from the image and says nothing about secrets or misconfiguration in it. It builds for the runner's platform only, and it
 gives the build no secrets or build arguments, so a Dockerfile that needs either has to be built by the caller's own
 workflow. The Hadolint and Trivy images are pinned by digest and move only by a pull request here, so a new rule

@@ -217,12 +217,11 @@ jobs:
           problems=0
           user="$(jq -r '.User // ""' <<< "$config")"
           account="${user%%:*}"
-          case "$account" in
-            '' | 0 | root)
-              echo "::error title=container-scan::The image runs as root (USER is '${user}'). Set a non-root USER in the final stage."
-              problems=1
-              ;;
-          esac
+          # A numeric uid of zeros ("0", "00") is root as well as the name.
+          if [ -z "$account" ] || [ "$account" = root ] || [[ "$account" =~ ^0+$ ]]; then
+            echo "::error title=container-scan::The image runs as root (USER is '${user}'). Set a non-root USER in the final stage."
+            problems=1
+          fi
           if ! jq -e '(.Healthcheck // null) != null and ((.Healthcheck.Test // ["NONE"])[0] != "NONE")' <<< "$config" > /dev/null; then
             echo "::error title=container-scan::The image declares no HEALTHCHECK. Add a HEALTHCHECK instruction to the final stage."
             problems=1
@@ -234,8 +233,10 @@ jobs:
         run: |
           set -euo pipefail
           report="$RUNNER_TEMP/trivy-out/trivy.json"
-          if [ ! -s "$report" ] || ! jq -e . "$report" > /dev/null 2>&1; then
-            echo "::error title=container-scan::NOT SCANNED. Trivy produced no report, so the image was not checked for vulnerabilities."
+          # A report is one Trivy wrote for an image: valid JSON that is not enough, since `{}` parses.
+          # `Results` is left optional because Trivy omits it for an image with nothing to scan.
+          if [ ! -s "$report" ] || ! jq -e '(.SchemaVersion | type) == "number" and .ArtifactType == "container_image"' "$report" > /dev/null 2>&1; then
+            echo "::error title=container-scan::NOT SCANNED. Trivy produced no usable report, so the image was not checked for vulnerabilities."
             exit 1
           fi
           count="$(jq '[.Results[]? | .Vulnerabilities[]?] | length' "$report")"
