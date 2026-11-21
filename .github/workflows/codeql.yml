@@ -1,4 +1,4 @@
-# Reusable CodeQL analysis, gated on the repository actually being public.
+# Reusable CodeQL analysis, gated on the repository being public (or on `allow-private`).
 #
 # Why the gate exists: code scanning is free on public repositories and requires
 # a paid GitHub Code Security license on private ones, where the SARIF upload is
@@ -47,6 +47,14 @@ on:
           than it did before.
         type: string
         default: ""
+      allow-private:
+        description: >-
+          Run the analysis on a non-public (private or internal) repository too. Off by default,
+          because the SARIF upload is refused without a GitHub Code Security license, and a caller
+          that turns it on states that the repository has one. A public repository is analysed
+          either way.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,12 +65,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      public: ${{ steps.check.outputs.public }}
+      scan: ${{ steps.check.outputs.scan }}
     steps:
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          ALLOW_PRIVATE: ${{ inputs['allow-private'] }}
         run: |
           set -euo pipefail
 
@@ -84,17 +93,27 @@ jobs:
             # Degraded rather than failed: a red workflow over a transient API
             # error is noise, and the warning keeps it from being silent.
             echo "::warning::Could not determine repository visibility after 3 attempts; treating it as non-public and skipping."
-            echo "public=false" >> "$GITHUB_OUTPUT"
+            echo "scan=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "visibility: $visibility"
           if [ "$visibility" = "public" ]; then
-            echo "public=true" >> "$GITHUB_OUTPUT"
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+          elif [ "$visibility" = "private" ] || [ "$visibility" = "internal" ]; then
+            if [ "$ALLOW_PRIVATE" = "true" ]; then
+              # The caller said this repository has a Code Security license.
+              echo "scan=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Analysing a $visibility repository because allow-private is set; the upload needs a GitHub Code Security license."
+            else
+              echo "scan=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Skipped (repository visibility: $visibility): uploading results needs a GitHub Code Security license, which is only free on public repositories."
+            fi
           else
-            # Covers internal as well as private.
-            echo "public=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipped (repository visibility: $visibility): uploading results needs a GitHub Code Security license, which is only free on public repositories."
+            # A value the API does not define: skipped whatever allow-private says, and never echoed, since
+            # it is not text this workflow controls.
+            echo "scan=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The repository visibility is not one of public, private or internal; skipping."
           fi
 
   analyze:
@@ -104,7 +123,7 @@ jobs:
     # named "Analyze (javascript-typescript) (javascript-typescript)".
     name: Analyze (${{ matrix.language }})
     needs: visibility
-    if: ${{ needs.visibility.outputs.public == 'true' }}
+    if: ${{ needs.visibility.outputs.scan == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

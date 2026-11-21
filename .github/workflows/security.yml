@@ -45,6 +45,13 @@ on:
           scans with the vendored rules alone.
         type: string
         default: ""
+      dependency-review:
+        description: >-
+          Run the dependency-review job on pull requests. On by default. Set it to false where the
+          repository has no dependency graph (a private one without Code Security), so the other
+          jobs, such as `signatures`, can run on pull requests without that one failing.
+        type: boolean
+        default: true
 
 # Read-only: requesting no write scope keeps this callable from repos whose
 # default GITHUB_TOKEN is restricted (no per-repo permission grant needed). The
@@ -56,7 +63,7 @@ jobs:
   dependency-review:
     name: Dependency review
     # Only meaningful on a pull request — it diffs the PR's dependency changes.
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && inputs['dependency-review']
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

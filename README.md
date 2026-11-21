@@ -568,6 +568,7 @@ must be explicit.)
 | `build-mode` | `none` | `none` suits interpreted languages; a compiled one needs `autobuild` or `manual` |
 | `queries` | _(empty: the default suite)_ | the query suite handed to the init action; a caller that omits `security-extended` where it ran before analyses less |
 | `harden-runner` | `false` | run `step-security/harden-runner` in egress-audit mode first; off because adding a third-party action is a supply-chain decision |
+| `allow-private` | `false` | also analyse a private or internal repository; set it only where the repository has GitHub Code Security, since the SARIF upload is refused without it |
 
 ### CodeQL: default setup vs. a version-controlled `codeql.yml`
 
@@ -593,6 +594,22 @@ security:
   uses: bymaxone/.github/.github/workflows/security.yml@v1
 ```
 
+A private repository that has Code Security can run the analysis too: pass `allow-private: true` to
+`codeql.yml`. Without it a non-public repository is skipped.
+
+A private repository **without** Code Security can still run the `security` caller on pull requests, for
+the other jobs, with `dependency-review: false`. That skips only the dependency review (it needs the
+dependency graph) and leaves `signatures` and `semgrep` as they are:
+
+```yaml
+security:
+  if: github.event_name == 'pull_request'
+  uses: bymaxone/.github/.github/workflows/security.yml@v1
+  with:
+    dependency-review: false
+    signatures: enforce
+```
+
 ### Registry signatures (opt-in)
 
 `security.yml` can also check what the lockfile installs: `signatures: warn` (or `enforce`) installs
@@ -614,6 +631,7 @@ security:
 | ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `fail-on-severity` | `high`  | minimum severity that fails the dependency review                                                                             |
 | `deny-licenses`    | `""`    | comma-separated SPDX licenses to reject                                                                                       |
+| `dependency-review` | `true` | `false` skips only the dependency-review job (no dependency graph on a private repository without Code Security) |
 | `signatures`       | `off`   | `off`, `warn` or `enforce`: `npm audit signatures` over the lockfile                                                          |
 | `semgrep`          | `off`   | `off`, `warn` or `enforce`: Semgrep over the whole checkout, see below                                                        |
 | `semgrep-config`   | `""`    | whitespace-separated registry packs, each one `--config` value (`p/<name>` or `r/<path>`); empty uses the vendored rules alone |
