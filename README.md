@@ -595,7 +595,7 @@ security:
 ```
 
 A private repository that has Code Security can run the analysis too: pass `allow-private: true` to
-`codeql.yml`. Without it a non-public repository is skipped, as before.
+`codeql.yml`. Without it a non-public repository is skipped.
 
 A private repository **without** Code Security can still run the `security` caller on pull requests, for
 the other jobs, with `dependency-review: false`. That skips only the dependency review (it needs the
