@@ -42,6 +42,7 @@ It is public because organization-wide defaults require a public repo.
 | 🔄 [`.github/workflows/agents-sync.yml`](.github/workflows/agents-sync.yml)                                                                 | **Reusable AGENTS.md sync** — rewrites only the marked shared block of a repository's `AGENTS.md` from the canonical copy here, and opens a pull request when it moved                                        | Called weekly by each repo that adopted the block   |
 | 🏷️ [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml)                                                                           | **Reusable PR-title check** — Conventional Commits grammar on the pull-request title, which squash merges turn into the commit subject                  | Called by each repo's `pr-title.yml` on every title change |
 | 🚫 [`.github/workflows/no-ai-attribution.yml`](.github/workflows/no-ai-attribution.yml) | **Reusable no-AI-attribution check** — fails a pull request whose title, body or commit messages name an AI tool as author or reviewer, with the patterns the organisation rulesets carry (`.github/ai-attribution/patterns.json`); a squash merge builds the commit message from the title and body, which the ruleset alone sees only at merge | Called by each repo's `no-ai-attribution.yml` ([starter](.github/workflow-templates/no-ai-attribution.yml)), on `opened`, `edited`, `synchronize` and `reopened` |
+| 📦 [`.github/workflows/container-scan.yml`](.github/workflows/container-scan.yml) | **Reusable container gate** — Hadolint on the Dockerfile; builds it without pushing, fails on fixable HIGH or CRITICAL vulnerabilities (Trivy), writes a CycloneDX SBOM, and requires a non-root `USER` and a `HEALTHCHECK` | Called by every repository that ships a Dockerfile |
 | 🔬 [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml)                                                                               | **Reusable CodeQL analysis** — gated on the repository being public, since code scanning is free there and licensed on private repos                    | Called by each public repo's `codeql.yml`                  |
 | 🚀 [`.github/workflows/release-major-alias.yml`](.github/workflows/release-major-alias.yml)                                                     | **Release** — on a pushed `vN.Y.Z` tag, moves the `vN` alias onto it. The only thing that moves `v1`, with a token of the `bymaxone-v1-alias` App minted in the `v1-alias` environment; merging to `main` publishes nothing               | Runs here, on every release                                |
 | 🧩 [`.github/actions/setup-node-pnpm`](.github/actions/setup-node-pnpm)                                                                         | **Composite action** — pnpm + Node + cache + local `file:` lib build + install                                                                          | Used by the reusable jobs                                  |
@@ -434,6 +435,53 @@ No secrets, no outputs. The calling job needs `contents: read` and `pull-request
 declares `permissions: contents: read` at the top of the file so that no job inherits a wider default.
 The two profiles, the limits and how a repository moves to the narrow list are in
 [`.github/ai-attribution/README.md`](.github/ai-attribution/README.md).
+
+### 📦 `container-scan` inputs (repositories that ship a Dockerfile)
+
+Two read-only jobs, reported as `container-scan / Hadolint` and `container-scan / Image`. Nothing is pushed and no secret is
+involved: the Dockerfile is built on the runner with the caller's own context and the image is discarded.
+
+| Job | What it checks | Fails when |
+| --- | --- | --- |
+| `Hadolint` | The Dockerfile, read from stdin by a Hadolint image pinned by digest | A rule at or above `hadolint-failure-threshold` fires, and it is not in `hadolint-ignore` |
+| `Image` | Builds the Dockerfile; scans the image with Trivy (vulnerabilities only, HIGH and CRITICAL, only those with a fixed version); writes a CycloneDX SBOM and uploads it; reads the image configuration | A fixable HIGH or CRITICAL vulnerability is found; the final `USER` is empty, `0` or `root`; the image declares no `HEALTHCHECK` (or `HEALTHCHECK NONE`); or Trivy produced no report (`NOT SCANNED`, never a pass) |
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `dockerfile` | `Dockerfile` | Path of the Dockerfile in the checkout. A relative path of letters, digits, `.`, `-`, `_` and `/`; a regular file, not a symlink |
+| `context` | `.` | Build context directory in the checkout, with the same path rules |
+| `trivyignore` | `""` | A Trivy ignore file in the checkout (`.trivyignore` or `.trivyignore.yaml`) for vulnerabilities accepted on purpose. Empty uses none. Mounted read-only |
+| `hadolint-ignore` | `""` | Whitespace-separated rule ids to ignore, each `DL` or `SC` and four digits (`DL3008 SC2086`) |
+| `hadolint-failure-threshold` | `warning` | Lowest Hadolint severity that fails: `error`, `warning`, `info` or `style` |
+| `sbom-artifact-name` | `container-sbom` | Artifact name for `sbom.cdx.json`. Give each call a distinct name when one run calls the workflow more than once |
+
+Every input reaches the shell through the environment, and a value that is not a safe path or a known id is refused
+before anything runs. No secrets and no outputs. The caller grants `contents: read` and nothing else.
+
+```yaml
+# .github/workflows/container.yml
+name: Container
+on:
+  pull_request: { branches: [main] }
+  push: { branches: [main] }
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    uses: bymaxone/.github/.github/workflows/container-scan.yml@v1
+    with:
+      dockerfile: Dockerfile
+      trivyignore: .trivyignore # optional
+```
+
+What it does not do. It checks the configured user, not what an entrypoint script drops to or an `/etc/passwd` entry
+that maps a name to uid 0, so a named user is accepted as non-root. It scans the OS and language packages Trivy reads
+from the image and says nothing about secrets or misconfiguration in it. It builds for the runner's platform only, and it
+gives the build no secrets or build arguments, so a Dockerfile that needs either has to be built by the caller's own
+workflow. The Hadolint and Trivy images are pinned by digest and move only by a pull request here, so a new rule or
+advisory source reaches callers at the next release.
 
 ### 🏷️ Versioning
 

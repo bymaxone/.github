@@ -1,0 +1,248 @@
+# Reusable container gate for Bymax repositories that ship a Dockerfile.
+#
+# Two jobs, both read-only. `hadolint` lints the Dockerfile. `image` builds it, scans the result for
+# fixable HIGH and CRITICAL vulnerabilities, writes a CycloneDX SBOM, and checks that the image runs
+# as a non-root user and declares a HEALTHCHECK. Nothing is pushed and nothing here holds a secret:
+# the image is built with the caller's own Dockerfile and context, on the runner, and discarded.
+#
+# The two tools run from images pinned by digest, in `run:` steps. A third-party `uses:` would need to
+# be on the organisation's allow-list, and a rejected reference fails every caller at startup. The
+# image under scan reaches Trivy as an archive mounted read-only, so no container ever sees the
+# Docker socket.
+name: container-scan
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        description: Path of the Dockerfile, relative to the checkout.
+        type: string
+        default: Dockerfile
+      context:
+        description: Build context directory, relative to the checkout.
+        type: string
+        default: .
+      trivyignore:
+        description: >-
+          Path of a Trivy ignore file in the checkout (a `.trivyignore` list or a `.trivyignore.yaml`),
+          for vulnerabilities that are accepted on purpose. Empty uses none.
+        type: string
+        default: ""
+      hadolint-ignore:
+        description: >-
+          Whitespace-separated Hadolint or ShellCheck rule ids to ignore (for example `DL3008 SC2086`).
+          Each must be `DL` or `SC` and four digits.
+        type: string
+        default: ""
+      hadolint-failure-threshold:
+        description: Lowest Hadolint severity that fails the job (error, warning, info or style).
+        type: string
+        default: warning
+      sbom-artifact-name:
+        description: >-
+          Name of the artifact that carries the CycloneDX SBOM. Give each call a distinct name when one
+          run calls this workflow more than once.
+        type: string
+        default: container-sbom
+
+# Read-only: nothing here writes to the repository, a pull request or a registry.
+permissions:
+  contents: read
+
+jobs:
+  hadolint:
+    name: Hadolint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Check the inputs
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          HADOLINT_IGNORE: ${{ inputs.hadolint-ignore }}
+          HADOLINT_THRESHOLD: ${{ inputs.hadolint-failure-threshold }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=container-scan::$1"; exit 1; }
+          [[ "$DOCKERFILE" =~ ^[A-Za-z0-9._/-]+$ && "$DOCKERFILE" != /* && "$DOCKERFILE" != *..* ]] \
+            || fail "dockerfile must be a relative path of letters, digits, dot, dash, underscore and slash, inside the checkout."
+          { [ -f "$DOCKERFILE" ] && [ ! -L "$DOCKERFILE" ]; } \
+            || fail "dockerfile '$DOCKERFILE' is not a regular file in the checkout."
+          case "$HADOLINT_THRESHOLD" in
+            error | warning | info | style) ;;
+            *) fail "hadolint-failure-threshold must be error, warning, info or style." ;;
+          esac
+          tokens=()
+          IFS=$' \t\n' read -r -d '' -a tokens < <(printf '%s' "$HADOLINT_IGNORE") || true
+          : > "$RUNNER_TEMP/hadolint-ignore.txt"
+          for token in ${tokens[@]+"${tokens[@]}"}; do
+            [[ "$token" =~ ^(DL|SC)[0-9]{4}$ ]] || fail "hadolint-ignore entry '$token' is not a rule id (DL or SC and four digits)."
+            printf '%s\n%s\n' --ignore "$token" >> "$RUNNER_TEMP/hadolint-ignore.txt"
+          done
+
+      # The Dockerfile goes in on stdin, so the container is handed no mount and no part of the tree.
+      - name: Hadolint
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          HADOLINT_THRESHOLD: ${{ inputs.hadolint-failure-threshold }}
+          HADOLINT_IMAGE: ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+        run: |
+          set -euo pipefail
+          ignore_args=()
+          while IFS= read -r line; do ignore_args+=("$line"); done < "$RUNNER_TEMP/hadolint-ignore.txt"
+          docker run --rm --interactive "$HADOLINT_IMAGE" \
+            hadolint --no-color --failure-threshold "$HADOLINT_THRESHOLD" ${ignore_args[@]+"${ignore_args[@]}"} - \
+            < "$DOCKERFILE"
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE_TAG: container-scan:candidate
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Check the inputs
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+          TRIVYIGNORE: ${{ inputs.trivyignore }}
+          SBOM_NAME: ${{ inputs.sbom-artifact-name }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=container-scan::$1"; exit 1; }
+          safe_path() {
+            [[ "$2" =~ ^[A-Za-z0-9._/-]+$ && "$2" != /* && "$2" != *..* ]] \
+              || fail "$1 must be a relative path of letters, digits, dot, dash, underscore and slash, inside the checkout."
+          }
+          safe_path dockerfile "$DOCKERFILE"
+          { [ -f "$DOCKERFILE" ] && [ ! -L "$DOCKERFILE" ]; } \
+            || fail "dockerfile '$DOCKERFILE' is not a regular file in the checkout."
+          safe_path context "$CONTEXT"
+          { [ -d "$CONTEXT" ] && [ ! -L "$CONTEXT" ]; } \
+            || fail "context '$CONTEXT' is not a directory in the checkout."
+          if [ -n "$TRIVYIGNORE" ]; then
+            safe_path trivyignore "$TRIVYIGNORE"
+            { [ -f "$TRIVYIGNORE" ] && [ ! -L "$TRIVYIGNORE" ]; } \
+              || fail "trivyignore '$TRIVYIGNORE' is not a regular file in the checkout."
+          fi
+          [[ "$SBOM_NAME" =~ ^[A-Za-z0-9._-]+$ ]] \
+            || fail "sbom-artifact-name must be letters, digits, dot, dash and underscore."
+
+      - name: Build the image
+        id: build
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+        run: |
+          set -euo pipefail
+          docker build --progress plain --file "$DOCKERFILE" --tag "$IMAGE_TAG" "$CONTEXT"
+
+      - name: Save the image
+        run: |
+          set -euo pipefail
+          docker save --output "$RUNNER_TEMP/image.tar" "$IMAGE_TAG"
+
+      # A scan that could not run is not a clean scan, and Trivy exits 1 for both a finding and a
+      # failure to fetch its database. So this step never fails on either: it writes the report, and
+      # the last step reads it and decides. No report is NOT SCANNED there.
+      - name: Trivy scan
+        env:
+          TRIVYIGNORE: ${{ inputs.trivyignore }}
+          TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/trivy-cache" "$RUNNER_TEMP/trivy-out"
+          mounts=()
+          options=()
+          if [ -n "$TRIVYIGNORE" ]; then
+            mounts=(--volume "$GITHUB_WORKSPACE/$TRIVYIGNORE:/ignore/$(basename "$TRIVYIGNORE"):ro")
+            options=(--ignorefile "/ignore/$(basename "$TRIVYIGNORE")")
+          fi
+          if ! docker run --rm --user "$(id -u):$(id -g)" \
+            --volume "$RUNNER_TEMP/image.tar:/image.tar:ro" \
+            --volume "$RUNNER_TEMP/trivy-cache:/cache" \
+            --volume "$RUNNER_TEMP/trivy-out:/out" \
+            ${mounts[@]+"${mounts[@]}"} \
+            "$TRIVY_IMAGE" image --input /image.tar --cache-dir /cache \
+            --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --no-progress \
+            --format json --output /out/trivy.json --exit-code 0 \
+            ${options[@]+"${options[@]}"}; then
+            echo "::warning title=container-scan::Trivy did not complete; the last step reports this as NOT SCANNED."
+          fi
+
+      - name: SBOM
+        env:
+          TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/trivy-cache" "$RUNNER_TEMP/trivy-out"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --volume "$RUNNER_TEMP/image.tar:/image.tar:ro" \
+            --volume "$RUNNER_TEMP/trivy-cache:/cache" \
+            --volume "$RUNNER_TEMP/trivy-out:/out" \
+            "$TRIVY_IMAGE" image --input /image.tar --cache-dir /cache \
+            --format cyclonedx --output /out/sbom.cdx.json --no-progress
+
+      - name: Upload the SBOM
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.sbom-artifact-name }}
+          path: ${{ runner.temp }}/trivy-out/sbom.cdx.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Check the image configuration
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          config="$(docker image inspect --format '{{json .Config}}' "$IMAGE_TAG")"
+          problems=0
+          user="$(jq -r '.User // ""' <<< "$config")"
+          account="${user%%:*}"
+          case "$account" in
+            '' | 0 | root)
+              echo "::error title=container-scan::The image runs as root (USER is '${user}'). Set a non-root USER in the final stage."
+              problems=1
+              ;;
+          esac
+          if ! jq -e '(.Healthcheck // null) != null and ((.Healthcheck.Test // ["NONE"])[0] != "NONE")' <<< "$config" > /dev/null; then
+            echo "::error title=container-scan::The image declares no HEALTHCHECK. Add a HEALTHCHECK instruction to the final stage."
+            problems=1
+          fi
+          exit "$problems"
+
+      - name: Fail on findings
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/trivy-out/trivy.json"
+          if [ ! -s "$report" ] || ! jq -e . "$report" > /dev/null 2>&1; then
+            echo "::error title=container-scan::NOT SCANNED. Trivy produced no report, so the image was not checked for vulnerabilities."
+            exit 1
+          fi
+          count="$(jq '[.Results[]? | .Vulnerabilities[]?] | length' "$report")"
+          if [ "$count" -gt 0 ]; then
+            # A package name comes from the image, so a line break in it must not start another command.
+            jq -r '.Results[]? | .Target as $target | .Vulnerabilities[]? |
+              "::error title=container-scan::\(.Severity) \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion) fixed in \(.FixedVersion) (\($target))" | gsub("[\r\n]"; " ")' "$report"
+            echo "::error title=container-scan::${count} fixable HIGH or CRITICAL vulnerabilities. Update the base image or the package, or accept one on purpose in the trivyignore file."
+            exit 1
+          fi
