@@ -430,7 +430,8 @@ the title and the body, which is why the check runs on `edited` as well as `sync
 | `profile` | `auto` | `strict`, `narrow` or `auto`. `auto` reads the repository name: the repositories in `narrowRepos` of [`patterns.json`](.github/ai-attribution/patterns.json) get the narrow profile, every other repository the strict one |
 
 No secrets, no outputs. The calling job needs `contents: read` and `pull-requests: read`, and the caller's file is the
-[starter](.github/workflow-templates/no-ai-attribution.yml) (events `opened`, `edited`, `synchronize`, `reopened`).
+[starter](.github/workflow-templates/no-ai-attribution.yml) (events `opened`, `edited`, `synchronize`, `reopened`), which also
+declares `permissions: contents: read` at the top of the file so that no job inherits a wider default.
 The two profiles, the limits and how a repository moves to the narrow list are in
 [`.github/ai-attribution/README.md`](.github/ai-attribution/README.md).
 

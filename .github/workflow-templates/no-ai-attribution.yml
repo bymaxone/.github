@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
 
+# The ceiling for every job in this file; the job below asks for what it reads.
+permissions:
+  contents: read
+
 jobs:
   attribution:
     permissions:
