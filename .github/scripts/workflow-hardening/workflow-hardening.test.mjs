@@ -60,14 +60,46 @@ test('no run script interpolates github.event.* or the head ref directly', () =>
   assert.deepEqual(hits, []);
 });
 
-test('every third-party action is pinned to a full commit with a version comment', () => {
-  const hits = [];
-  for (const w of workflows) {
-    w.text.split('\n').forEach((line, i) => {
-      const m = line.match(/^\s*-?\s*uses:\s*(\S+)(.*)$/);
-      if (!m || m[1].startsWith('./') || m[1].startsWith('bymaxone/')) return;
-      if (!/@[0-9a-f]{40}$/.test(m[1]) || !/#\s*v?\d/.test(m[2])) hits.push(`${w.file}:${i + 1}:${m[1]}`);
+// Every `uses:` of a workflow, read from the parsed document so a flow-style step
+// (`steps: [{uses: ...}]`) is seen as well as a block-style one.
+function usesOf(doc) {
+  return Object.values(doc.jobs ?? {}).flatMap((job) => [job.uses, ...(job.steps ?? []).map((s) => s.uses)]).filter(Boolean);
+}
+
+// The third-party references that are not a full commit with a version comment on their line.
+function unpinned(doc, text) {
+  const lines = text.split('\n');
+  return usesOf(doc)
+    .filter((u) => !u.startsWith('./') && !u.startsWith('bymaxone/'))
+    .filter((u) => {
+      if (!/@[0-9a-f]{40}$/.test(u)) return true;
+      const at = lines.find((l) => l.includes(u));
+      return !(at && /#\s*v?\d/.test(at.slice(at.indexOf(u) + u.length)));
     });
-  }
+}
+
+test('every third-party action is pinned to a full commit with a version comment', () => {
+  const hits = workflows.flatMap((w) => unpinned(w.doc, w.text).map((u) => `${w.file}:${u}`));
   assert.deepEqual(hits, []);
+});
+
+test('the pin scan sees a flow-style step and a job-level reference', () => {
+  // A line-by-line scan for a line that starts with `uses:` skips both of these.
+  const text = [
+    'jobs:',
+    '  a:',
+    '    steps: [{uses: actions/checkout@v5}]',
+    '  b:',
+    '    uses: owner/repo/.github/workflows/x.yml@main',
+    '  c:',
+    '    steps:',
+    '      - uses: actions/cache@0123456789012345678901234567890123456789',
+    '      - uses: actions/setup@0123456789012345678901234567890123456789 # v4.1.0',
+  ].join('\n');
+  const doc = JSON.parse(execFileSync('ruby', ['-e', RUBY], { input: text, encoding: 'utf8' }));
+  assert.deepEqual(unpinned(doc, text), [
+    'actions/checkout@v5',
+    'owner/repo/.github/workflows/x.yml@main',
+    'actions/cache@0123456789012345678901234567890123456789',
+  ]);
 });
