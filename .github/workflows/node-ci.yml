@@ -534,7 +534,12 @@ jobs:
           if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
             base=$(git rev-parse --verify --quiet "${SHA}^" || git hash-object -t tree /dev/null)
           fi
-          if git diff --name-only "$base" "$SHA" | grep -qE -- "$SOURCE_GLOBS"; then
+          # The diff is captured first and searched after. `git diff | grep -q` under pipefail
+          # reads a match as a failure: grep exits at its first hit, git is still writing a
+          # large diff, dies of SIGPIPE (141), and the step then reports "no source changes".
+          # Captured, a git error fails the step instead of passing for an empty diff.
+          changed=$(git diff --name-only "$base" "$SHA")
+          if grep -qE -- "$SOURCE_GLOBS" <<<"$changed"; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Application source changed — running mutation."
           else
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "No application-source changes — skipping mutation."

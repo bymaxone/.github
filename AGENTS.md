@@ -147,6 +147,10 @@ It ships to every consumer at the next release. Ask:
   workflows into callers silently dropped `step-security/harden-runner` in three
   repositories, because the audit compared inputs and versions but not steps.
 - **Is it breaking?** Then it is `v2` and a new alias — not a `v1` move.
+- **Am I searching a command's output with `grep -q` under `pipefail`?** Capture the output first
+  (`changed=$(git diff …)`, then `grep -q … <<<"$changed"`). `grep -q` exits at its first match, a producer that is
+  still writing dies of SIGPIPE, and the pipeline reads a match as a failure. `pipefail.test.mjs` refuses the pattern
+  unless the producer is bounded to one short line.
 
 ---
 
