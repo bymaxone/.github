@@ -194,18 +194,27 @@ function scripts() {
   return found;
 }
 
-const EARLY = /^grep\s+(?:-[A-Za-z]*q[A-Za-z]*|--quiet)(\s|$)/;
+/** Whether a pipeline stage is a `grep` that stops at its first match: `-q` in any option token before `--`. */
+const isEarly = (stage) => {
+  const [command, ...tokens] = stage.trim().split(/\s+/);
+  if (command !== 'grep') return false;
+  for (const token of tokens) {
+    if (token === '--') return false;
+    if (token === '--quiet' || /^-[A-Za-z]*q[A-Za-z]*$/.test(token)) return true;
+  }
+  return false;
+};
 // A producer that is one short line by construction: a value written by the shell, or one line of a file.
 const BOUNDED = /(?:^|[\s!;&(])(?:printf|echo|(?:head|tail)\s+-(?:n\s*)?1)\s[^|]*$/;
 
 /** The pipelines in `script` whose consumer exits at its first match and whose producer is not bounded. */
 export function unsafeSearches(script) {
-  const logical = script.replace(/\\\n\s*/g, ' ').split('\n');
+  const logical = script.replace(/\\\n\s*/g, ' ').replace(/\|[ \t]*\n\s*/g, '| ').split('\n');
   const bad = [];
   for (const line of logical) {
     const stages = line.split(/(?<!\|)\|(?!\|)/);
     for (let i = 1; i < stages.length; i += 1) {
-      if (!EARLY.test(stages[i].trim())) continue;
+      if (!isEarly(stages[i])) continue;
       if (i === 1 && BOUNDED.test(stages[0].trim())) continue;
       bad.push(line.trim());
     }
@@ -227,6 +236,8 @@ test('the guard refuses the pipelines it exists for and allows the bounded ones'
     'git ls-files | grep -q ^src/',
     'cat big.txt | grep --quiet x',
     'git log --format=%H | grep -Eq "^[0-9a-f]{40}$"',
+    'git ls-files | grep -E -q ^src/',
+    'git ls-files |\n  grep -q ^src/',
   ];
   for (const line of refused) assert.equal(unsafeSearches(line).length, 1, line);
   const allowed = [
@@ -236,6 +247,8 @@ test('the guard refuses the pipelines it exists for and allows the bounded ones'
     'tail -1 file | grep -q x',
     'grep -qE -- "$GLOBS" <<<"$changed"',
     'git diff --name-only a b | grep -E x',
+    'git ls-files | grep -E -- -q',
+    'git ls-files | grep -e -q-pattern',
   ];
   for (const line of allowed) assert.deepEqual(unsafeSearches(line), [], line);
 });
