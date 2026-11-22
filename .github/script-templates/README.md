@@ -8,6 +8,9 @@ A script or a spec that every library copies, kept here once so that a copy that
   [`script-adopters.txt`](../script-adopters.txt) in a pull request here. `script-family-check.yml` then
   compares its copy with the template every week.
 - Data a template reads (a baseline, a list of exclusions) stays in the library and is not compared.
+- A copy is never reformatted to suit the library, since an edit breaks the comparison. A library whose Prettier or ESLint
+  configuration differs from the template's (for example `trailingComma: 'all'`) lists the copied files in `.prettierignore` and
+  in its ESLint ignores instead.
 - To change a template, change it here, then update each adopter's copy. The check is red for an adopter
   until it has.
 - Every spec a template carries judges no mutant, so an adopter lists each one in
@@ -80,6 +83,7 @@ patterns are embedded in the file, so a change to them reaches an adopter only w
 In an ESM or flat configuration, `import plugin, { build } from './scripts/commitlint-no-ai-attribution.cjs'` gives the same plugin and
 `build`. The rule reads the header, body and footer commitlint gives it, and the raw text up to the scissors line when it gives none. A line starting with `#` given with `git commit -m` or `-F` stays in the commit, but the local hook does not read it; the pull-request job and the organisation ruleset read every line and refuse it. The rule has an
 `always` form only; any other form throws. commitlint keeps only one inline plugin object, so merge the `rules` maps of any other inline plugin into one.
+A `.cjs` file under ESLint's `strictTypeChecked` needs the `module` and `require` globals declared and `@typescript-eslint/no-require-imports` off for `**/*.cjs`.
 
 ## no-ai-attribution-caller
 
@@ -157,6 +161,7 @@ of the byte-identical file; they are cheap and need no library data. A library t
 To adopt: copy `stryker-scope.spec.ts` to `src/`, write `src/stryker-scope.data.ts` from the library's current
 exclusions, delete the old spec, run `jest src/stryker-scope.spec.ts`, and add the library to `script-adopters.txt` here.
 A library whose `mutate` selects `src/**/*.ts` adds `!src/stryker-scope.data.ts`, which is not shipped and is not a spec.
+The data file imports a type from the spec, so list it in the `exclude` of both `tsconfig.json` and `tsconfig.build.json`.
 Every pair of an `entry: { ... }` object in `tsup.config.ts` counts, with a quoted or a bare key.
 
 ## Exempt entries
