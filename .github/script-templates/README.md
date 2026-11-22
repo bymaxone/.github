@@ -161,7 +161,7 @@ of the byte-identical file; they are cheap and need no library data. A library t
 To adopt: copy `stryker-scope.spec.ts` to `src/`, write `src/stryker-scope.data.ts` from the library's current
 exclusions, delete the old spec, run `jest src/stryker-scope.spec.ts`, and add the library to `script-adopters.txt` here.
 A library whose `mutate` selects `src/**/*.ts` adds `!src/stryker-scope.data.ts`, which is not shipped and is not a spec.
-The data file imports a type from the spec, so it stays out of the `tsconfig.build.json` program.
+The data file imports a type from the spec, so list it in the `exclude` of both `tsconfig.json` and `tsconfig.build.json`.
 Every pair of an `entry: { ... }` object in `tsup.config.ts` counts, with a quoted or a bare key.
 
 ## Exempt entries
