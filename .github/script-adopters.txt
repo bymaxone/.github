@@ -54,3 +54,5 @@ bymaxone/nest-queue check-dist-fresh
 bymaxone/nest-realtime check-dist-fresh
 bymaxone/nest-storage check-dist-fresh
 bymaxone/nest-telemetry check-dist-fresh
+bymaxone/nest-queue no-ai-attribution-caller
+bymaxone/nest-queue commitlint-no-ai-attribution
