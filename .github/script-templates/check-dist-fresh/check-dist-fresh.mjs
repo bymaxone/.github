@@ -71,7 +71,7 @@ export function parseOptions(argv) {
     }
     if (!['--src', '--dist', '--also'].includes(name)) throw new Error(`Unknown option ${name}.`)
     const given = args.next()
-    if (given.done || given.value.startsWith('--')) throw new Error(`${name} needs a value.`)
+    if (given.done || typeof given.value !== 'string' || given.value.startsWith('--')) throw new Error(`${name} needs a value.`)
     if (name === '--dist') options.dist = given.value
     else if (name === '--src') options.src.push(given.value)
     else options.also.push(given.value)
