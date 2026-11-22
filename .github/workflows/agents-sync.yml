@@ -503,8 +503,10 @@ jobs:
           # invalid -- no jobs, no logs, just a red run. Describe it, never quote it.
           while IFS= read -r nested; do
             [ -n "$nested" ] || continue
-            if awk '/^[[:space:]]*```/ { fenced = !fenced; next } !fenced' "$nested" \
-              | sed 's/`[^`]*`//g' | grep -q '{{'; then
+            # Captured before it is searched: `grep -q` stops reading at the first hit, and under pipefail
+            # the writer's SIGPIPE would then turn a document with the marker near its top into a miss.
+            prose=$(awk '/^[[:space:]]*```/ { fenced = !fenced; next } !fenced' "$nested" | sed 's/`[^`]*`//g')
+            if grep -q '{{' <<<"$prose"; then
               echo "::error title=agents-sync::$(clean "$nested") is a template, but under that name Codex reads it as guidance for changes in $(clean "$(dirname "$nested")"). Rename it (for example AGENTS.starter.md)."
               status=1
             fi
