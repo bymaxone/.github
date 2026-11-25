@@ -29,7 +29,7 @@ const editJob = (text, id, fn) => {
 };
 
 // Small hand-written workflows for the shapes the template does not have.
-const GOOD_STEP = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA} # v2.22.4\n        with:\n          egress-policy: audit\n`;
+const GOOD_STEP = `      - name: Harden runner\n        uses: step-security/harden-runner@${SHA} # v2.23.0\n        with:\n          egress-policy: audit\n`;
 const OTHER_STEP = '      - name: Checkout\n        run: echo hi\n';
 const ID_TOKEN = '    permissions:\n      id-token: write\n';
 const job = (id, steps, extra = '') => `  ${id}:\n    runs-on: ubuntu-latest\n${extra}    steps:\n${steps}`;
@@ -72,7 +72,7 @@ test('a job that is neither build, publish nor holding id-token is not a release
 });
 
 test('a tag instead of a commit, a stale commit and a wrong policy each have their own code', () => {
-  const tag = template.replace(new RegExp(`@${SHA} # v2\\.22\\.4`, 'g'), '@v2.22.4');
+  const tag = template.replace(new RegExp(`@${SHA} # v2\\.23\\.0`, 'g'), '@v2.23.0');
   assert.deepEqual(check(tag).map((p) => p.code), ['not-pinned', 'not-pinned']);
   assert.deepEqual(check(template, 'f'.repeat(40)).map((p) => p.code), ['stale-sha', 'stale-sha']);
   const block = template.replace(/egress-policy: audit/g, 'egress-policy: block');
@@ -80,9 +80,9 @@ test('a tag instead of a commit, a stale commit and a wrong policy each have the
 });
 
 test('the rule does not depend on any comment, not even the version comment (a parsed file has none)', () => {
-  const bare = template.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n').replace(new RegExp(` # v2\\.22\\.4`, 'g'), '');
+  const bare = template.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n').replace(new RegExp(` # v2\\.23\\.0`, 'g'), '');
   assert.deepEqual(check(bare), []);
-  const words = template.replace(new RegExp(` # v2\\.22\\.4`, 'g'), ' # the audit step, version two, patch four');
+  const words = template.replace(new RegExp(` # v2\\.23\\.0`, 'g'), ' # the audit step, version two, minor twenty-three');
   assert.deepEqual(check(words), []);
 });
 
