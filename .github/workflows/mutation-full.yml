@@ -83,7 +83,9 @@ on:
         description: >-
           Stryker workers per shard. `0` keeps the caller's configured value. Sized against one
           runner's memory: workers grow to several GiB each over a long run, so a shard's workers
-          must fit the runner together with the parent process.
+          must fit the runner together with the parent process. With a checker configured, Stryker
+          9.6.1 treats 1 and 2 alike: one checker and one test runner, then two test runners once
+          checking ends.
         type: number
         default: 0
       stryker-config:
@@ -254,7 +256,7 @@ jobs:
   # The single job above holds every mutant on one runner. Past a size that stops fitting: a Stryker
   # worker grows to several GiB over a long run, so the runner's memory runs out before the work
   # does, and the runner is lost rather than the job failing. Lowering `concurrency` makes it fit
-  # and makes it slower; sharding splits the files across runners and keeps scaling with the mutant
+  # and makes it slower (the `concurrency` input says where 1 and 2 do not differ); sharding splits the files across runners and keeps scaling with the mutant
   # count. These three jobs run only when `shards` is above 1, so a caller that does not opt in
   # sees the single job and nothing else.
   #
