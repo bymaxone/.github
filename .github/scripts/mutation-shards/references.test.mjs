@@ -62,7 +62,9 @@ test('the npm release template builds without a credential and packs once', () =
   const { build } = jobs();
   assert.match(build, /permissions:\n {6}contents: read\n/);
   assert.doesNotMatch(build, /id-token|contents: write/);
-  assert.match(build, /npm pack --pack-destination/);
+  // No lifecycle script runs at pack time, so the build is the verify step's, ahead of the pack.
+  assert.match(build, /npm pack --ignore-scripts --pack-destination/);
+  assert.match(build, /\n {6}- name: Verify \(typecheck, lint, test, build\)\n[\s\S]*run: pnpm verify\n[\s\S]*- name: Pack once/);
   assert.match(build, /export PACKAGE_TARBALL="\$RUNNER_TEMP\/gate\/\$TARBALL"/, 'the gates are given a copy of the tarball');
   assert.match(build, /cp "\$RUNNER_TEMP\/package\/\$TARBALL" "\$RUNNER_TEMP\/gate\/\$TARBALL"/);
   assert.ok(build.indexOf('SHA256SUMS') < build.indexOf('chmod -R a-w "$out"'), 'the pack directory is read-only once hashed');
