@@ -127,6 +127,8 @@ relative imports of the package entries in `tsup.config.ts`; every file in it mu
 and needs `typescript`, a jest that matches `src/**/*.spec.ts`, a `tsup.config.ts` whose entries are written
 `entry: { 'name': 'path' }`, and a `stryker.config.json` with a `mutate` array.
 
+`EXPECTED.shipped` is exact, so a change that adds a file to the closure or removes one updates it in the same change.
+
 The spec holds the engine and every generic check. What differs between libraries lives in a sibling file,
 `src/stryker-scope.data.ts`, which the library owns and the family check does not compare (it is not in
 `template.json`). The spec imports these exports from `./stryker-scope.data`:
@@ -134,7 +136,7 @@ The spec holds the engine and every generic check. What differs between librarie
 | Export          | Type                                                                          | Meaning                                                                                                             |
 | --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `EXCLUSIONS`    | `readonly Exclusion[]`                                                        | Every shipped file `mutate` leaves out: `{ kind, reason, files, ownedBy? }`, `files` being paths or `*` / `**` globs |
-| `EXPECTED`      | `{ entries: number; includes: readonly string[]; minShipped: number }`        | Entry count, entries that must be in the closure, and the closure size it must exceed                               |
+| `EXPECTED`      | `{ entries: number; includes: readonly string[]; shipped: number }`           | Entry count, files that must be in the closure, and the exact number of files in it                                 |
 | `SHIPPED_DATA`  | `readonly { path: string; tsupNeedle: string }[]`                             | Non-TypeScript files the build copies; `[]` when none                                                               |
 | `E2E_OWNED`     | `{ suites: readonly string[]; subpath: string } \| null`                      | Suites (repository-relative paths) that must mention `subpath`; `null` when no exclusion is `e2e-owned`             |
 
